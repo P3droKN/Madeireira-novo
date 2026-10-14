@@ -1,6 +1,8 @@
 // Arquivos em /api que começam com "_" não viram rota na Vercel: aqui ficam só utilitários.
 import { createClient } from "@vercel/kv";
 import { createHash, timingSafeEqual } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 let cliente;
 export function kv() {
@@ -28,7 +30,16 @@ export function chaves(ambiente = process.env.VERCEL_ENV, prefixoFixo = process.
     migrado: p + "madeireira_migrado_v1",
     trava: p + "madeireira_trava_migracao",
     backups: p + "madeireira_backups",       // lista com os nomes das cópias automáticas
+    precos: p + "madeireira_precos_venda",   // hash: "<item>|<acabamento>" -> preço
+    config: p + "madeireira_config",
   };
+}
+
+// Custos ficam em data/custos.json, incluído nas funções pelo vercel.json (e bloqueado para acesso direto).
+let custosCache;
+export function lerCustos() {
+  if (!custosCache) custosCache = JSON.parse(readFileSync(join(process.cwd(), "data", "custos.json"), "utf8"));
+  return custosCache;
 }
 
 export function senhaConfere(recebida, esperada) {

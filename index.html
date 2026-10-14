@@ -12,8 +12,9 @@
         <header>
             <h1>Sistema Madeireira</h1>
             <nav class="tabs">
-                <button class="tab-btn active" id="btn-tab-calculator" onclick="switchTab('calculator')">Calculadora de Custos</button>
+                <button class="tab-btn active" id="btn-tab-calculator" onclick="switchTab('calculator')">Calculadora</button>
                 <button class="tab-btn" id="btn-tab-finance" onclick="switchTab('finance')">Gestor de Caixa</button>
+                <button class="tab-btn" id="btn-tab-prices" onclick="switchTab('prices')">Preços</button>
             </nav>
         </header>
 
@@ -23,108 +24,194 @@
             <!-- ABA: CALCULADORA -->
             <div id="tab-calculator" class="tab-content active">
                 <section class="calculator-section glass-panel">
-                    <form id="calc-form">
-                        <div class="form-group">
+                    <div class="painel-titulo">
+                        <h2>Adicionar item</h2>
+                        <span id="catalogo-status" class="texto-suave">Carregando catálogo…</span>
+                    </div>
+                    <form id="calc-form" class="calc-grid">
+                        <div class="form-group campo-material">
                             <label for="material">Material</label>
-                            <select id="material" required>
-                                <option value="" disabled selected>Selecione um material</option>
-                                <option value="CEDRO">Cedro</option>
-                                <option value="CAMBARÁ">Cambará</option>
-                                <option value="PINUS">Pinus</option>
-                                <option value="ITAÚBA">Itaúba</option>
-                                <option value="EUCALIPTO">Eucalipto</option>
-                                <option value="MADEIRITE">Madeirite</option>
-                                <option value="CAIXILHO">Caixilho</option>
-                                <option value="VISTAS">Vistas</option>
-                                <option value="PREGOS">Pregos</option>
-                                <option value="MEIA_CANA_CEDRO">Meia Cana - Cedro</option>
-                                <option value="MEIA_CANA_PINUS">Meia Cana - Pinus</option>
-                                <option value="DECK">Deck</option>
-                                <option value="FORRO">Forro</option>
+                            <select id="material" required disabled>
+                                <option value="" disabled selected>Carregando…</option>
                             </select>
                         </div>
-
-                        <div class="form-group">
-                            <label for="dimension">Dimensão / Tipo</label>
+                        <div class="form-group campo-medida">
+                            <label for="dimension">Medida / tipo</label>
                             <select id="dimension" required disabled>
-                                <option value="" disabled selected>Selecione a dimensão/tipo</option>
+                                <option value="" disabled selected>Escolha o material</option>
                             </select>
                         </div>
-
-                        <div class="form-group">
-                            <label id="quantity-pieces-label" for="quantity-pieces">Qtd de Peças</label>
-                            <input type="number" id="quantity-pieces" step="1" min="1" required placeholder="Ex: 6" disabled>
+                        <div class="form-group" id="acabamento-group" hidden>
+                            <label>Acabamento</label>
+                            <div class="segmentado" id="acabamento"></div>
                         </div>
 
-                        <div class="form-group" id="length-group" style="display: none;">
-                            <label id="quantity-length-label" for="quantity-length">Comprimento (m)</label>
-                            <input type="number" id="quantity-length" step="0.01" min="0.01" required placeholder="Ex: 2.50" disabled>
+                        <div class="form-group" id="quantidade-group">
+                            <label id="quantity-pieces-label" for="quantity-pieces">Quantidade</label>
+                            <input type="number" id="quantity-pieces" step="1" min="1" inputmode="decimal" placeholder="Ex: 6" disabled>
+                        </div>
+                        <div class="form-group" id="length-group" hidden>
+                            <label for="quantity-length">Comprimento de cada peça (m)</label>
+                            <input type="number" id="quantity-length" step="0.01" min="0.01" inputmode="decimal" placeholder="Ex: 3,00">
+                        </div>
+                        <div class="form-group" id="valor-livre-group" hidden>
+                            <label for="valor-livre">Valor (R$)</label>
+                            <input type="number" id="valor-livre" step="0.01" min="0.01" inputmode="decimal" placeholder="Ex: 25,00">
+                        </div>
+                        <div class="form-group campo-largo" id="descricao-group" hidden>
+                            <label for="descricao-livre">Descrição (opcional)</label>
+                            <input type="text" id="descricao-livre" maxlength="120" placeholder="Ex: sobras de cambará">
                         </div>
 
-                        <button type="submit" class="btn-primary">Adicionar Item</button>
+                        <div class="calc-previa campo-largo" id="calc-previa" hidden></div>
+
+                        <div class="calc-acoes campo-largo">
+                            <div class="modificadores" id="modificadores" hidden>
+                                <label class="check"><input type="checkbox" id="mod-selecionada"> Madeira selecionada <span class="tag tag-mais" id="pct-selecionada"></span></label>
+                                <label class="check"><input type="checkbox" id="mod-ultimas"> Últimas peças <span class="tag tag-menos" id="pct-ultimas"></span></label>
+                            </div>
+                            <button type="submit" class="btn-primary" id="btn-adicionar" disabled>+ Adicionar ao pedido</button>
+                        </div>
                     </form>
                 </section>
 
                 <section class="results-section glass-panel">
-                    <h2>Resumo do Pedido</h2>
-                    <div class="table-container">
-                        <table id="items-table">
-                            <thead>
-                                <tr>
-                                    <th>Material</th>
-                                    <th>Dimensão</th>
-                                    <th>Qtd</th>
-                                    <th>Preço Unit.</th>
-                                    <th>Subtotal</th>
-                                    <th>Ação</th>
-                                </tr>
-                            </thead>
-                            <tbody id="items-body">
-                                <!-- Items will be added here -->
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="total-container">
-                        <span>Custo Total Estimado:</span>
-                        <span id="grand-total">R$ 0,00</span>
+                    <div class="painel-titulo">
+                        <h2>Pedido</h2>
+                        <div class="painel-acoes">
+                            <button class="btn-icon" onclick="window.print()" title="Imprimir este pedido">🖨️ Imprimir</button>
+                            <button class="btn-icon" onclick="Calculadora.limpar(true)" title="Remover todos os itens">Limpar</button>
+                        </div>
                     </div>
 
-                    <div class="direct-sale-box" style="background: #f8fafc; padding: 15px; border-radius: 8px; margin-top: 15px; border: 1px solid #e2e8f0;">
-                        <h3 style="margin-top:0; color: var(--primary); font-size: 1.1rem; margin-bottom: 15px;">Lançamento Inteligente Direto pro Caixa</h3>
-                        
+                    <div class="table-container">
+                        <table id="items-table" class="tabela-pedido">
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th class="num">Qtd</th>
+                                    <th class="num so-tela">Custo</th>
+                                    <th class="num">Venda unit.</th>
+                                    <th class="num">Venda</th>
+                                    <th class="num so-tela">Margem</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="items-body"></tbody>
+                        </table>
+                        <p class="vazio" id="pedido-vazio">Nenhum item no pedido. Escolha o material acima.</p>
+                    </div>
+
+                    <div class="totais" id="totais">
+                        <div class="total-bloco so-tela">
+                            <span>Custo total</span>
+                            <strong id="total-custo">R$ 0,00</strong>
+                        </div>
+                        <div class="total-bloco">
+                            <span>Venda total</span>
+                            <strong id="total-venda">R$ 0,00</strong>
+                        </div>
+                        <div class="total-bloco so-tela">
+                            <span>Margem</span>
+                            <strong id="total-margem">—</strong>
+                            <small class="texto-suave" id="total-margem-nota"></small>
+                        </div>
+                    </div>
+                    <ul class="pendencias" id="pendencias"></ul>
+
+                    <div class="finalizar" id="finalizar">
+                        <h3>Registrar venda no caixa</h3>
                         <div class="form-row">
                             <div class="form-group">
-                                <label style="font-weight: bold; color: var(--text-main);">Por quanto você vendeu? (R$)</label>
-                                <input type="number" id="direct-sale-price" step="0.01" min="0.01" placeholder="Ex: 500.00">
+                                <label for="direct-sale-price">Valor cobrado do cliente (R$)</label>
+                                <input type="number" id="direct-sale-price" step="0.01" min="0.01" inputmode="decimal" placeholder="0,00">
+                                <small class="texto-suave" id="valor-cobrado-info"></small>
                             </div>
                             <div class="form-group">
-                                <label style="font-weight: bold; color: var(--text-main);">Forma de Recebimento</label>
+                                <label for="direct-sale-method">Forma de pagamento</label>
                                 <select id="direct-sale-method">
+                                    <option value="dinheiro">Dinheiro</option>
                                     <option value="pix">PIX</option>
-                                    <option value="bradesco">Bradesco (Transferência)</option>
-                                    <option value="dinheiro">Dinheiro Físico</option>
-                                    <option value="debito">Cartão de Débito</option>
-                                    <option value="credito">Cartão de Crédito</option>
+                                    <option value="bradesco">Bradesco (transferência)</option>
+                                    <option value="debito">Cartão de débito</option>
+                                    <option value="credito">Cartão de crédito</option>
                                 </select>
                             </div>
-                        </div>
-                        
-                        <div class="form-row" style="margin-top: 10px;">
                             <div class="form-group">
-                                <label style="font-weight: bold; color: var(--text-main);">Data do Lançamento</label>
+                                <label for="direct-sale-date">Data</label>
                                 <input type="date" id="direct-sale-date" required>
                             </div>
                         </div>
-                        
-                        <div style="display: flex; gap: 10px; margin-top: 10px;">
-                            <button class="btn-success" style="flex: 1; padding: 12px; font-size: 1rem;" onclick="registerDirectSale()" title="Registra automaticamente a Venda e extrai o Custo ao mesmo tempo">
-                                ✅ Lançar Venda e Custo Juntos
-                            </button>
+                        <button class="btn-success btn-largo" id="btn-registrar-venda" onclick="registerDirectSale()">Registrar venda</button>
+                        <p class="texto-suave nota">O custo dos itens fica guardado junto com a venda (CMV), sem lançar uma saída separada. Compras de material são lançadas no Gestor de Caixa.</p>
+                    </div>
+                </section>
+            </div>
+
+            <!-- ABA: PREÇOS (ADMIN) -->
+            <div id="tab-prices" class="tab-content" style="display: none;">
+                <section class="glass-panel">
+                    <div class="painel-titulo">
+                        <h2>Ajustes da calculadora</h2>
+                    </div>
+                    <div id="admin-aviso-kv" class="aviso aviso-alerta" hidden>Sem banco de dados neste ambiente: dá para ver, mas os preços e ajustes <strong>não são salvos</strong>.</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="cfg-selecionada">Madeira selecionada / escolhida (+%)</label>
+                            <input type="number" id="cfg-selecionada" min="0" max="100" step="0.5">
                         </div>
-                        
-                        <div class="export-actions" style="margin-top: 15px; border-top: 1px solid #e2e8f0; padding-top: 15px;">
-                            <button class="btn-icon" onclick="window.print()" title="Imprimir este pedido">🖨️ Imprimir Pedido</button>
-                            <button class="btn-danger" onclick="registerDirectCost()" title="Registrar apenas a compra do material, sem venda">Lançar apenas Custo</button>
+                        <div class="form-group">
+                            <label for="cfg-ultimas">Últimas peças (−%)</label>
+                            <input type="number" id="cfg-ultimas" min="0" max="100" step="0.5">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-top: 1.25rem;">
+                        <label>Materiais com opção de cepilhado</label>
+                        <div class="checks-linha" id="cfg-cepilhado"></div>
+                    </div>
+                    <div class="export-actions">
+                        <button class="btn-primary" onclick="Precos.salvarConfig()">Salvar ajustes</button>
+                    </div>
+                </section>
+
+                <section class="glass-panel">
+                    <div class="painel-titulo">
+                        <h2>Preços de venda</h2>
+                        <span class="texto-suave" id="precos-contagem"></span>
+                    </div>
+                    <p class="texto-suave" style="margin-bottom: 1rem;">Deixe em branco o que ainda não tem preço: na calculadora, o vendedor digita na hora. O preço é por unidade de cobrança (metro, peça, m², jogo, saco).</p>
+                    <div class="form-row" style="margin-bottom: 1rem;">
+                        <div class="form-group">
+                            <label for="precos-filtro-material">Material</label>
+                            <select id="precos-filtro-material"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="precos-filtro-status">Mostrar</label>
+                            <select id="precos-filtro-status">
+                                <option value="todos">Todos</option>
+                                <option value="vazios">Só sem preço</option>
+                                <option value="preenchidos">Só com preço</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="tabela-precos">
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th class="num">Custo</th>
+                                    <th class="num">Bruto / único</th>
+                                    <th class="num">Cepilhado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="precos-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="barra-salvar" id="precos-barra" hidden>
+                        <span id="precos-alterados"></span>
+                        <div class="painel-acoes">
+                            <button class="btn-icon" onclick="Precos.descartar()">Descartar</button>
+                            <button class="btn-primary" onclick="Precos.salvar()">Salvar preços</button>
                         </div>
                     </div>
                 </section>
@@ -404,7 +491,7 @@
         </div>
     </div>
 
-    <script src="tabela-precos.js"></script>
     <script src="script.js"></script>
+    <script type="module" src="calculadora.js"></script>
 </body>
 </html>

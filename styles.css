@@ -108,7 +108,7 @@ header h1 {
 }
 
 /* FORMS */
-#calc-form, #finance-form {
+#finance-form {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
@@ -410,7 +410,6 @@ td { font-size: 0.95rem; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
 
 @media (max-width: 600px) {
-    #calc-form { grid-template-columns: 1fr; }
     body { padding: 1rem; }
     .dashboard-header { flex-direction: column; align-items: flex-start; }
 }
@@ -522,4 +521,224 @@ td { font-size: 0.95rem; }
     
     .type-income { color: #000 !important; }
     .type-expense { color: #000 !important; }
+}
+
+/* ---------- CALCULADORA (Fase 1) ---------- */
+[hidden] { display: none !important; }
+
+.texto-suave { color: var(--text-muted); font-size: 0.85rem; }
+.texto-alerta { color: var(--warning); font-size: 0.85rem; }
+.texto-ruim { color: var(--danger); }
+
+.painel-titulo {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+}
+.painel-titulo h2 { font-size: 1.35rem; font-weight: 600; }
+.painel-acoes { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+.calc-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+    align-items: end;
+}
+.calc-grid .campo-material { grid-column: span 1; }
+.calc-grid .campo-medida { grid-column: span 2; }
+.calc-grid .campo-largo { grid-column: 1 / -1; }
+
+.segmentado {
+    display: flex;
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: 0.5rem;
+    padding: 4px;
+    gap: 4px;
+}
+.segmentado label { flex: 1; cursor: pointer; }
+.segmentado input { position: absolute; opacity: 0; pointer-events: none; }
+.segmentado span {
+    display: block;
+    text-align: center;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.35rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    transition: background-color 0.15s, color 0.15s;
+}
+.segmentado input:checked + span { background: rgba(59, 130, 246, 0.25); color: var(--text-main); }
+.segmentado input:focus-visible + span { outline: 2px solid var(--primary); }
+
+.calc-previa {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px dashed rgba(59, 130, 246, 0.35);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+.calc-previa strong { color: var(--text-main); }
+
+.calc-acoes {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.calc-acoes .btn-primary { margin-left: auto; }
+.modificadores, .checks-linha { display: flex; gap: 1.25rem; flex-wrap: wrap; }
+.check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-main);
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+.check input, .mini-mods input { width: auto; accent-color: var(--primary); }
+
+.tag {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-muted);
+    vertical-align: middle;
+    white-space: nowrap;
+}
+.tag-mais { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+.tag-menos { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+
+/* Tabela do pedido */
+.tabela-pedido td, .tabela-pedido th { padding: 0.75rem 0.6rem; vertical-align: top; }
+.tabela-pedido.sem-itens thead { display: none; }
+.num { text-align: right; white-space: nowrap; }
+td small { display: block; color: var(--text-muted); font-size: 0.75rem; margin-top: 0.15rem; }
+.col-item { min-width: 180px; }
+.col-item strong { font-weight: 600; }
+.motivo { color: #fbbf24 !important; }
+.link-alerta, .link-suave {
+    display: block;
+    background: none;
+    border: none;
+    padding: 0;
+    margin-top: 0.2rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    text-decoration: underline;
+    text-align: left;
+}
+.link-alerta { color: var(--warning); font-weight: 600; }
+.link-suave { display: inline; color: var(--text-muted); margin-left: 0.25rem; }
+.vazio { text-align: center; color: var(--text-muted); padding: 2rem 1rem; }
+
+.preco-cel { display: inline-flex; align-items: center; gap: 0.35rem; }
+.preco-cel small { margin: 0; }
+.preco-input {
+    width: 100px !important;
+    padding: 0.45rem 0.6rem !important;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.preco-input.falta { border-color: var(--warning) !important; background: rgba(245, 158, 11, 0.08) !important; }
+.preco-input.alterado { border-color: var(--primary) !important; background: rgba(59, 130, 246, 0.12) !important; }
+.mini-mods { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 0.35rem; font-size: 0.75rem; color: var(--text-muted); }
+.mini-mods label { display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer; font-size: 0.75rem; }
+
+.pill { display: inline-block; padding: 0.15rem 0.55rem; border-radius: 999px; font-weight: 600; font-size: 0.85rem; }
+.pill-boa { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+.pill-ruim { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+.pill-neutra { background: rgba(255, 255, 255, 0.06); color: var(--text-muted); }
+
+.totais {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-top: 0.5rem;
+}
+.total-bloco {
+    background: rgba(15, 23, 42, 0.45);
+    border: 1px solid var(--panel-border);
+    border-radius: 0.75rem;
+    padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.total-bloco span { color: var(--text-muted); font-size: 0.85rem; }
+.total-bloco strong { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.pendencias { list-style: none; margin: 1rem 0 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.pendencias li { color: #fbbf24; font-size: 0.875rem; padding-left: 1.25rem; position: relative; }
+.pendencias li::before { content: "!"; position: absolute; left: 0.35rem; font-weight: 700; }
+
+/* Registrar venda: segue o tema escuro (antes era um bloco claro com texto claro, ilegível) */
+.finalizar {
+    margin-top: 1.5rem;
+    padding: 1.5rem;
+    border-radius: 0.75rem;
+    background: rgba(16, 185, 129, 0.06);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.finalizar h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 1rem; }
+.finalizar .form-row { gap: 1rem; }
+.finalizar small { font-size: 0.8rem; min-height: 1em; }
+.btn-largo { width: 100%; margin-top: 1rem; }
+.nota { margin-top: 0.75rem; font-size: 0.8rem; }
+
+/* Aba Preços */
+.tabela-precos td, .tabela-precos th { padding: 0.5rem 0.6rem; }
+.tabela-precos td small { min-height: 1em; }
+.grupo-linha td {
+    background: rgba(255, 255, 255, 0.04);
+    font-weight: 600;
+    color: var(--text-main);
+    padding-top: 0.75rem;
+}
+.barra-salvar {
+    position: sticky;
+    bottom: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid rgba(59, 130, 246, 0.5);
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.6);
+}
+
+@media (max-width: 760px) {
+    .calc-grid { grid-template-columns: 1fr 1fr; }
+    .calc-grid .campo-material, .calc-grid .campo-medida { grid-column: 1 / -1; }
+    .totais { grid-template-columns: 1fr; }
+    .glass-panel { padding: 1.25rem; }
+    .tabs { flex-wrap: wrap; gap: 0.5rem; }
+    .tab-btn { padding: 0.5rem 1rem; }
+}
+@media (max-width: 480px) {
+    .calc-grid { grid-template-columns: 1fr; }
+    header h1 { font-size: 1.8rem; }
+}
+
+@media print {
+    .so-tela, .calculator-section, .finalizar, .pendencias, .mini-mods, .painel-acoes, #catalogo-status, .vazio { display: none !important; }
+    .totais { display: flex !important; justify-content: flex-end; }
+    .total-bloco { border: none !important; background: none !important; padding: 0 !important; }
+    .total-bloco strong { color: black !important; font-size: 14px !important; }
+    .preco-input { border: none !important; background: none !important; color: black !important; width: auto !important; padding: 0 !important; }
+    .tag { background: none !important; color: black !important; border: 1px solid #999; }
+    td small { color: #333 !important; }
 }

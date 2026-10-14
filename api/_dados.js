@@ -44,7 +44,38 @@ export function validarLancamento(item) {
     limpo.checkIssuer = texto(item.checkIssuer, 120);
     limpo.checkDate = DATA.test(item.checkDate || "") ? item.checkDate : "";
   }
+  // Venda feita pela calculadora: guarda o custo do que foi vendido (CMV) e os itens,
+  // em vez de criar um lançamento de custo separado (que contava o custo em dobro).
+  if (item.category === "venda" && item.cmv != null) {
+    const cmv = Number(item.cmv);
+    if (!Number.isFinite(cmv) || cmv < 0) throw erro(400, "CMV inválido.");
+    limpo.cmv = Math.round(cmv * 100) / 100;
+    limpo.origem = "calculadora";
+    if (Array.isArray(item.itens)) {
+      if (item.itens.length > 100) throw erro(400, "Pedido com itens demais.");
+      limpo.itens = item.itens.map(validarItemPedido);
+    }
+  }
   return limpo;
+}
+
+const num = (v) => (v == null || v === "" || !Number.isFinite(Number(v)) ? null : Math.round(Number(v) * 1000) / 1000);
+
+function validarItemPedido(i) {
+  if (!i || typeof i !== "object") throw erro(400, "Item do pedido inválido.");
+  return {
+    itemId: texto(i.itemId, 120),
+    descricao: texto(i.descricao, 200),
+    acabamento: texto(i.acabamento, 20),
+    quantidadeCobrada: num(i.quantidadeCobrada),
+    unidade: texto(i.unidade, 20),
+    custoTotal: num(i.custoTotal),
+    precoUnitario: num(i.precoUnitario),
+    vendaTotal: num(i.vendaTotal),
+    selecionada: Boolean(i.selecionada),
+    ultimasPecas: Boolean(i.ultimasPecas),
+    motivoAjuste: texto(i.motivoAjuste, 200),
+  };
 }
 
 export function validarAcumulado(acc) {
@@ -88,6 +119,8 @@ export async function montarBackup(kv, k) {
       madeireira_acumulado: desembrulhar(await kv.get(k.acumulado)) ?? null,
       madeireira_lancamentos: (await kv.hgetall(k.lancamentos)) ?? null,
       madeireira_migrado_v1: (await kv.get(k.migrado)) ?? null,
+      madeireira_precos_venda: (await kv.hgetall(k.precos)) ?? null,
+      madeireira_config: desembrulhar(await kv.get(k.config)) ?? null,
     },
   };
 }
@@ -237,6 +270,13 @@ export async function restaurar(kv, k, arquivo) {
   await kv.del(k.lancamentos);
   if (l && Object.keys(l).length) await kv.hset(k.lancamentos, l);
   await gravar(k.migrado, alvo.madeireira_migrado_v1);
+  // Preços e config só existem em backups a partir da Fase 1; backups antigos não mexem neles.
+  if ("madeireira_precos_venda" in alvo) {
+    const precos = alvo.madeireira_precos_venda;
+    await kv.del(k.precos);
+    if (precos && Object.keys(precos).length) await kv.hset(k.precos, precos);
+  }
+  if ("madeireira_config" in alvo) await gravar(k.config, alvo.madeireira_config);
 
   return {
     copia,
@@ -251,4 +291,52 @@ export async function salvarAcumulado(kv, k, acumulado) {
   await salvarCopia(kv, k, "antes-de-alterar-acumulado");
   await kv.set(k.acumulado, limpo);
   return limpo;
+}
+
+// --- Preços de venda e configuração (Fase 1) ---
+
+export async function lerPrecosEConfig(kv, k) {
+  const precos = (await kv.hgetall(k.precos)) || {};
+  const config = desembrulhar(await kv.get(k.config)) || {};
+  return { precos, config };
+}
+
+// alteracoes: { "<item>|<acabamento>": número > 0 | null (apaga) }
+export async function salvarPrecos(kv, k, alteracoes, chaveValida) {
+  if (!alteracoes || typeof alteracoes !== "object" || Array.isArray(alteracoes)) throw erro(400, "Envie as alterações de preço.");
+  const entradas = Object.entries(alteracoes);
+  if (entradas.length === 0 || entradas.length > 1000) throw erro(400, "Envie de 1 a 1000 preços.");
+  const gravar = {}, apagar = [];
+  for (const [chave, valor] of entradas) {
+    if (!chaveValida(chave)) throw erro(400, `Item não existe no catálogo: ${chave}`);
+    if (valor == null || valor === "") { apagar.push(chave); continue; }
+    const v = Number(valor);
+    if (!Number.isFinite(v) || v <= 0 || v > 1e6) throw erro(400, `Preço inválido em ${chave}.`);
+    gravar[chave] = Math.round(v * 100) / 100;
+  }
+  if (Object.keys(gravar).length) await kv.hset(k.precos, gravar);
+  if (apagar.length) await kv.hdel(k.precos, ...apagar);
+  return { salvos: Object.keys(gravar).length, removidos: apagar.length };
+}
+
+const PCT = (v, nome) => {
+  const n = Number(v ?? 0);
+  if (!Number.isFinite(n) || n < 0 || n > 100) throw erro(400, `Percentual inválido: ${nome}.`);
+  return n;
+};
+
+export async function salvarConfig(kv, k, config, materiaisComCepilhado) {
+  if (!config || typeof config !== "object") throw erro(400, "Config inválida.");
+  const limpa = {
+    modificadores: {
+      selecionadaPct: PCT(config.modificadores?.selecionadaPct, "madeira selecionada"),
+      ultimasPecasPct: PCT(config.modificadores?.ultimasPecasPct, "últimas peças"),
+    },
+    temCepilhado: {},
+  };
+  for (const id of materiaisComCepilhado) {
+    if (config.temCepilhado && id in config.temCepilhado) limpa.temCepilhado[id] = Boolean(config.temCepilhado[id]);
+  }
+  await kv.set(k.config, limpa);
+  return limpa;
 }

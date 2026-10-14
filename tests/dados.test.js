@@ -4,6 +4,7 @@ import { chaves, senhaConfere } from "../api/_lib.js";
 import {
   lerTudo, migrar, salvarLancamentos, excluirLancamento, importar, restaurar,
   montarBackup, salvarAcumulado, listarCopias, validarLancamento,
+  salvarPrecos, salvarConfig, lerPrecosEConfig,
 } from "../api/_dados.js";
 
 // KV em memória com os mesmos comandos do @vercel/kv usados pelo sistema.
@@ -23,6 +24,7 @@ function kvFalso(inicial = {}) {
     async hgetall(k) { const h = dados.get(k); return h && Object.keys(h).length ? clone(h) : null; },
     async hget(k, f) { return clone(dados.get(k)?.[f]); },
     async hset(k, obj) { const h = dados.get(k) || {}; Object.assign(h, clone(obj)); dados.set(k, h); return Object.keys(obj).length; },
+    async hdel(k, ...fs) { const h = dados.get(k) || {}; let n = 0; for (const f of fs) if (f in h) { delete h[f]; n++; } return n; },
     async hsetnx(k, f, v) { const h = dados.get(k) || {}; if (f in h) return 0; h[f] = clone(v); dados.set(k, h); return 1; },
     async hlen(k) { return Object.keys(dados.get(k) || {}).length; },
     async lpush(k, ...vs) { const l = dados.get(k) || []; l.unshift(...vs.reverse()); dados.set(k, l); return l.length; },
@@ -179,4 +181,48 @@ test("acumulado: guarda cópia antes de alterar", async () => {
   assert.equal((await kv.get(K.acumulado)).venda, 1);
   const [copia] = await listarCopias(kv, K);
   assert.deepEqual((await kv.get(copia)).chaves.madeireira_acumulado, ACUMULADO);
+});
+
+const valida = (c) => /^[A-Z_]+\|[^|]+\|(BRUTO|CEPILHADO|UNICO)$/.test(c);
+
+test("preços: grava, apaga com null e recusa item fora do catálogo", async () => {
+  const kv = kvFalso({});
+  await salvarPrecos(kv, K, { "CAMBARA|1x2|BRUTO": 6.5, "CAMBARA|1x2|CEPILHADO": "7.25" }, valida);
+  assert.deepEqual((await lerPrecosEConfig(kv, K)).precos, { "CAMBARA|1x2|BRUTO": 6.5, "CAMBARA|1x2|CEPILHADO": 7.25 });
+  await salvarPrecos(kv, K, { "CAMBARA|1x2|CEPILHADO": null }, valida);
+  assert.deepEqual((await lerPrecosEConfig(kv, K)).precos, { "CAMBARA|1x2|BRUTO": 6.5 });
+  await assert.rejects(salvarPrecos(kv, K, { "x": 1 }, valida), { status: 400 });
+  await assert.rejects(salvarPrecos(kv, K, { "CAMBARA|1x2|BRUTO": -1 }, valida), { status: 400 });
+});
+
+test("config: percentuais entre 0 e 100 e só materiais conhecidos", async () => {
+  const kv = kvFalso({});
+  const c = await salvarConfig(kv, K, { modificadores: { selecionadaPct: 10, ultimasPecasPct: "15" }, temCepilhado: { EUCALIPTO: true, OUTRO: true } }, ["EUCALIPTO", "PINUS"]);
+  assert.deepEqual(c, { modificadores: { selecionadaPct: 10, ultimasPecasPct: 15 }, temCepilhado: { EUCALIPTO: true } });
+  await assert.rejects(salvarConfig(kv, K, { modificadores: { selecionadaPct: 150 } }, []), { status: 400 });
+});
+
+test("backup e restauração incluem preços e config; backup antigo não apaga preços", async () => {
+  const kv = sistemaAntigo();
+  const antigo = await montarBackup(kv, K);
+  delete antigo.chaves.madeireira_precos_venda;
+  delete antigo.chaves.madeireira_config;
+  await salvarPrecos(kv, K, { "CAMBARA|1x2|BRUTO": 6.5 }, valida);
+  const novo = await montarBackup(kv, K);
+  assert.deepEqual(novo.chaves.madeireira_precos_venda, { "CAMBARA|1x2|BRUTO": 6.5 });
+  await restaurar(kv, K, antigo);
+  assert.equal((await lerPrecosEConfig(kv, K)).precos["CAMBARA|1x2|BRUTO"], 6.5);
+  await salvarPrecos(kv, K, { "CAMBARA|1x2|BRUTO": 9 }, valida);
+  await restaurar(kv, K, novo);
+  assert.equal((await lerPrecosEConfig(kv, K)).precos["CAMBARA|1x2|BRUTO"], 6.5);
+});
+
+test("venda da calculadora guarda CMV e itens no próprio lançamento", () => {
+  const v = validarLancamento(lanc("v1", { value: 90, cmv: 61.92, itens: [{ itemId: "CAMBARA|1x2", custoTotal: 61.92, vendaTotal: 90, hack: 1 }] }));
+  assert.equal(v.cmv, 61.92);
+  assert.equal(v.origem, "calculadora");
+  assert.equal(v.itens[0].custoTotal, 61.92);
+  assert.equal(v.itens[0].hack, undefined);
+  assert.equal(validarLancamento(lanc("v2")).cmv, undefined);
+  assert.throws(() => validarLancamento(lanc("v3", { cmv: -1 })), { status: 400 });
 });

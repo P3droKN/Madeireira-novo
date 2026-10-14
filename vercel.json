@@ -1,0 +1,9 @@
+{
+  "functions": {
+    "api/catalogo.js": { "includeFiles": "data/**" },
+    "api/precos.js": { "includeFiles": "data/**" }
+  },
+  "redirects": [
+    { "source": "/data/:path*", "destination": "/", "permanent": false }
+  ]
+}

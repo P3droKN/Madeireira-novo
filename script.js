@@ -64,145 +64,12 @@ function switchTab(tabId) {
     if(tabId === 'finance') {
         renderFinance();
     }
+    if(tabId === 'prices' && window.Precos) {
+        window.Precos.abrir();
+    }
 }
 
-// --- CALCULADORA LOGIC ---
-const materialSelect = document.getElementById('material');
-const dimensionSelect = document.getElementById('dimension');
-const quantityPiecesInput = document.getElementById('quantity-pieces');
-const quantityPiecesLabel = document.getElementById('quantity-pieces-label');
-const lengthGroup = document.getElementById('length-group');
-const quantityLengthInput = document.getElementById('quantity-length');
-const calcForm = document.getElementById('calc-form');
-const itemsBody = document.getElementById('items-body');
-const grandTotalEl = document.getElementById('grand-total');
-
-let orderItems = [];
-let currentCalcTotal = 0;
-
-materialSelect.addEventListener('change', (e) => {
-    const selectedMaterial = e.target.value;
-    dimensionSelect.innerHTML = '<option value="" disabled selected>Selecione a dimensão/tipo</option>';
-    dimensionSelect.disabled = false;
-    
-    const dimensions = woodData[selectedMaterial].dimensions;
-    for (const [dim, priceData] of Object.entries(dimensions)) {
-        const option = document.createElement('option');
-        option.value = dim;
-        
-        let costPrice = typeof priceData === 'number' ? priceData : (priceData.custo || 0);
-        let salePrice = typeof priceData === 'number' ? 0 : (priceData.venda || 0);
-        
-        let labelText = `${dim} - Custo: ${formatCurrency(costPrice)}`;
-        if (salePrice > 0) labelText += ` | Venda: ${formatCurrency(salePrice)}`;
-        
-        option.textContent = labelText;
-        dimensionSelect.appendChild(option);
-    }
-
-    const unitType = woodData[selectedMaterial].unit;
-    quantityPiecesInput.disabled = false;
-    quantityPiecesInput.value = '';
-    quantityPiecesLabel.textContent = woodData[selectedMaterial].label;
-
-    if (unitType === 'pieces' || unitType === 'square_meters') {
-        lengthGroup.style.display = 'none';
-        quantityLengthInput.disabled = true;
-        quantityLengthInput.required = false;
-        quantityLengthInput.value = '';
-        
-        if (unitType === 'square_meters') {
-            quantityPiecesInput.step = "0.01"; quantityPiecesInput.min = "0.01"; quantityPiecesInput.placeholder = "Ex: 15.5";
-        } else {
-            quantityPiecesInput.step = "1"; quantityPiecesInput.min = "1"; quantityPiecesInput.placeholder = "Ex: 5";
-        }
-    } else {
-        lengthGroup.style.display = 'flex';
-        quantityLengthInput.disabled = false;
-        quantityLengthInput.required = true;
-        quantityLengthInput.value = '';
-        quantityPiecesInput.step = "1"; quantityPiecesInput.min = "1"; quantityPiecesInput.placeholder = "Qtd de peças (Ex: 6)";
-    }
-});
-
-calcForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const material = materialSelect.value;
-    const dimension = dimensionSelect.value;
-    const piecesOrArea = parseFloat(quantityPiecesInput.value);
-
-    if (!material || !dimension || isNaN(piecesOrArea) || piecesOrArea <= 0) return;
-
-    const unitType = woodData[material].unit;
-    let totalQuantity = 0;
-    let displayQuantity = '';
-
-    if (unitType === 'pieces') {
-        totalQuantity = piecesOrArea;
-        let unitLabel = material === 'PREGOS' ? 'saco(s)' : 'un';
-        displayQuantity = `${piecesOrArea} ${unitLabel}`;
-    } else if (unitType === 'square_meters') {
-        totalQuantity = piecesOrArea;
-        displayQuantity = `${piecesOrArea.toFixed(2)} m²`;
-    } else {
-        const pieces = parseInt(piecesOrArea);
-        const length = parseFloat(quantityLengthInput.value);
-        if (isNaN(length) || length <= 0) return;
-        totalQuantity = pieces * length;
-        displayQuantity = `${pieces} un x ${length}m = ${totalQuantity.toFixed(2)}m`;
-    }
-
-    const priceData = woodData[material].dimensions[dimension];
-    let costPrice = typeof priceData === 'number' ? priceData : (priceData.custo || 0);
-    let salePrice = typeof priceData === 'number' ? 0 : (priceData.venda || 0);
-
-    const subtotal = costPrice * totalQuantity;
-    const saleSubtotal = salePrice * totalQuantity;
-
-    orderItems.push({ 
-        id: Date.now().toString(), 
-        material, 
-        dimension, 
-        displayQuantity, 
-        priceUnit: costPrice, 
-        saleSubtotal,
-        subtotal 
-    });
-    renderCalcTable();
-    
-    dimensionSelect.value = ''; quantityPiecesInput.value = ''; quantityLengthInput.value = '';
-    quantityPiecesInput.focus();
-});
-
-const deleteCalcItem = (id) => { orderItems = orderItems.filter(item => item.id !== id); renderCalcTable(); };
-
-const renderCalcTable = () => {
-    itemsBody.innerHTML = '';
-    currentCalcTotal = 0;
-    let currentSuggestedSale = 0;
-    
-    orderItems.forEach(item => {
-        currentCalcTotal += item.subtotal;
-        currentSuggestedSale += (item.saleSubtotal || 0);
-        
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${esc(item.material.replace(/_/g, ' '))}</td><td>${esc(item.dimension)}</td><td>${esc(item.displayQuantity)}</td><td>${formatCurrency(item.priceUnit)}</td><td>${formatCurrency(item.subtotal)}</td><td><button class="delete-btn" onclick="deleteCalcItem('${item.id}')">Excluir</button></td>`;
-        itemsBody.appendChild(tr);
-    });
-    grandTotalEl.textContent = formatCurrency(currentCalcTotal);
-    
-    // Auto-preencher o campo de venda se houver valor de venda sugerido
-    const directSalePriceInput = document.getElementById('direct-sale-price');
-    if (directSalePriceInput) {
-        if (currentSuggestedSale > 0) {
-            // Se o usuário ainda não tiver digitado nada ou se quiser que ele sempre atualize:
-            // Vamos sempre atualizar para facilitar, pois cada item novo muda o total.
-            directSalePriceInput.value = currentSuggestedSale.toFixed(2);
-        } else if (orderItems.length === 0) {
-            directSalePriceInput.value = '';
-        }
-    }
-};
+// --- CALCULADORA: ver calculadora.js (módulo) ---
 
 // --- GESTOR DE CAIXA LOGIC ---
 let financeItems = [];
@@ -599,110 +466,44 @@ function renderFinance() {
     }
 }
 
-function exportToFinance(type) {
-    if (currentCalcTotal <= 0) {
-        alert("A calculadora está vazia. Adicione itens primeiro.");
-        return;
-    }
-    switchTab('finance');
-    if (type === 'expense') {
-        document.getElementById('fin-category').value = 'custo';
-        document.getElementById('fin-description').value = "Compra/Custo de Material (Via Calculadora)";
-    } else {
-        document.getElementById('fin-category').value = 'venda';
-        document.getElementById('fin-description').value = "Venda de Material (Via Calculadora)";
-    }
-    document.getElementById('fin-category').dispatchEvent(new Event('change'));
-    document.getElementById('fin-value').value = currentCalcTotal.toFixed(2);
-    document.getElementById('fin-date').value = getLocalDateString();
-    alert(`O valor de ${formatCurrency(currentCalcTotal)} foi levado para o formulário do Caixa. Escolha a forma de pagamento e clique em Registrar Lançamento.`);
-}
-
-async function registerDirectCost() {
-    if (orderItems.length === 0) {
-        alert("A calculadora está vazia. Adicione itens primeiro.");
-        return;
-    }
-    if (!podeGravar()) return;
-
-    const dateInput = document.getElementById('direct-sale-date').value;
-    const date = dateInput ? dateInput : getLocalDateString();
-
-    // Extrai o nome dos materiais
-    const materialsList = orderItems.map(item => item.material.replace(/_/g, ' ')).join(', ');
-
-    const custoItem = {
-        id: novoId('C'),
-        category: 'custo',
-        type: 'expense',
-        value: currentCalcTotal,
-        date: date,
-        description: `Custo Extraído (Apenas Material): ${materialsList}`,
-        method: 'cheque'
-    };
-    
-    if (!(await gravarLancamentos([custoItem]))) return;
-
-    alert(`Pronto! Apenas o custo de ${formatCurrency(currentCalcTotal)} foi registrado no caixa.`);
-    orderItems = [];
-    renderCalcTable();
-}
-
+// Registra a venda do pedido da calculadora: um lançamento só, com o custo dos itens (CMV)
+// guardado junto. Não cria mais uma saída de custo separada (isso contava o custo em dobro).
 async function registerDirectSale() {
-    if (orderItems.length === 0) {
-        alert("A calculadora está vazia. Adicione itens primeiro.");
+    const pedido = window.Calculadora && window.Calculadora.resumo();
+    if (!pedido || pedido.itens.length === 0) {
+        alert("O pedido está vazio. Adicione itens primeiro.");
         return;
     }
-    
+    if (pedido.pendencias.ajusteSemMotivo) {
+        alert("Há preço alterado sem motivo. Informe o motivo na linha do item.");
+        return;
+    }
     const salePriceInput = document.getElementById('direct-sale-price');
     const salePrice = parseFloat(salePriceInput.value);
-    
     if (isNaN(salePrice) || salePrice <= 0) {
-        alert("Por favor, informe o valor de venda (maior que zero).");
+        alert("Informe o valor cobrado do cliente (maior que zero).");
         salePriceInput.focus();
         return;
     }
     if (!podeGravar()) return;
-    const saleMethod = document.getElementById('direct-sale-method').value;
-    const dateInput = document.getElementById('direct-sale-date').value;
-    const date = dateInput ? dateInput : getLocalDateString();
-    
-    // Extrai o nome dos materiais da calculadora para uma descrição detalhada
-    const materialsList = orderItems.map(item => item.material.replace(/_/g, ' ')).join(', ');
-    
-    // Cria Lançamento da Venda
+
+    const date = document.getElementById('direct-sale-date').value || getLocalDateString();
     const vendaItem = {
         id: novoId('V'),
         category: 'venda',
         type: 'income',
         value: salePrice,
-        date: date,
-        description: `Venda Direta: ${materialsList}`,
-        method: saleMethod
+        date,
+        description: `Venda: ${pedido.descricao}`,
+        method: document.getElementById('direct-sale-method').value,
+        cmv: pedido.custo,
+        itens: pedido.itens,
     };
-    
-    // Cria Lançamento do Custo daquele material
-    const custoItem = {
-        id: novoId('C'),
-        category: 'custo',
-        type: 'expense',
-        value: currentCalcTotal,
-        date: date,
-        description: `Custo Extraído: ${materialsList}`,
-        method: 'cheque' // Assumimos que o custo material gerado entra no controle de custos (cheque/prazo)
-    };
-    
-    // Salva os dois juntos na nuvem e atualiza a interface
-    // (custo 0, como no retalho, não gera lançamento: o servidor exige valor > 0)
-    const itens = currentCalcTotal > 0 ? [vendaItem, custoItem] : [vendaItem];
-    if (!(await gravarLancamentos(itens))) return;
-    
-    alert(`Pronto! Lançamento duplo efetuado com sucesso:\n\n✅ Venda registrada: ${formatCurrency(salePrice)}\n✅ Custo extraído: ${formatCurrency(currentCalcTotal)}\n\n(Consulte a aba Gestor de Caixa)`);
-    
-    // Reseta a calculadora e o campo
-    salePriceInput.value = '';
-    orderItems = [];
-    renderCalcTable();
+    if (!(await gravarLancamentos([vendaItem]))) return;
+
+    const margem = salePrice > 0 ? ((salePrice - pedido.custo) / salePrice * 100).toFixed(1).replace('.', ',') : '—';
+    alert(`Venda registrada: ${formatCurrency(salePrice)}\nCusto dos itens (CMV): ${formatCurrency(pedido.custo)}\nMargem: ${margem}%`);
+    window.Calculadora.limpar(false);
 }
 
 // --- LOGICA DE ACUMULADOS ---
