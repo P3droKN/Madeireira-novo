@@ -34,21 +34,36 @@ function pedirSenha(mensagem) {
     return pedidoDeSenha;
 }
 
-async function api(caminho, { method = 'GET', body } = {}) {
+async function api(caminho, { method = 'GET', body, timeoutMs = 60000 } = {}) {
     const senha = localStorage.getItem(SENHA_KEY) || await pedirSenha();
-    const res = await fetch(caminho, {
-        method,
-        headers: { 'Content-Type': 'application/json', 'x-senha': senha },
-        body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    const controle = new AbortController();
+    const relogio = setTimeout(() => controle.abort(), timeoutMs);
+    let res;
+    try {
+        res = await fetch(caminho, {
+            method,
+            headers: { 'Content-Type': 'application/json', 'x-senha': senha },
+            body: body === undefined ? undefined : JSON.stringify(body),
+            signal: controle.signal,
+        });
+    } catch (e) {
+        throw new Error(e.name === 'AbortError'
+            ? `o servidor não respondeu em ${Math.round(timeoutMs / 1000)} segundos`
+            : `sem conexão com o servidor (${e.message})`);
+    } finally {
+        clearTimeout(relogio);
+    }
     if (res.status === 401) {
         localStorage.removeItem(SENHA_KEY);
         await pedirSenha('Senha incorreta. Tente de novo.');
-        return api(caminho, { method, body });
+        return api(caminho, { method, body, timeoutMs });
     }
-    const dados = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(dados.error || `Erro ${res.status}`);
-    return dados;
+    const dados = await res.json().catch(() => null);
+    if (!res.ok) {
+        const explicacao = { 504: 'o servidor demorou demais e foi interrompido', 413: 'pedido grande demais', 500: 'erro no servidor' }[res.status];
+        throw new Error(dados?.error || `erro ${res.status}${explicacao ? ': ' + explicacao : ''}`);
+    }
+    return dados || {};
 }
 
 // --- TAB SWITCHING ---
@@ -616,7 +631,36 @@ function lerArquivoJson(event) {
     });
 }
 
-// Importar = JUNTAR: adiciona só os lançamentos que ainda não existem. Não apaga nada.
+// Importar = JUNTAR: adiciona só os lançamentos que ainda não existem (pelo id). Não apaga nada.
+// Vai em lotes, com progresso; se parar no meio, importar o mesmo arquivo de novo continua
+// de onde parou, porque o que já entrou é reconhecido e não é duplicado.
+const LOTE_IMPORTACAO = 100;
+
+function extrairDoArquivo(arquivo) {
+    if (Array.isArray(arquivo)) return { lista: arquivo, acumulado: null };
+    if (arquivo && arquivo.chaves) {
+        const ler = (v) => (typeof v === 'string' ? JSON.parse(v) : v);
+        const hash = arquivo.chaves.madeireira_lancamentos;
+        const lista = hash && Object.keys(hash).length ? Object.values(hash).map(ler) : (ler(arquivo.chaves.madeireira_finance) || []);
+        return { lista, acumulado: ler(arquivo.chaves.madeireira_acumulado) || null };
+    }
+    if (arquivo && Array.isArray(arquivo.financeItems)) return { lista: arquivo.financeItems, acumulado: arquivo.acumulado || null };
+    return null;
+}
+
+function progressoImportacao({ titulo, feito, total, texto, fim, erro }) {
+    document.getElementById('modal-progresso').style.display = 'flex';
+    document.getElementById('progresso-titulo').textContent = titulo;
+    const barra = document.getElementById('progresso-barra');
+    barra.max = total || 1;
+    barra.value = feito;
+    document.getElementById('progresso-texto').textContent = texto;
+    const msg = document.getElementById('progresso-erro');
+    msg.hidden = !erro;
+    msg.textContent = erro || '';
+    document.getElementById('progresso-fechar').hidden = !fim;
+}
+
 async function importBackup(event) {
     const arquivo = await lerArquivoJson(event);
     if (!arquivo) return;
@@ -624,16 +668,59 @@ async function importBackup(event) {
         alert(`Sem conexão com a nuvem (${erroConexao || 'motivo desconhecido'}). Nada foi importado.`);
         return;
     }
-    if (!migrado && !confirm('Importar também ativa o salvamento seguro (uma cópia do banco é guardada antes).\n\nContinuar?')) return;
-    try {
-        const r = await api('/api/importar', { method: 'POST', body: arquivo });
-        alert(`Importação concluída.\n\nNovos lançamentos: ${r.adicionados}\nJá existiam: ${r.existentes}\nIgnorados (inválidos): ${r.invalidos}` +
-            (r.acumuladoImportado ? '\nAcumulado de agosto: importado' : '') +
-            (r.migrou ? '\nSalvamento seguro: ativado' : '') +
-            '\n\nDica: use "🔍 Conferir com arquivo" para comparar os totais.');
-    } catch (e) {
-        alert(`Erro ao importar: ${e.message}`);
+    const dados = extrairDoArquivo(arquivo);
+    if (!dados) {
+        alert('Arquivo de backup não reconhecido. Nada foi importado.');
+        return;
     }
+    if (!migrado && !confirm('Importar também ativa o salvamento seguro (uma cópia do banco é guardada antes).\n\nContinuar?')) return;
+
+    const { lista, acumulado: acc } = dados;
+    const total = lista.length;
+    const soma = { adicionados: 0, existentes: 0, invalidos: 0, migrou: false, acumuladoImportado: false };
+    const titulo = `Importando ${total} lançamentos`;
+    progressoImportacao({ titulo, feito: 0, total, texto: 'Começando…' });
+
+    for (let i = 0; i < total || i === 0; i += LOTE_IMPORTACAO) {
+        const lote = lista.slice(i, i + LOTE_IMPORTACAO);
+        const corpo = { financeItems: lote };
+        if (i === 0 && acc) corpo.acumulado = acc;
+        let r, ultimoErro;
+        for (let tentativa = 1; tentativa <= 3 && !r; tentativa++) {
+            try {
+                r = await api('/api/importar', { method: 'POST', body: corpo, timeoutMs: 45000 });
+            } catch (e) {
+                ultimoErro = e;
+                if (tentativa < 3) await new Promise((ok) => setTimeout(ok, 1500 * tentativa));
+            }
+        }
+        if (!r) {
+            progressoImportacao({
+                titulo: 'A importação parou', feito: i, total, fim: true,
+                texto: `Entraram ${soma.adicionados} novos lançamentos antes de parar (${i} de ${total} processados).`,
+                erro: `Erro no lote ${i + 1} a ${Math.min(i + LOTE_IMPORTACAO, total)}: ${ultimoErro.message}. ` +
+                    'Nada foi duplicado. Para continuar, clique em 📂 Importar e escolha o MESMO arquivo: o que já entrou é pulado.',
+            });
+            await carregarDados();
+            return;
+        }
+        soma.adicionados += r.adicionados;
+        soma.existentes += r.existentes;
+        soma.invalidos += r.invalidos;
+        soma.migrou = soma.migrou || r.migrou;
+        soma.acumuladoImportado = soma.acumuladoImportado || r.acumuladoImportado;
+        const feito = Math.min(i + LOTE_IMPORTACAO, total);
+        progressoImportacao({ titulo, feito, total, texto: `${feito} de ${total} processados · ${soma.adicionados} novos · ${soma.existentes} já existiam` });
+        if (total === 0) break;
+    }
+
+    progressoImportacao({
+        titulo: 'Importação concluída', feito: total, total, fim: true,
+        texto: `Novos: ${soma.adicionados} · Já existiam: ${soma.existentes} · Ignorados (inválidos): ${soma.invalidos}` +
+            (soma.acumuladoImportado ? ' · Acumulado de agosto importado' : '') +
+            (soma.migrou ? ' · Salvamento seguro ativado' : '') +
+            '. Agora use "🔍 Conferir com arquivo" com o mesmo arquivo.',
+    });
     await carregarDados();
 }
 

@@ -26,6 +26,7 @@ function kvFalso(inicial = {}) {
     async hset(k, obj) { const h = dados.get(k) || {}; Object.assign(h, clone(obj)); dados.set(k, h); return Object.keys(obj).length; },
     async hdel(k, ...fs) { const h = dados.get(k) || {}; let n = 0; for (const f of fs) if (f in h) { delete h[f]; n++; } return n; },
     async hsetnx(k, f, v) { const h = dados.get(k) || {}; if (f in h) return 0; h[f] = clone(v); dados.set(k, h); return 1; },
+    async hmget(k, ...fs) { const h = dados.get(k) || {}; const r = {}; let algum = false; for (const f of fs) { r[f] = f in h ? clone(h[f]) : null; if (f in h) algum = true; } return algum ? r : null; },
     async hlen(k) { return Object.keys(dados.get(k) || {}).length; },
     async lpush(k, ...vs) { const l = dados.get(k) || []; l.unshift(...vs.reverse()); dados.set(k, l); return l.length; },
     async lrange(k, a, b) { const l = dados.get(k) || []; return l.slice(a, b === -1 ? undefined : b + 1); },
@@ -293,4 +294,33 @@ test("trava: recusa gravar quando o banco em uso é o da produção", () => {
     }
   }
   assert.equal(hostDe("abc.upstash.io"), "abc.upstash.io");
+});
+
+test("importar em lotes: continua de onde parou, sem duplicar, e a soma final bate", async () => {
+  const kv = kvFalso({});
+  const lista = Array.from({ length: 742 }, (_, i) => lanc(`L${i}`, { value: 1 + (i % 7), date: `2026-${String(8 + (i % 3)).padStart(2, "0")}-10` }));
+  // Primeira tentativa "para" depois de 2 lotes de 100
+  for (let i = 0; i < 200; i += 100) await importar(kv, K, { financeItems: lista.slice(i, i + 100) });
+  assert.equal((await lerTudo(kv, K)).financeItems.length, 200);
+  // Segunda tentativa: arquivo inteiro de novo, em lotes
+  let adicionados = 0, existentes = 0;
+  for (let i = 0; i < lista.length; i += 100) {
+    const r = await importar(kv, K, { financeItems: lista.slice(i, i + 100) });
+    adicionados += r.adicionados; existentes += r.existentes;
+  }
+  assert.equal(adicionados, 542);
+  assert.equal(existentes, 200);
+  const banco = await lerTudo(kv, K);
+  assert.equal(banco.financeItems.length, 742);
+  const a = resumirLancamentos(lista, null), b = resumirLancamentos(banco.financeItems, null);
+  assert.equal(compararResumos(a, b).diferencas, 0);
+});
+
+test("importar: id repetido dentro do lote conta uma vez; lote grande demais é recusado", async () => {
+  const kv = kvFalso({});
+  const r = await importar(kv, K, { financeItems: [lanc("x"), lanc("x", { value: 99 })] });
+  assert.equal(r.adicionados, 1);
+  assert.equal(r.existentes, 1);
+  assert.equal((await kv.hget(K.lancamentos, "x")).value, 10);
+  await assert.rejects(importar(kv, K, { financeItems: Array.from({ length: 501 }, (_, i) => lanc(`y${i}`)) }), /no máximo 500/);
 });

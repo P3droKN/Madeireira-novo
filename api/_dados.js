@@ -212,6 +212,8 @@ export async function excluirLancamento(kv, k, id) {
 }
 
 // Junta os lançamentos de um arquivo: só adiciona ids que ainda não existem. Não apaga nem altera nada.
+export const MAX_LOTE_IMPORTACAO = 500;
+
 function listaDoArquivo(arquivo) {
   if (Array.isArray(arquivo)) return arquivo;
   if (Array.isArray(arquivo?.financeItems)) return arquivo.financeItems;
@@ -248,19 +250,29 @@ export async function importar(kv, k, arquivo) {
     acumuladoImportado = true;
   }
 
-  let adicionados = 0, existentes = 0, invalidos = 0;
+  if (lista.length > MAX_LOTE_IMPORTACAO) {
+    throw erro(400, `Lote grande demais (${lista.length}). Envie no máximo ${MAX_LOTE_IMPORTACAO} lançamentos por vez.`);
+  }
+  // Valida e tira ids repetidos dentro do próprio lote (fica o primeiro)
+  let invalidos = 0;
+  const porId = new Map();
   for (const item of lista) {
-    let limpo;
     try {
       // Excluídos entram como estão (histórico); os demais passam pela validação.
-      limpo = item?.excluido && ID.test(String(item.id)) ? { ...item } : validarLancamento(item);
+      const limpo = item?.excluido && ID.test(String(item.id)) ? { ...item } : validarLancamento(item);
+      if (!porId.has(limpo.id)) porId.set(limpo.id, limpo);
     } catch {
       invalidos++;
-      continue;
     }
-    if (await kv.hsetnx(k.lancamentos, limpo.id, limpo)) adicionados++;
-    else existentes++;
   }
+  // Uma leitura e uma gravação por lote (antes era uma ida ao banco por lançamento,
+  // o que estourava o tempo da função com centenas de lançamentos).
+  const ids = [...porId.keys()];
+  const atuais = ids.length ? (await kv.hmget(k.lancamentos, ...ids)) || {} : {};
+  const novos = ids.filter((id) => atuais[id] == null);
+  if (novos.length) await kv.hset(k.lancamentos, Object.fromEntries(novos.map((id) => [id, porId.get(id)])));
+  const adicionados = novos.length;
+  const existentes = ids.length - novos.length + (lista.length - invalidos - ids.length);
   return { adicionados, existentes, invalidos, migrou, acumuladoImportado };
 }
 

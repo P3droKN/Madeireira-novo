@@ -175,6 +175,8 @@ Site de testes: **https://madeireirav2.vercel.app** (banco Upstash próprio, sep
 3. Escolha **um** dos caminhos:
    - **♻️ Restaurar** › arquivo › digite `RESTAURAR`. Depois, no aviso amarelo: **1. Baixar backup** › **2. Ativar salvamento seguro**.
    - **📂 Importar** › arquivo. Num banco que ainda não foi migrado, ele também ativa o salvamento seguro e traz o acumulado de agosto.
+     - Vai em **lotes de 100**, com barra de progresso e até 3 tentativas por lote.
+     - Se parar, a tela diz em qual lote e por quê. **Importe o mesmo arquivo de novo:** continua de onde parou, porque o que já entrou é reconhecido pelo id e pulado, sem duplicar.
 4. **🔍 Conferir com arquivo** › o mesmo arquivo. A tela compara arquivo × banco:
    - a quantidade de lançamentos;
    - vendas, custos, despesas e funcionários de cada mês;

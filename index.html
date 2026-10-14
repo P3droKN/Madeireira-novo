@@ -513,6 +513,19 @@
         </div>
     </div>
 
+    <!-- MODAL PROGRESSO DA IMPORTAÇÃO -->
+    <div id="modal-progresso" class="modal-overlay" style="display: none;">
+        <div class="modal-content glass-panel">
+            <h2 id="progresso-titulo">Importando</h2>
+            <progress id="progresso-barra" class="barra-progresso" value="0" max="1"></progress>
+            <p id="progresso-texto" aria-live="polite"></p>
+            <div id="progresso-erro" class="aviso aviso-erro" hidden></div>
+            <div class="export-actions">
+                <button class="btn-primary" id="progresso-fechar" hidden onclick="document.getElementById('modal-progresso').style.display='none'">Fechar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL CONFERÊNCIA -->
     <div id="modal-conferencia" class="modal-overlay" style="display: none;">
         <div class="modal-content glass-panel modal-largo">
