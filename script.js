@@ -467,42 +467,41 @@ function renderFinance() {
 }
 
 // Registra a venda do pedido da calculadora: um lançamento só, com o custo dos itens (CMV)
-// guardado junto. Não cria mais uma saída de custo separada (isso contava o custo em dobro).
+// e, por item e no total, preço de tabela, preço final, variação e motivo.
 async function registerDirectSale() {
     const pedido = window.Calculadora && window.Calculadora.resumo();
     if (!pedido || pedido.itens.length === 0) {
         alert("O pedido está vazio. Adicione itens primeiro.");
         return;
     }
-    if (pedido.pendencias.ajusteSemMotivo) {
-        alert("Há preço alterado sem motivo. Informe o motivo na linha do item.");
+    if (pedido.semPreco) {
+        alert("Há item sem preço. Digite o preço na linha do item.");
         return;
     }
-    const salePriceInput = document.getElementById('direct-sale-price');
-    const salePrice = parseFloat(salePriceInput.value);
-    if (isNaN(salePrice) || salePrice <= 0) {
-        alert("Informe o valor cobrado do cliente (maior que zero).");
-        salePriceInput.focus();
+    if (!(pedido.venda > 0)) {
+        alert("O total do pedido precisa ser maior que zero.");
         return;
     }
     if (!podeGravar()) return;
 
-    const date = document.getElementById('direct-sale-date').value || getLocalDateString();
     const vendaItem = {
         id: novoId('V'),
         category: 'venda',
         type: 'income',
-        value: salePrice,
-        date,
+        value: pedido.venda,
+        date: document.getElementById('direct-sale-date').value || getLocalDateString(),
         description: `Venda: ${pedido.descricao}`,
         method: document.getElementById('direct-sale-method').value,
         cmv: pedido.custo,
+        tabelaTotal: pedido.tabela,
+        variacao: pedido.variacao,
+        motivo: pedido.motivoGeral,
         itens: pedido.itens,
     };
     if (!(await gravarLancamentos([vendaItem]))) return;
 
-    const margem = salePrice > 0 ? ((salePrice - pedido.custo) / salePrice * 100).toFixed(1).replace('.', ',') : '—';
-    alert(`Venda registrada: ${formatCurrency(salePrice)}\nCusto dos itens (CMV): ${formatCurrency(pedido.custo)}\nMargem: ${margem}%`);
+    const margem = ((pedido.venda - pedido.custo) / pedido.venda * 100).toFixed(1).replace('.', ',');
+    alert(`Venda registrada: ${formatCurrency(pedido.venda)}\nCusto dos itens (CMV): ${formatCurrency(pedido.custo)}\nMargem: ${margem}%`);
     window.Calculadora.limpar(false);
 }
 

@@ -51,6 +51,9 @@ export function validarLancamento(item) {
     if (!Number.isFinite(cmv) || cmv < 0) throw erro(400, "CMV inválido.");
     limpo.cmv = Math.round(cmv * 100) / 100;
     limpo.origem = "calculadora";
+    if (num(item.tabelaTotal) != null) limpo.tabelaTotal = num(item.tabelaTotal);
+    if (num(item.variacao) != null) limpo.variacao = num(item.variacao);
+    if (item.motivo) limpo.motivo = texto(item.motivo, 200);
     if (Array.isArray(item.itens)) {
       if (item.itens.length > 100) throw erro(400, "Pedido com itens demais.");
       limpo.itens = item.itens.map(validarItemPedido);
@@ -70,11 +73,12 @@ function validarItemPedido(i) {
     quantidadeCobrada: num(i.quantidadeCobrada),
     unidade: texto(i.unidade, 20),
     custoTotal: num(i.custoTotal),
+    precoTabela: num(i.precoTabela),
+    tabelaTotal: num(i.tabelaTotal),
     precoUnitario: num(i.precoUnitario),
     vendaTotal: num(i.vendaTotal),
-    selecionada: Boolean(i.selecionada),
-    ultimasPecas: Boolean(i.ultimasPecas),
-    motivoAjuste: texto(i.motivoAjuste, 200),
+    variacaoPct: num(i.variacaoPct),
+    motivo: texto(i.motivo, 200),
   };
 }
 

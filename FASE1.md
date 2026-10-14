@@ -33,23 +33,38 @@
   - % de "últimas peças";
   - quais materiais têm cepilhado (`tem_cepilhado`). O padrão é ligado para cedros, cambará, itaúba, jequitibá e pinus, e **desligado para o eucalipto**.
 
-**Pedido (itens 5 e 6, e a caixa ilegível do item 16)**
-- Cada item mostra quantidade, custo, venda unitária (editável), venda total e margem.
-- Os totais mostram custo, venda e margem %. Quando faltam preços, a margem avisa que considera só os itens com preço.
-- **Preço editável na linha:**
-  - sem preço de tabela, o campo fica em destaque e o vendedor digita;
-  - com preço de tabela, mudar o valor **pede o motivo**, e a venda não é registrada sem ele;
-  - a linha tem um botão "informar motivo".
-- **Modificadores** "Selec." e "Últ." em cada linha, aplicados sobre o preço de tabela.
-- **Avisos:** item sem preço, item sem custo e preço alterado sem motivo.
-- O pedido não se perde se a página recarregar.
-- **Na impressão:** custo e margem não aparecem, porque a folha vai para o cliente.
+**Pedido: o preço sempre parte da tabela, e o vendedor ajusta livremente (itens 5 e 6, e a caixa ilegível do item 16)**
+- **Cada linha mostra:**
+  - o preço de tabela (cinza, pequeno);
+  - o preço final editável;
+  - o % de variação (editável);
+  - a variação em R$ e %: verde se acima da tabela, laranja se abaixo.
+- **Preço e % ficam sincronizados:**
+  - digitar +10% recalcula o preço (1.500 → 1.650), e aceita negativo (−5% → 1.425);
+  - digitar o preço (2.100) recalcula o % (+40%);
+  - o % vale sobre o total de tabela do item, então fica exato nos centavos.
+- **No total do pedido:**
+  - o **total final** é editável, e a diferença é distribuída proporcionalmente entre os itens (a soma bate no centavo e o CMV não muda);
+  - há também um **% geral sobre a tabela**;
+  - sempre visíveis: total de tabela, total final, variação (R$ e %), custo e margem.
+- **Motivo opcional**, que não trava a venda. Os botões rápidos ficam ao lado do %, na linha e no total: Selecionada, Últimas peças, Cliente antigo, Frete/entrega, Urgência e Outro (só "Outro" pede texto).
+  - "Selecionada" e "Últimas peças" são atalhos que aplicam o % padrão da aba Preços.
+- **"↺ Voltar ao preço de tabela"** em cada linha e no total.
+- **Item sem preço de tabela:** o vendedor digita o preço. A venda só é registrada quando todos os itens têm preço.
+- **Avisos:** item sem preço e item sem custo.
+- O pedido e os ajustes não se perdem se a página recarregar.
+- **💬 Texto para WhatsApp:** itens e total, **sem custo, margem nem preço de tabela**, com os botões "Copiar texto" e "Abrir no WhatsApp".
+- **Na impressão:** custo, margem e ajustes não aparecem, porque a folha vai para o cliente.
 
 **Registrar venda (lógica nova)**
-- É **um lançamento só**: a venda, com o **custo dos itens (CMV)** e a lista de itens guardados dentro dela.
-- Não cria mais uma saída de "custo" separada, que era o que contava o custo em dobro (item 8).
+- É **um lançamento só**. A venda grava, **por item e no total**:
+  - o preço de tabela;
+  - o preço final;
+  - a variação;
+  - o motivo;
+  - o **custo dos itens (CMV)**.
+- Não cria mais a saída de "custo" separada, que contava o custo em dobro (item 8).
 - O botão "Lançar apenas Custo" saiu da calculadora. Compra de material é lançada no Gestor de Caixa (vira estoque na Fase 2).
-- O "valor cobrado" é preenchido com a soma dos itens. Se o vendedor mudar, aparece o desconto ou acréscimo e a margem final.
 - A caixa saiu do fundo branco e segue o tema escuro.
 
 **Função única de cálculo**
@@ -69,10 +84,12 @@
 npm install
 npm test
 ```
-São 36 testes. Entre eles:
+São 43 testes. Entre eles:
 - os 3 exemplos do pedido: Cambará = R$ 61,92; Pinus = R$ 183,60; venda de R$ 90 = margem 31,2%;
 - roliço por peça, vistas em jogo e meio jogo, m² com fração, peças inteiras;
-- modificadores e motivo obrigatório;
+- preço a partir da tabela: % → preço (1.500 → 1.650 → 1.425), preço → % (2.100 = +40%), % exato nos centavos;
+- rateio do total entre os itens, com soma exata e CMV igual;
+- texto do WhatsApp sem custo nem margem;
 - retalho, item sem custo e totais do pedido;
 - catálogo completo sem preços, acabamentos e validação das chaves;
 - preços e config no banco, backup e restauração incluindo os preços, CMV gravado na venda.

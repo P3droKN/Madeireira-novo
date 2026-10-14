@@ -218,7 +218,13 @@ test("backup e restauração incluem preços e config; backup antigo não apaga 
 });
 
 test("venda da calculadora guarda CMV e itens no próprio lançamento", () => {
-  const v = validarLancamento(lanc("v1", { value: 90, cmv: 61.92, itens: [{ itemId: "CAMBARA|1x2", custoTotal: 61.92, vendaTotal: 90, hack: 1 }] }));
+  const v = validarLancamento(lanc("v1", { value: 90, cmv: 61.92, tabelaTotal: 99, variacao: -9, motivo: "Cliente antigo",
+    itens: [{ itemId: "CAMBARA|1x2", custoTotal: 61.92, precoTabela: 5.5, tabelaTotal: 99, vendaTotal: 90, variacaoPct: -9.09, motivo: "Cliente antigo", hack: 1 }] }));
+  assert.equal(v.tabelaTotal, 99);
+  assert.equal(v.variacao, -9);
+  assert.equal(v.motivo, "Cliente antigo");
+  assert.equal(v.itens[0].precoTabela, 5.5);
+  assert.equal(v.itens[0].variacaoPct, -9.09);
   assert.equal(v.cmv, 61.92);
   assert.equal(v.origem, "calculadora");
   assert.equal(v.itens[0].custoTotal, 61.92);

@@ -594,7 +594,7 @@ td { font-size: 0.95rem; }
     flex-wrap: wrap;
 }
 .calc-acoes .btn-primary { margin-left: auto; }
-.modificadores, .checks-linha { display: flex; gap: 1.25rem; flex-wrap: wrap; }
+.checks-linha { display: flex; gap: 1.25rem; flex-wrap: wrap; }
 .check {
     display: inline-flex;
     align-items: center;
@@ -603,7 +603,7 @@ td { font-size: 0.95rem; }
     font-size: 0.9rem;
     cursor: pointer;
 }
-.check input, .mini-mods input { width: auto; accent-color: var(--primary); }
+.check input { width: auto; accent-color: var(--primary); }
 
 .tag {
     display: inline-block;
@@ -627,6 +627,31 @@ td small { display: block; color: var(--text-muted); font-size: 0.75rem; margin-
 .col-item { min-width: 180px; }
 .col-item strong { font-weight: 600; }
 .motivo { color: #fbbf24 !important; }
+.chip {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--input-border);
+    color: var(--text-main);
+    border-radius: 999px;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+.chip:hover { background: rgba(255, 255, 255, 0.12); }
+.chip.ativo { background: rgba(245, 158, 11, 0.2); border-color: var(--warning); color: #fbbf24; font-weight: 600; }
+.texto-whatsapp {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    color: var(--text-main);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    resize: vertical;
+}
+a.btn-icon { text-decoration: none; }
 .link-alerta, .link-suave {
     display: block;
     background: none;
@@ -652,8 +677,6 @@ td small { display: block; color: var(--text-muted); font-size: 0.75rem; margin-
 }
 .preco-input.falta { border-color: var(--warning) !important; background: rgba(245, 158, 11, 0.08) !important; }
 .preco-input.alterado { border-color: var(--primary) !important; background: rgba(59, 130, 246, 0.12) !important; }
-.mini-mods { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 0.35rem; font-size: 0.75rem; color: var(--text-muted); }
-.mini-mods label { display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer; font-size: 0.75rem; }
 
 .pill { display: inline-block; padding: 0.15rem 0.55rem; border-radius: 999px; font-weight: 600; font-size: 0.85rem; }
 .pill-boa { background: rgba(16, 185, 129, 0.15); color: #34d399; }
@@ -662,7 +685,7 @@ td small { display: block; color: var(--text-muted); font-size: 0.75rem; margin-
 
 .totais {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 1rem;
     margin-top: 0.5rem;
 }
@@ -677,6 +700,60 @@ td small { display: block; color: var(--text-muted); font-size: 0.75rem; margin-
 }
 .total-bloco span { color: var(--text-muted); font-size: 0.85rem; }
 .total-bloco strong { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Linha de ajuste de preço (abaixo de cada item) */
+.tabela-pedido tr.linha-item td { border-bottom: none; padding-bottom: 0.35rem; }
+.tabela-pedido tr.linha-ajuste td { padding-top: 0; padding-bottom: 0.85rem; }
+.ajuste {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.9rem;
+    padding: 0.45rem 0.7rem;
+    border-radius: 0.5rem;
+    background: rgba(255, 255, 255, 0.03);
+    font-size: 0.8rem;
+}
+.tabela-ref { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.pct-campo { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--text-muted); font-size: 0.8rem; }
+.pct-input {
+    width: 72px !important;
+    padding: 0.3rem 0.5rem !important;
+    font-size: 0.85rem !important;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.variacao { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.variacao.acima { color: #34d399; font-weight: 600; }
+.variacao.abaixo { color: #fb923c; font-weight: 600; }
+.ajuste .motivos { margin-top: 0; }
+.motivos { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; }
+
+.total-bloco label { color: var(--text-muted); font-size: 0.85rem; font-weight: 500; }
+.total-bloco.destaque { border-color: rgba(59, 130, 246, 0.5); background: rgba(59, 130, 246, 0.08); }
+.total-input {
+    font-size: 1.35rem !important;
+    font-weight: 700;
+    padding: 0.35rem 0.6rem !important;
+    font-variant-numeric: tabular-nums;
+}
+.total-variacao { font-size: 1.05rem !important; }
+.total-variacao .variacao { font-size: 1rem; }
+.ajuste-geral {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem 1rem;
+    margin-top: 0.85rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
+    border: 1px dashed var(--panel-border);
+}
+.finalizar-topo { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.finalizar-topo h3 { margin-bottom: 0; }
+.total-cobrar { display: flex; align-items: baseline; gap: 0.5rem; }
+.total-cobrar span { color: var(--text-muted); font-size: 0.9rem; }
+.total-cobrar strong { font-size: 1.6rem; color: #34d399; font-variant-numeric: tabular-nums; }
 
 .pendencias { list-style: none; margin: 1rem 0 0; display: flex; flex-direction: column; gap: 0.35rem; }
 .pendencias li { color: #fbbf24; font-size: 0.875rem; padding-left: 1.25rem; position: relative; }
@@ -723,7 +800,8 @@ td small { display: block; color: var(--text-muted); font-size: 0.75rem; margin-
 @media (max-width: 760px) {
     .calc-grid { grid-template-columns: 1fr 1fr; }
     .calc-grid .campo-material, .calc-grid .campo-medida { grid-column: 1 / -1; }
-    .totais { grid-template-columns: 1fr; }
+    .totais { grid-template-columns: 1fr 1fr; }
+    .total-bloco.destaque { grid-column: 1 / -1; }
     .glass-panel { padding: 1.25rem; }
     .tabs { flex-wrap: wrap; gap: 0.5rem; }
     .tab-btn { padding: 0.5rem 1rem; }
@@ -734,7 +812,8 @@ td small { display: block; color: var(--text-muted); font-size: 0.75rem; margin-
 }
 
 @media print {
-    .so-tela, .calculator-section, .finalizar, .pendencias, .mini-mods, .painel-acoes, #catalogo-status, .vazio { display: none !important; }
+    .so-tela, .calculator-section, .finalizar, .pendencias, .linha-ajuste, .ajuste-geral, .painel-acoes, #catalogo-status, .vazio { display: none !important; }
+    .total-input { border: none !important; background: none !important; color: black !important; }
     .totais { display: flex !important; justify-content: flex-end; }
     .total-bloco { border: none !important; background: none !important; padding: 0 !important; }
     .total-bloco strong { color: black !important; font-size: 14px !important; }

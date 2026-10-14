@@ -1,6 +1,6 @@
 // Calculadora (pedido) e aba Preços. Os cálculos ficam em lib/calculo.js (calcularItem).
 import { montarCatalogo, chavePreco, UNIDADES, ACABAMENTOS, CEPILHADO_PADRAO } from "./lib/catalogo.js";
-import { calcularItem, totalizarPedido, arred } from "./lib/calculo.js";
+import { calcularItem, totalizarPedido, distribuirTotal, arred, MOTIVOS_AJUSTE, textoWhatsApp } from "./lib/calculo.js";
 
 const $ = (id) => document.getElementById(id);
 const moeda = (v) => (v == null ? "—" : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v));
@@ -15,7 +15,7 @@ const estado = {
   dados: null,      // { custos, precos, config, kvDisponivel }
   catalogo: null,   // montarCatalogo(...)
   pedido: [],       // linhas do pedido
-  valorEditado: false,
+  motivoGeral: "",
 };
 
 // ---------- Catálogo ----------
@@ -97,7 +97,6 @@ function aoEscolherMedida() {
   $("valor-livre-group").hidden = !livre;
   $("descricao-group").hidden = !livre;
   $("length-group").hidden = !u?.pedeComprimento;
-  $("modificadores").hidden = !it || livre;
 
   const q = $("quantity-pieces");
   q.disabled = !it;
@@ -107,9 +106,6 @@ function aoEscolherMedida() {
     q.min = u.inteiro ? "1" : "0.01";
     q.placeholder = u.inteiro ? "Ex: 6" : "Ex: 12,5";
   }
-  const cfg = estado.catalogo.config.modificadores;
-  $("pct-selecionada").textContent = cfg.selecionadaPct ? `+${numero(cfg.selecionadaPct, 0)}%` : "0% · ajuste em Preços";
-  $("pct-ultimas").textContent = cfg.ultimasPecasPct ? `−${numero(cfg.ultimasPecasPct, 0)}%` : "0% · ajuste em Preços";
   $("btn-adicionar").disabled = !it;
   atualizarPrevia();
 }
@@ -124,15 +120,15 @@ function lerFormulario() {
     comprimento: lerNumero($("quantity-length").value),
     totalManual: it.unidade === "valor_livre" ? lerNumero($("valor-livre").value) : null,
     descricao: it.unidade === "valor_livre" ? $("descricao-livre").value.trim() : "",
-    modificadores: { selecionada: $("mod-selecionada").checked, ultimasPecas: $("mod-ultimas").checked },
     precoManual: null,
-    motivoAjuste: "",
+    variacaoPct: null,
+    motivo: "",
   };
 }
 
 function calcularLinha(l) {
   const item = estado.catalogo.itens.get(l.itemId);
-  return calcularItem({ ...l, item, precoTabela: precoTabela(l.itemId, l.acabamento) }, estado.catalogo.config);
+  return calcularItem({ ...l, item, precoTabela: precoTabela(l.itemId, l.acabamento) });
 }
 
 function atualizarPrevia() {
@@ -144,8 +140,8 @@ function atualizarPrevia() {
     const partes = [`<span>${numero(r.quantidadeCobrada, r.unidadeCobranca === "m" || r.unidadeCobranca === "m²" ? 2 : 0)} ${r.unidadeCobranca}</span>`,
       `<span>Custo <strong>${moeda(r.custoTotal)}</strong></span>`];
     partes.push(r.vendaTotal == null
-      ? '<span class="texto-alerta">Sem preço de venda: digite no pedido</span>'
-      : `<span>Venda <strong>${moeda(r.vendaTotal)}</strong></span><span>Margem <strong>${pct(r.margem)}</strong></span>`);
+      ? '<span class="texto-alerta">Sem preço de tabela: digite no pedido</span>'
+      : `<span>Tabela <strong>${moeda(r.vendaTotal)}</strong></span><span>Margem <strong>${pct(r.margem)}</strong></span>`);
     previa.innerHTML = partes.join("");
     previa.hidden = false;
   } catch {
@@ -168,8 +164,6 @@ function adicionar(e) {
   const m = material($("material").value);
   $("dimension").value = m.itens.length === 1 ? m.itens[0].id : "";
   for (const id of ["quantity-pieces", "quantity-length", "valor-livre", "descricao-livre"]) $(id).value = "";
-  $("mod-selecionada").checked = false;
-  $("mod-ultimas").checked = false;
   aoEscolherMedida();
   $("dimension").focus();
   renderPedido();
@@ -178,13 +172,19 @@ function adicionar(e) {
 // ---------- Pedido ----------
 
 function salvarPedidoLocal() {
-  try { localStorage.setItem(PEDIDO_KEY, JSON.stringify(estado.pedido)); } catch { /* sem armazenamento local */ }
+  try {
+    localStorage.setItem(PEDIDO_KEY, JSON.stringify({ linhas: estado.pedido, motivoGeral: estado.motivoGeral }));
+  } catch { /* sem armazenamento local */ }
 }
 
 function restaurarPedido() {
   try {
-    const salvo = JSON.parse(localStorage.getItem(PEDIDO_KEY) || "[]");
-    estado.pedido = salvo.filter((l) => estado.catalogo.itens.has(l.itemId));
+    const salvo = JSON.parse(localStorage.getItem(PEDIDO_KEY) || "{}");
+    const linhas = Array.isArray(salvo) ? salvo : salvo.linhas || [];
+    estado.pedido = linhas
+      .filter((l) => estado.catalogo.itens.has(l.itemId))
+      .map((l) => ({ precoManual: null, variacaoPct: null, motivo: "", ...l }));
+    estado.motivoGeral = Array.isArray(salvo) ? "" : salvo.motivoGeral || "";
   } catch {
     estado.pedido = [];
   }
@@ -205,6 +205,45 @@ function margemClasse(m) {
   return "pill pill-boa";
 }
 
+// "+R$ 9,90 (+10,0%)" em verde se acima da tabela, laranja se abaixo
+function variacaoHtml(valor, pctValor) {
+  if (valor == null || pctValor == null) return "";
+  if (Math.abs(valor) < 0.005) return '<span class="variacao">igual à tabela</span>';
+  const sinal = valor > 0 ? "+" : "−";
+  return `<span class="variacao ${valor > 0 ? "acima" : "abaixo"}">${sinal}${moeda(Math.abs(valor))} (${sinal}${numero(Math.abs(pctValor), 1)}%) sobre a tabela</span>`;
+}
+
+const pctCampo = (v) => (v == null ? "" : numero(v, 1).replace(/\./g, "").replace(",", "."));
+
+function chipsMotivo(ativo, acao) {
+  return `<div class="motivos" role="group" aria-label="Motivo (opcional)">
+    ${MOTIVOS_AJUSTE.map((m) => {
+      const marcado = m === "Outro" ? ativo.startsWith("Outro") : ativo === m;
+      const rotulo = m === "Outro" && marcado ? esc(ativo) : m;
+      return `<button type="button" class="chip ${marcado ? "ativo" : ""}" onclick="${acao}('${m}')">${rotulo}</button>`;
+    }).join("")}
+  </div>`;
+}
+
+function linhaAjuste(l, r, item) {
+  if (item.unidade === "valor_livre") return "";
+  if (r.precoTabela == null) {
+    return `<tr class="linha-ajuste"><td colspan="7"><div class="ajuste">
+      <span class="texto-alerta">Sem preço de tabela: digite o preço acima${r.vendaTotal != null ? "" : " para fechar o pedido"}.</span>
+    </div></td></tr>`;
+  }
+  return `<tr class="linha-ajuste"><td colspan="7"><div class="ajuste">
+    <span class="tabela-ref">Tabela ${moeda(r.precoTabela)}/${r.unidadeCobranca} · ${moeda(r.tabelaTotal)}</span>
+    <label class="pct-campo" title="% sobre a tabela (negativo = desconto)">
+      <input type="number" step="0.1" inputmode="decimal" class="pct-input" value="${pctCampo(r.variacaoPct)}"
+        aria-label="Variação em % sobre a tabela" onchange="Calculadora.pct('${l.uid}', this.value)">%
+    </label>
+    ${variacaoHtml(r.variacaoValor, r.variacaoPct)}
+    ${chipsMotivo(l.motivo || "", `Calculadora.motivo.bind(null, '${l.uid}')`)}
+    ${r.ajustado ? `<button type="button" class="link-suave" onclick="Calculadora.voltarTabela('${l.uid}')">↺ Voltar ao preço de tabela</button>` : ""}
+  </div></td></tr>`;
+}
+
 function renderPedido() {
   const corpo = $("items-body");
   const resultados = [];
@@ -214,38 +253,24 @@ function renderPedido() {
     try { r = calcularLinha(l); } catch (e) { return `<tr><td colspan="7">${esc(item.material)}: ${esc(e.message)}</td></tr>`; }
     resultados.push(r);
     const livre = item.unidade === "valor_livre";
-    const tags = [];
-    if (l.acabamento !== "UNICO") tags.push(`<span class="tag">${ACABAMENTOS[l.acabamento]}</span>`);
-    if (l.modificadores.selecionada) tags.push('<span class="tag tag-mais">Selecionada</span>');
-    if (l.modificadores.ultimasPecas) tags.push('<span class="tag tag-menos">Últimas peças</span>');
-    const motivo = r.ajusteManual
-      ? (r.motivoAjuste ? `<small class="motivo">Ajuste: ${esc(r.motivoAjuste)} <button type="button" class="link-suave" onclick="Calculadora.motivo('${l.uid}')">editar</button></small>` : `<button type="button" class="link-alerta" onclick="Calculadora.motivo('${l.uid}')">Preço alterado: informar motivo</button>`)
-      : "";
-    const sugerido = r.ajusteManual ? `<small>tabela ${moeda(r.precoSugerido)}</small>` : "";
-    const temTabela = r.precoTabela != null;
+    const tags = l.acabamento !== "UNICO" ? `<span class="tag">${ACABAMENTOS[l.acabamento]}</span>` : "";
     const valorInput = livre ? (r.vendaTotal ?? "") : (r.precoUnitario == null ? "" : arred(r.precoUnitario).toFixed(2));
-    const toggles = temTabela ? `
-        <span class="mini-mods">
-          <label title="Madeira selecionada"><input type="checkbox" ${l.modificadores.selecionada ? "checked" : ""} onchange="Calculadora.modificador('${l.uid}','selecionada',this.checked)">Selec.</label>
-          <label title="Últimas peças"><input type="checkbox" ${l.modificadores.ultimasPecas ? "checked" : ""} onchange="Calculadora.modificador('${l.uid}','ultimasPecas',this.checked)">Últ.</label>
-        </span>` : "";
-    return `<tr>
-      <td class="col-item"><strong>${esc(item.material)}</strong> ${esc(livre ? (l.descricao || "") : item.rotuloDimensao)} ${tags.join(" ")}${motivo}</td>
+    return `<tr class="linha-item">
+      <td class="col-item"><strong>${esc(item.material)}</strong> ${esc(livre ? (l.descricao || "") : item.rotuloDimensao)} ${tags}</td>
       <td class="num">${descreverQtd(l, r)}</td>
       <td class="num so-tela">${r.custoTotal == null ? '<span class="texto-alerta">sem custo</span>' : moeda(r.custoTotal)}${r.custoUnitario != null && !livre ? `<small>${moeda(r.custoUnitario)}/${r.unidadeCobranca}</small>` : ""}</td>
       <td class="num">
         <div class="preco-cel">
-          <input type="number" class="preco-input ${r.vendaTotal == null ? "falta" : ""}" step="0.01" min="0" inputmode="decimal"
-            value="${valorInput}" placeholder="digite" aria-label="Preço de venda"
+          <input type="number" class="preco-input ${r.vendaTotal == null ? "falta" : ""} ${r.ajustado ? "alterado" : ""}" step="0.01" min="0" inputmode="decimal"
+            value="${valorInput}" placeholder="digite" aria-label="Preço final"
             onchange="Calculadora.preco('${l.uid}', this.value)">
           <small>${livre ? "total" : "/" + r.unidadeCobranca}</small>
         </div>
-        ${sugerido}${toggles}
       </td>
       <td class="num"><strong>${moeda(r.vendaTotal)}</strong></td>
       <td class="num so-tela"><span class="${margemClasse(r.margem)}">${pct(r.margem)}</span></td>
       <td><button class="delete-btn" title="Remover" aria-label="Remover item" onclick="Calculadora.remover('${l.uid}')">✕</button></td>
-    </tr>`;
+    </tr>${linhaAjuste(l, r, item)}`;
   }).join("");
 
   const vazio = estado.pedido.length === 0;
@@ -253,49 +278,61 @@ function renderPedido() {
   $("items-table").classList.toggle("sem-itens", vazio);
 
   const t = totalizarPedido(resultados);
-  $("total-custo").textContent = moeda(t.custo);
-  $("total-venda").textContent = t.semPreco && !t.venda ? "—" : moeda(t.venda);
-  $("total-margem").textContent = pct(t.margem);
-  $("total-margem-nota").textContent = t.semPreco && t.margem != null ? "só dos itens com preço" : "";
-  $("total-margem").className = t.margem != null && t.margem < 0 ? "texto-ruim" : "";
-
-  const pend = [];
-  if (t.semPreco) pend.push(`${t.semPreco} ${t.semPreco > 1 ? "itens sem" : "item sem"} preço de venda: digite o preço na linha do item.`);
-  if (t.semCusto) pend.push(`${t.semCusto} ${t.semCusto > 1 ? "itens sem" : "item sem"} custo cadastrado: a margem não considera ${t.semCusto > 1 ? "esses itens" : "esse item"}.`);
-  const semMotivo = resultados.filter((r) => r.pendencias.includes("ajuste_sem_motivo")).length;
-  if (semMotivo) pend.push(`${semMotivo} preço${semMotivo > 1 ? "s alterados" : " alterado"} sem motivo.`);
-  $("pendencias").innerHTML = pend.map((p) => `<li>${esc(p)}</li>`).join("");
-
-  $("finalizar").hidden = vazio;
   estado.ultimoTotal = t;
   estado.ultimosResultados = resultados;
-  if (!estado.valorEditado) $("direct-sale-price").value = t.venda > 0 ? t.venda.toFixed(2) : "";
-  atualizarInfoValor();
-  salvarPedidoLocal();
-}
 
-function atualizarInfoValor() {
-  const info = $("valor-cobrado-info");
-  const t = estado.ultimoTotal;
-  const cobrado = lerNumero($("direct-sale-price").value);
-  if (!t || !cobrado) { info.textContent = ""; return; }
-  const partes = [];
-  if (t.venda > 0 && Math.abs(cobrado - t.venda) >= 0.01) {
-    const dif = cobrado - t.venda;
-    partes.push(`${dif < 0 ? "Desconto" : "Acréscimo"} de ${moeda(Math.abs(dif))} (${numero(Math.abs(dif) / t.venda * 100, 1)}%) sobre os itens.`);
-  }
-  if (t.semPreco) partes.push("Inclua no valor os itens sem preço.");
-  partes.push(`Margem final: ${pct((cobrado - t.custo) / cobrado)}.`);
-  info.textContent = partes.join(" ");
+  $("total-tabela").textContent = t.tabela > 0 ? moeda(t.tabela) : "—";
+  $("total-tabela-nota").textContent = t.semTabela ? `${t.semTabela} ${t.semTabela > 1 ? "itens" : "item"} sem tabela` : "";
+  const campoTotal = $("total-final");
+  if (document.activeElement !== campoTotal) campoTotal.value = t.venda > 0 ? t.venda.toFixed(2) : "";
+  $("total-variacao").innerHTML = t.variacaoPct == null ? "—" : variacaoHtml(t.variacao, t.variacaoPct).replace(" sobre a tabela", "");
+  $("total-custo").textContent = moeda(t.custo);
+  $("total-margem").textContent = pct(t.margem);
+  $("total-margem").className = t.margem != null && t.margem < 0 ? "texto-ruim" : "";
+  $("total-margem-nota").textContent = t.semPreco && t.margem != null ? "só dos itens com preço" : "";
+  // % geral mostra o valor quando todos os itens com tabela têm o mesmo %
+  const pcts = resultados.filter((r) => r.precoTabela != null && r.variacaoPct != null).map((r) => Math.round(r.variacaoPct * 10) / 10);
+  const comum = pcts.length && pcts.every((p) => p === pcts[0]) && pcts[0] !== 0 ? pcts[0] : null;
+  if (document.activeElement !== $("pct-geral")) $("pct-geral").value = comum == null ? "" : comum.toFixed(1);
+  $("motivos-geral").innerHTML = chipsMotivo(estado.motivoGeral || "", "Calculadora.motivoGeral");
+  $("voltar-tabela-geral").hidden = !resultados.some((r) => r.ajustado);
+
+  const pend = [];
+  if (t.semPreco) pend.push(`${t.semPreco} ${t.semPreco > 1 ? "itens sem" : "item sem"} preço: digite o preço na linha do item.`);
+  if (t.semCusto) pend.push(`${t.semCusto} ${t.semCusto > 1 ? "itens sem" : "item sem"} custo cadastrado: a margem não considera ${t.semCusto > 1 ? "esses itens" : "esse item"}.`);
+  $("pendencias").innerHTML = pend.map((p) => `<li>${esc(p)}</li>`).join("");
+
+  $("ajuste-geral").hidden = vazio;
+  $("finalizar").hidden = vazio;
+  $("total-cobrar").textContent = moeda(t.venda);
+  salvarPedidoLocal();
 }
 
 function linha(uid) {
   return estado.pedido.find((l) => l.uid === uid);
 }
 
+function limparAjuste(l) {
+  l.precoManual = null;
+  l.totalManual = null;
+  l.variacaoPct = null;
+}
+
 // Os campos da tabela disparam "change" ao perder o foco; redesenhar no meio desse evento
 // remove o próprio campo e quebra. Por isso o redesenho vai para depois do evento.
 const redesenhar = () => setTimeout(renderPedido, 0);
+
+const pctPadrao = (motivo) => {
+  const cfg = estado.catalogo.config.modificadores;
+  if (motivo === "Selecionada" && cfg.selecionadaPct) return Number(cfg.selecionadaPct);
+  if (motivo === "Últimas peças" && cfg.ultimasPecasPct) return -Number(cfg.ultimasPecasPct);
+  return null;
+};
+
+function pedirOutro(atual) {
+  const texto = prompt("Qual o motivo?", atual.startsWith("Outro: ") ? atual.slice(7) : "");
+  return texto === null || !texto.trim() ? null : `Outro: ${texto.trim()}`;
+}
 
 window.Calculadora = {
   recarregar: carregar,
@@ -305,15 +342,7 @@ window.Calculadora = {
     renderPedido();
   },
 
-  modificador(uid, nome, ligado) {
-    const l = linha(uid);
-    l.modificadores[nome] = ligado;
-    // Mudou a base do preço: volta ao sugerido
-    l.precoManual = null;
-    l.motivoAjuste = "";
-    redesenhar();
-  },
-
+  // Preço final digitado na linha (o % é recalculado)
   preco(uid, valor) {
     const l = linha(uid);
     const item = estado.catalogo.itens.get(l.itemId);
@@ -322,41 +351,157 @@ window.Calculadora = {
       l.totalManual = v;
       return redesenhar();
     }
-    const sugerido = calcularItem({ ...l, item, precoManual: null, precoTabela: precoTabela(l.itemId, l.acabamento) }, estado.catalogo.config).precoSugerido;
-    if (v == null || (sugerido != null && Math.abs(v - sugerido) < 0.005)) {
-      l.precoManual = null;
-      l.motivoAjuste = "";
-      return redesenhar();
-    }
-    if (sugerido != null) {
-      const motivo = prompt(`Preço de tabela: ${moeda(sugerido)}. Qual o motivo do ajuste para ${moeda(v)}?`, l.motivoAjuste || "");
-      if (motivo === null) return redesenhar(); // cancelou: volta o valor anterior
-      l.motivoAjuste = motivo.trim();
-    }
-    l.precoManual = v;
+    limparAjuste(l);
+    l.precoManual = v; // vazio = volta à tabela
     redesenhar();
   },
 
-  motivo(uid) {
+  // % sobre a tabela digitado na linha (o preço é recalculado)
+  pct(uid, valor) {
     const l = linha(uid);
-    const motivo = prompt("Motivo do ajuste de preço:", l.motivoAjuste || "");
-    if (motivo === null) return;
-    l.motivoAjuste = motivo.trim();
+    const v = lerNumero(valor);
+    limparAjuste(l);
+    l.variacaoPct = v == null || v === 0 ? null : v;
+    redesenhar();
+  },
+
+  // Motivo opcional; "Selecionada" e "Últimas peças" aplicam o % padrão
+  motivo(uid, escolhido) {
+    const l = linha(uid);
+    if (l.motivo === escolhido) {
+      l.motivo = "";
+      return renderPedido();
+    }
+    if (escolhido === "Outro") {
+      const texto = pedirOutro(l.motivo || "");
+      if (!texto) return;
+      l.motivo = texto;
+    } else {
+      l.motivo = escolhido;
+      const p = pctPadrao(escolhido);
+      if (p != null) {
+        limparAjuste(l);
+        l.variacaoPct = p;
+      }
+    }
     renderPedido();
+  },
+
+  voltarTabela(uid) {
+    const l = linha(uid);
+    limparAjuste(l);
+    l.motivo = "";
+    renderPedido();
+  },
+
+  // Total do pedido editado: a diferença é distribuída proporcionalmente entre os itens
+  total(valor) {
+    const v = lerNumero(valor);
+    const t = estado.ultimoTotal;
+    if (v == null || !t || Math.abs(v - t.venda) < 0.005) return redesenhar();
+    let totais;
+    try {
+      totais = distribuirTotal(estado.ultimosResultados, v);
+    } catch (e) {
+      alert(e.message);
+      return redesenhar();
+    }
+    estado.pedido.forEach((l, i) => {
+      if (totais[i] == null) return;
+      limparAjuste(l);
+      l.totalManual = totais[i];
+    });
+    redesenhar();
+  },
+
+  // % geral sobre a tabela, aplicado a todos os itens que têm preço de tabela
+  pctGeral(valor) {
+    const v = lerNumero(valor);
+    if (v == null) return;
+    estado.pedido.forEach((l, i) => {
+      if (estado.ultimosResultados[i]?.precoTabela == null) return;
+      limparAjuste(l);
+      l.variacaoPct = v === 0 ? null : v;
+    });
+    redesenhar();
+  },
+
+  motivoGeral(escolhido) {
+    if (estado.motivoGeral === escolhido) {
+      estado.motivoGeral = "";
+      return renderPedido();
+    }
+    if (escolhido === "Outro") {
+      const texto = pedirOutro(estado.motivoGeral || "");
+      if (!texto) return;
+      estado.motivoGeral = texto;
+      return renderPedido();
+    }
+    estado.motivoGeral = escolhido;
+    const p = pctPadrao(escolhido);
+    if (p != null) return window.Calculadora.pctGeral(String(p));
+    renderPedido();
+  },
+
+  voltarTudoTabela() {
+    estado.pedido.forEach((l) => {
+      const item = estado.catalogo.itens.get(l.itemId);
+      if (item.unidade === "valor_livre") return;
+      limparAjuste(l);
+      l.motivo = "";
+    });
+    estado.motivoGeral = "";
+    renderPedido();
+  },
+
+  whatsapp() {
+    if (!estado.pedido.length) return alert("O pedido está vazio.");
+    const itens = estado.pedido.map((l) => {
+      const item = estado.catalogo.itens.get(l.itemId);
+      const r = calcularLinha(l);
+      const livre = item.unidade === "valor_livre";
+      const acab = l.acabamento !== "UNICO" ? ` (${ACABAMENTOS[l.acabamento].toLowerCase()})` : "";
+      return {
+        descricao: livre ? `${item.material}${l.descricao ? " - " + l.descricao : ""}` : `${item.material} ${item.rotuloDimensao}${acab}`,
+        quantidade: livre ? "" : descreverQtd(l, r).replace(/<small>/, " = ").replace(/<[^>]+>/g, ""),
+        precoUnitario: r.precoUnitario == null ? null : arred(r.precoUnitario),
+        unidade: livre ? "un" : r.unidadeCobranca,
+        vendaTotal: r.vendaTotal,
+      };
+    });
+    const texto = textoWhatsApp({ data: new Date().toLocaleDateString("pt-BR"), itens, totalItens: estado.ultimoTotal.venda });
+    $("whatsapp-texto").value = texto;
+    $("whatsapp-abrir").href = "https://wa.me/?text=" + encodeURIComponent(texto);
+    $("whatsapp-copiado").textContent = "";
+    $("modal-whatsapp").style.display = "flex";
+  },
+
+  async copiarWhatsapp() {
+    const campo = $("whatsapp-texto");
+    try {
+      await navigator.clipboard.writeText(campo.value);
+    } catch {
+      campo.select();
+      document.execCommand("copy");
+    }
+    $("whatsapp-copiado").textContent = "Copiado! Agora é só colar na conversa.";
+  },
+
+  fecharWhatsapp() {
+    $("modal-whatsapp").style.display = "none";
   },
 
   limpar(perguntar) {
     if (perguntar && estado.pedido.length && !confirm("Remover todos os itens do pedido?")) return;
     estado.pedido = [];
-    estado.valorEditado = false;
-    $("direct-sale-price").value = "";
+    estado.motivoGeral = "";
     renderPedido();
   },
 
-  // Usado por registerDirectSale (script.js)
+  // Usado por registerDirectSale (script.js): tudo o que a venda grava
   resumo() {
-    const t = estado.ultimoTotal || totalizarPedido([]);
     const resultados = estado.pedido.map(calcularLinha);
+    const t = totalizarPedido(resultados);
     const itens = estado.pedido.map((l, i) => {
       const item = estado.catalogo.itens.get(l.itemId);
       const r = resultados[i];
@@ -367,19 +512,24 @@ window.Calculadora = {
         quantidadeCobrada: r.quantidadeCobrada,
         unidade: r.unidadeCobranca,
         custoTotal: r.custoTotal,
+        precoTabela: r.precoTabela,
+        tabelaTotal: r.tabelaTotal,
         precoUnitario: r.precoUnitario,
         vendaTotal: r.vendaTotal,
-        selecionada: l.modificadores.selecionada,
-        ultimasPecas: l.modificadores.ultimasPecas,
-        motivoAjuste: r.motivoAjuste,
+        variacaoPct: r.variacaoPct,
+        motivo: l.motivo || "",
       };
     });
     return {
       itens,
       custo: t.custo,
       venda: t.venda,
+      tabela: t.tabela,
+      variacao: t.variacao,
+      variacaoPct: t.variacaoPct,
+      motivoGeral: estado.motivoGeral || "",
+      semPreco: t.semPreco,
       descricao: itens.map((i) => i.descricao).join(", ").slice(0, 300),
-      pendencias: { ajusteSemMotivo: resultados.some((r) => r.pendencias.includes("ajuste_sem_motivo")) },
     };
   },
 };
@@ -518,14 +668,10 @@ window.Precos = {
 $("material").addEventListener("change", aoEscolherMaterial);
 $("dimension").addEventListener("change", aoEscolherMedida);
 $("acabamento").addEventListener("change", atualizarPrevia);
-for (const id of ["quantity-pieces", "quantity-length", "valor-livre", "mod-selecionada", "mod-ultimas"]) {
+for (const id of ["quantity-pieces", "quantity-length", "valor-livre"]) {
   $(id).addEventListener("input", atualizarPrevia);
 }
 $("calc-form").addEventListener("submit", adicionar);
-$("direct-sale-price").addEventListener("input", (e) => {
-  estado.valorEditado = e.target.value !== "";
-  atualizarInfoValor();
-});
 $("precos-filtro-material").addEventListener("change", renderTabelaPrecos);
 $("precos-filtro-status").addEventListener("change", renderTabelaPrecos);
 $("precos-body").addEventListener("change", (e) => {

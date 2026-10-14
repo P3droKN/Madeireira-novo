@@ -66,10 +66,6 @@
                         <div class="calc-previa campo-largo" id="calc-previa" hidden></div>
 
                         <div class="calc-acoes campo-largo">
-                            <div class="modificadores" id="modificadores" hidden>
-                                <label class="check"><input type="checkbox" id="mod-selecionada"> Madeira selecionada <span class="tag tag-mais" id="pct-selecionada"></span></label>
-                                <label class="check"><input type="checkbox" id="mod-ultimas"> Últimas peças <span class="tag tag-menos" id="pct-ultimas"></span></label>
-                            </div>
                             <button type="submit" class="btn-primary" id="btn-adicionar" disabled>+ Adicionar ao pedido</button>
                         </div>
                     </form>
@@ -79,6 +75,7 @@
                     <div class="painel-titulo">
                         <h2>Pedido</h2>
                         <div class="painel-acoes">
+                            <button class="btn-icon" onclick="Calculadora.whatsapp()" title="Texto do orçamento para copiar e colar no WhatsApp (sem custo)">💬 Texto para WhatsApp</button>
                             <button class="btn-icon" onclick="window.print()" title="Imprimir este pedido">🖨️ Imprimir</button>
                             <button class="btn-icon" onclick="Calculadora.limpar(true)" title="Remover todos os itens">Limpar</button>
                         </div>
@@ -103,13 +100,24 @@
                     </div>
 
                     <div class="totais" id="totais">
-                        <div class="total-bloco so-tela">
-                            <span>Custo total</span>
-                            <strong id="total-custo">R$ 0,00</strong>
+                        <div class="total-bloco">
+                            <span>Total de tabela</span>
+                            <strong id="total-tabela">—</strong>
+                            <small class="texto-suave" id="total-tabela-nota"></small>
+                        </div>
+                        <div class="total-bloco destaque">
+                            <label for="total-final">Total final (editável)</label>
+                            <input type="number" id="total-final" class="total-input" step="0.01" min="0" inputmode="decimal"
+                                placeholder="0,00" onchange="Calculadora.total(this.value)">
+                            <small class="texto-suave">a diferença é distribuída entre os itens</small>
                         </div>
                         <div class="total-bloco">
-                            <span>Venda total</span>
-                            <strong id="total-venda">R$ 0,00</strong>
+                            <span>Variação</span>
+                            <strong id="total-variacao" class="total-variacao">—</strong>
+                        </div>
+                        <div class="total-bloco so-tela">
+                            <span>Custo</span>
+                            <strong id="total-custo">R$ 0,00</strong>
                         </div>
                         <div class="total-bloco so-tela">
                             <span>Margem</span>
@@ -117,16 +125,24 @@
                             <small class="texto-suave" id="total-margem-nota"></small>
                         </div>
                     </div>
+
+                    <div class="ajuste-geral" id="ajuste-geral" hidden>
+                        <label class="pct-campo" title="% sobre a tabela em todos os itens (negativo = desconto)">
+                            % geral sobre a tabela
+                            <input type="number" id="pct-geral" class="pct-input" step="0.1" inputmode="decimal" placeholder="0"
+                                onchange="Calculadora.pctGeral(this.value)">%
+                        </label>
+                        <div id="motivos-geral"></div>
+                        <button type="button" class="link-suave" id="voltar-tabela-geral" onclick="Calculadora.voltarTudoTabela()" hidden>↺ Voltar tudo ao preço de tabela</button>
+                    </div>
                     <ul class="pendencias" id="pendencias"></ul>
 
                     <div class="finalizar" id="finalizar">
-                        <h3>Registrar venda no caixa</h3>
+                        <div class="finalizar-topo">
+                            <h3>Registrar venda no caixa</h3>
+                            <div class="total-cobrar"><span>Total</span><strong id="total-cobrar">R$ 0,00</strong></div>
+                        </div>
                         <div class="form-row">
-                            <div class="form-group">
-                                <label for="direct-sale-price">Valor cobrado do cliente (R$)</label>
-                                <input type="number" id="direct-sale-price" step="0.01" min="0.01" inputmode="decimal" placeholder="0,00">
-                                <small class="texto-suave" id="valor-cobrado-info"></small>
-                            </div>
                             <div class="form-group">
                                 <label for="direct-sale-method">Forma de pagamento</label>
                                 <select id="direct-sale-method">
@@ -143,7 +159,7 @@
                             </div>
                         </div>
                         <button class="btn-success btn-largo" id="btn-registrar-venda" onclick="registerDirectSale()">Registrar venda</button>
-                        <p class="texto-suave nota">O custo dos itens fica guardado junto com a venda (CMV), sem lançar uma saída separada. Compras de material são lançadas no Gestor de Caixa.</p>
+                        <p class="texto-suave nota">A venda grava, por item e no total: preço de tabela, preço final, variação e motivo. O custo dos itens fica guardado junto (CMV), sem lançar uma saída separada.</p>
                     </div>
                 </section>
             </div>
@@ -473,6 +489,21 @@
             <div class="export-actions" style="margin-top: 2rem;">
                 <button class="btn-danger" onclick="closeAcumuladoModal()">Cancelar</button>
                 <button class="btn-success" onclick="saveAcumulado()">Salvar Acumulado</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL WHATSAPP -->
+    <div id="modal-whatsapp" class="modal-overlay" style="display: none;">
+        <div class="modal-content glass-panel">
+            <h2>Texto para WhatsApp</h2>
+            <p>Itens e total, sem custo e sem margem. Confira e copie.</p>
+            <textarea id="whatsapp-texto" class="texto-whatsapp" rows="12" readonly></textarea>
+            <small class="texto-suave" id="whatsapp-copiado" aria-live="polite"></small>
+            <div class="export-actions">
+                <button class="btn-icon" onclick="Calculadora.fecharWhatsapp()">Fechar</button>
+                <a class="btn-icon" id="whatsapp-abrir" target="_blank" rel="noopener">Abrir no WhatsApp</a>
+                <button class="btn-success" onclick="Calculadora.copiarWhatsapp()">Copiar texto</button>
             </div>
         </div>
     </div>

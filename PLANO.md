@@ -223,6 +223,13 @@ O sistema é **controle interno gerencial**. A contabilidade oficial fica com o 
   - a soma das formas tem que bater com o total de vendas;
   - exporta CSV com data, Nº NF-e, forma, código tPag e valor, para o escritório conferir contra os XMLs.
 
+**Lançamentos antigos e código tPag (respostas de 14/10)**
+- O método antigo `pix` vira **PIX Bradesco** e o método `bradesco` vira **Transferência Bradesco**.
+  - Todos ficam marcados como "migrado" e podem ser reclassificados em lote (ex.: algum que foi PIX PicPay).
+- **Códigos tPag padrão** (Informe Técnico 2024.002), editáveis na config até o escritório confirmar:
+  - PIX Bradesco (chave pelo WhatsApp): **20**, PIX estático;
+  - PIX PicPay (QR na maquininha): **17**, PIX dinâmico.
+
 **Cartão**
 - Taxas e prazos configuráveis por modalidade: débito, crédito à vista e parcelado (por número de parcelas).
 - O padrão é 0%, débito em D+1 e crédito em D+30. Seu pai preenche as taxas reais depois.
