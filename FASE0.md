@@ -55,6 +55,51 @@ Os dois pedidos precisam do cabeçalho `x-senha`. Depois de baixar, restaure pel
 
 ---
 
+## Projeto de testes separado (recomendado até tudo estar 100%)
+
+O site atual (`madereira-caixa.vercel.app`) **não é alterado**. Seu pai continua usando normalmente.
+O sistema novo vai para outro projeto na Vercel, com **outro banco de dados**.
+
+### 1. Criar o projeto novo
+- **Com GitHub (recomendado):** Vercel › **Add New… › Project** › importe o repositório › nome, por exemplo, `madeireira-novo` › Deploy. A cada push, a Vercel publica sozinha.
+- **Sem GitHub:**
+  1. Descompacte o zip numa **pasta nova**. Não use a pasta do projeto atual, porque nela a pasta `.vercel` aponta para o site em uso.
+  2. Rode `vercel` nessa pasta.
+  3. Em "Link to existing project?", responda **N** e dê o nome `madeireira-novo`.
+
+### 2. Banco de dados próprio (obrigatório)
+Projeto `madeireira-novo` › **Storage** › **Create Database** › **Upstash (Redis)**, no plano gratuito › crie um banco **novo** (ex.: `madeireira-testes`) › Connect.
+
+**Não** conecte o banco que o site atual usa.
+
+### 3. Variáveis
+Projeto `madeireira-novo` › Settings › Environment Variables:
+
+| Nome | Valor | Para quê |
+|---|---|---|
+| `SENHA_APP` | uma senha (pode ser diferente da oficial) | proteger a API |
+| `KV_PREFIXO` | `teste:` | segunda proteção: mesmo ligado ao banco errado, só grava em chaves `teste:…` |
+
+Marque Production e Preview nas duas variáveis. Depois, em Deployments, clique em **Redeploy** para valerem.
+
+### 4. Levar uma cópia dos dados reais para o teste
+1. No site atual: Gestor de Caixa › **💾 Exportar**. Isso só baixa o arquivo e não altera nada.
+2. No site novo: digite a senha › **♻️ Restaurar** › escolha o arquivo › digite `RESTAURAR`.
+3. Teste à vontade: ativar o salvamento seguro, lançar, excluir, restaurar de novo. Nada disso chega ao site atual.
+
+Para atualizar a cópia com dados mais recentes, repita os passos 1 e 2. O teste volta a ficar igual ao site atual.
+
+### 5. Quando estiver 100%: a troca
+Escolha uma das duas formas (eu ajudo na hora):
+- **A) Publicar o código novo no projeto atual.** Siga o "Passo a passo para publicar" abaixo. O banco real continua o mesmo.
+- **B) Passar a usar o projeto novo.**
+  1. Exporte os dados do site atual.
+  2. Remova o `KV_PREFIXO`.
+  3. Restaure o arquivo no site novo.
+  4. Mude o domínio na Vercel, ou passe o link novo para seu pai.
+
+---
+
 ## Passo a passo para publicar
 
 ### 1. Backup agora, ainda no sistema antigo
@@ -93,7 +138,7 @@ Entre o deploy e o passo 3, a tela não deixa lançar. Faça os dois em seguida.
 npm install
 npm test
 ```
-São 14 testes das regras do servidor (`tests/dados.test.js`):
+São 15 testes das regras do servidor (`tests/dados.test.js`):
 - migração com id repetido;
 - dois aparelhos lançando ao mesmo tempo;
 - exclusão que só marca;

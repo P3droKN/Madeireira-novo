@@ -15,8 +15,10 @@ export function kv() {
 
 // Produção usa as chaves originais. Preview e desenvolvimento usam o prefixo "preview:",
 // para que testes nunca mexam nos dados reais.
-export function chaves(ambiente = process.env.VERCEL_ENV) {
-  const p = ambiente === "production" ? "" : "preview:";
+// KV_PREFIXO (opcional) força um prefixo em todos os ambientes: usado no projeto de testes,
+// para não tocar nos dados reais mesmo se ele for ligado ao banco errado.
+export function chaves(ambiente = process.env.VERCEL_ENV, prefixoFixo = process.env.KV_PREFIXO) {
+  const p = prefixoFixo || (ambiente === "production" ? "" : "preview:");
   return {
     ambiente: ambiente || "development",
     prefixo: p,

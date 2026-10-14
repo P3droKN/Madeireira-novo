@@ -48,6 +48,11 @@ test("chaves: produção usa os nomes originais; preview e dev usam prefixo", ()
   assert.equal(chaves(undefined).finance, "preview:madeireira_finance");
 });
 
+test("chaves: KV_PREFIXO força o prefixo até na produção (projeto de testes)", () => {
+  assert.equal(chaves("production", "teste:").finance, "teste:madeireira_finance");
+  assert.equal(chaves("preview", "teste:").lancamentos, "teste:madeireira_lancamentos");
+});
+
 test("senha: confere só a senha exata, e nunca com senha vazia configurada", () => {
   assert.equal(senhaConfere("abc", "abc"), true);
   assert.equal(senhaConfere("abd", "abc"), false);
