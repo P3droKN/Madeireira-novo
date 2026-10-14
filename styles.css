@@ -304,6 +304,22 @@ button {
 .text-success td:not(:first-child) { color: #34d399; }
 .text-danger td:not(:first-child) { color: #ef4444; }
 
+/* AVISOS (sem conexão / ativar salvamento seguro) */
+.aviso {
+    padding: 1rem 1.25rem;
+    border-radius: 12px;
+    margin-bottom: 1.5rem;
+    border: 1px solid;
+    color: var(--text-main);
+    line-height: 1.5;
+}
+.aviso-erro { background: rgba(239, 68, 68, 0.15); border-color: var(--danger); }
+.aviso-alerta { background: rgba(245, 158, 11, 0.15); border-color: var(--warning); }
+.aviso .btn-icon { margin-left: 0.5rem; }
+.aviso-acoes { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.75rem; }
+.aviso-acoes .btn-icon { margin-left: 0; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* MODAL STYLES */
 .modal-overlay {
     position: fixed;

@@ -1,16 +1,17 @@
-import { createClient } from "@vercel/kv";
-
-// Suporta tanto Vercel KV oficial quanto Upstash for Redis
-const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
-const kv = createClient({ url, token });
+import { kv, chaves, autorizar, responderErro } from "./_lib.js";
+import { lerTudo } from "./_dados.js";
 
 export default async function handler(request, response) {
+  if (!autorizar(request, response)) return;
   try {
-    const financeItems = await kv.get("madeireira_finance") || [];
-    const acumulado = await kv.get("madeireira_acumulado") || { venda: 0, pix: 0, credito: 0, debito: 0, custo: 0, despesa: 0, func: 0, dinheiroCaixa: 0 };
-    response.status(200).json({ financeItems, acumulado });
+    const { migrado, financeItems, acumulado } = await lerTudo(kv(), chaves());
+    response.status(200).json({
+      migrado,
+      ambiente: chaves().ambiente,
+      financeItems,
+      acumulado: acumulado || { venda: 0, pix: 0, credito: 0, debito: 0, custo: 0, despesa: 0, func: 0, dinheiroCaixa: 0 },
+    });
   } catch (error) {
-    response.status(500).json({ error: error.message });
+    responderErro(response, error);
   }
 }

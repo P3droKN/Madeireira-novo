@@ -4,6 +4,53 @@
 // --- GLOBAL UTILS ---
 const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 
+// Escapa texto antes de colocar no HTML (descrições vêm do banco e podem conter < > " ')
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const novoId = (sufixo = '') => Date.now().toString() + Math.random().toString(36).slice(2, 6) + sufixo;
+
+// --- API (com senha) ---
+const SENHA_KEY = 'madeireira_senha';
+let pedidoDeSenha = null;
+
+function pedirSenha(mensagem) {
+    if (pedidoDeSenha) return pedidoDeSenha;
+    pedidoDeSenha = new Promise(resolve => {
+        const modal = document.getElementById('modal-senha');
+        const input = document.getElementById('senha-input');
+        document.getElementById('senha-msg').textContent = mensagem || 'Digite a senha do sistema.';
+        input.value = '';
+        modal.style.display = 'flex';
+        input.focus();
+        document.getElementById('senha-form').onsubmit = (e) => {
+            e.preventDefault();
+            if (!input.value) return;
+            localStorage.setItem(SENHA_KEY, input.value);
+            modal.style.display = 'none';
+            pedidoDeSenha = null;
+            resolve(input.value);
+        };
+    });
+    return pedidoDeSenha;
+}
+
+async function api(caminho, { method = 'GET', body } = {}) {
+    const senha = localStorage.getItem(SENHA_KEY) || await pedirSenha();
+    const res = await fetch(caminho, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'x-senha': senha },
+        body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (res.status === 401) {
+        localStorage.removeItem(SENHA_KEY);
+        await pedirSenha('Senha incorreta. Tente de novo.');
+        return api(caminho, { method, body });
+    }
+    const dados = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(dados.error || `Erro ${res.status}`);
+    return dados;
+}
+
 // --- TAB SWITCHING ---
 function switchTab(tabId) {
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -139,7 +186,7 @@ const renderCalcTable = () => {
         currentSuggestedSale += (item.saleSubtotal || 0);
         
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${item.material.replace(/_/g, ' ')}</td><td>${item.dimension}</td><td>${item.displayQuantity}</td><td>${formatCurrency(item.priceUnit)}</td><td>${formatCurrency(item.subtotal)}</td><td><button class="delete-btn" onclick="deleteCalcItem('${item.id}')">Excluir</button></td>`;
+        tr.innerHTML = `<td>${esc(item.material.replace(/_/g, ' '))}</td><td>${esc(item.dimension)}</td><td>${esc(item.displayQuantity)}</td><td>${formatCurrency(item.priceUnit)}</td><td>${formatCurrency(item.subtotal)}</td><td><button class="delete-btn" onclick="deleteCalcItem('${item.id}')">Excluir</button></td>`;
         itemsBody.appendChild(tr);
     });
     grandTotalEl.textContent = formatCurrency(currentCalcTotal);
@@ -159,37 +206,90 @@ const renderCalcTable = () => {
 
 // --- GESTOR DE CAIXA LOGIC ---
 let financeItems = [];
-let acumulado = { venda: 0, pix: 0, credito: 0, debito: 0, custo: 0, despesa: 0, func: 0, dinheiroCaixa: 0 };
+const ACUMULADO_VAZIO = { venda: 0, pix: 0, credito: 0, debito: 0, custo: 0, despesa: 0, func: 0, dinheiroCaixa: 0 };
+let acumulado = { ...ACUMULADO_VAZIO };
 
-async function initDB() {
+// Sem conexão com a nuvem: mostra a última cópia, mas não deixa gravar
+// (gravar com dados velhos apagaria lançamentos feitos em outro aparelho).
+let somenteLeitura = false;
+// Até o backup + migração, os lançamentos ficam na lista antiga, que é regravada inteira.
+let migrado = true;
+let backupBaixado = false;
+
+async function carregarDados() {
     try {
-        const response = await fetch('/api/getFinance');
-        if (response.ok) {
-            const data = await response.json();
-            
-            let fetchedItems = data.financeItems;
-            if (typeof fetchedItems === 'string') fetchedItems = JSON.parse(fetchedItems);
-            financeItems = fetchedItems || [];
-            
-            let fetchedAcc = data.acumulado;
-            if (typeof fetchedAcc === 'string') fetchedAcc = JSON.parse(fetchedAcc);
-            acumulado = Object.assign(acumulado, fetchedAcc || {});
-            
-            // Salva um backup local ao carregar com sucesso da nuvem
-            localStorage.setItem('madeireira_finance', JSON.stringify(financeItems));
-            localStorage.setItem('madeireira_acumulado', JSON.stringify(acumulado));
-        } else {
-            console.error('Falha ao conectar com o banco. Usando fallback local para testes.');
-            // Fallback para quando ele testar no PC sem rodar servidor local
-            financeItems = JSON.parse(localStorage.getItem('madeireira_finance')) || [];
-            acumulado = JSON.parse(localStorage.getItem('madeireira_acumulado')) || acumulado;
-        }
+        const data = await api('/api/getFinance');
+        financeItems = data.financeItems || [];
+        acumulado = Object.assign({ ...ACUMULADO_VAZIO }, data.acumulado || {});
+        migrado = data.migrado;
+        somenteLeitura = false;
+        // Cópia local só para leitura quando estiver sem conexão
+        localStorage.setItem('madeireira_finance', JSON.stringify(financeItems));
+        localStorage.setItem('madeireira_acumulado', JSON.stringify(acumulado));
     } catch (e) {
-        console.warn('Rodando offline. Tentando localStorage.', e);
+        console.warn('Sem conexão com a nuvem. Mostrando a última cópia local, sem gravar.', e);
+        somenteLeitura = true;
         financeItems = JSON.parse(localStorage.getItem('madeireira_finance')) || [];
-        acumulado = JSON.parse(localStorage.getItem('madeireira_acumulado')) || acumulado;
+        acumulado = JSON.parse(localStorage.getItem('madeireira_acumulado')) || { ...ACUMULADO_VAZIO };
     }
+    atualizarAviso();
     renderFinance();
+}
+
+function atualizarAviso() {
+    const aviso = document.getElementById('aviso-sistema');
+    if (somenteLeitura) {
+        aviso.className = 'aviso aviso-erro';
+        aviso.innerHTML = `<strong>Sem conexão com a nuvem.</strong> Mostrando a última cópia deste aparelho, só para consulta. Nada pode ser lançado até a conexão voltar.
+            <button class="btn-icon" onclick="carregarDados()">🔄 Tentar de novo</button>`;
+        aviso.style.display = 'block';
+    } else if (!migrado) {
+        aviso.className = 'aviso aviso-alerta';
+        aviso.innerHTML = `<strong>Ativar salvamento seguro (uma vez só).</strong> Antes de lançar, baixe o backup e depois ative o salvamento seguro.
+            <div class="aviso-acoes">
+                <button class="btn-icon" onclick="baixarBackup()">1. 💾 Baixar backup</button>
+                <button class="btn-success" onclick="ativarSalvamentoSeguro()" ${backupBaixado ? '' : 'disabled'}>2. Ativar salvamento seguro</button>
+            </div>`;
+        aviso.style.display = 'block';
+    } else {
+        aviso.style.display = 'none';
+    }
+}
+
+function podeGravar() {
+    if (somenteLeitura) {
+        alert('Sem conexão com a nuvem. Nada foi lançado. Clique em "Tentar de novo" quando a internet voltar.');
+        return false;
+    }
+    if (!migrado) {
+        alert('Antes de lançar, baixe o backup e ative o salvamento seguro (aviso no topo da tela).');
+        return false;
+    }
+    return true;
+}
+
+// Grava só os lançamentos novos (um por um no servidor) e recarrega a lista,
+// trazendo também o que foi lançado em outros aparelhos.
+async function gravarLancamentos(itens) {
+    try {
+        await api('/api/lancamento', { method: 'POST', body: { itens } });
+    } catch (e) {
+        alert(`Não foi salvo: ${e.message}`);
+        return false;
+    }
+    await carregarDados();
+    return true;
+}
+
+async function ativarSalvamentoSeguro() {
+    if (!backupBaixado) return;
+    try {
+        const r = await api('/api/migrar', { method: 'POST' });
+        alert(r.jaMigrado ? 'O salvamento seguro já estava ativo.' : `Pronto! ${r.migrados} lançamentos copiados para o salvamento seguro.\nA lista antiga foi mantida intacta.`);
+    } catch (e) {
+        alert(`Não foi possível ativar: ${e.message}`);
+    }
+    await carregarDados();
 }
 
 function getLocalDateString() {
@@ -253,9 +353,10 @@ function toggleCheckFields() {
     }
 }
 
-document.getElementById('finance-form').addEventListener('submit', (e) => {
+document.getElementById('finance-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    
+    if (!podeGravar()) return;
+
     const category = document.getElementById('fin-category').value;
     const type = category === 'venda' ? 'income' : 'expense';
     const value = parseFloat(document.getElementById('fin-value').value);
@@ -264,7 +365,7 @@ document.getElementById('finance-form').addEventListener('submit', (e) => {
     const method = document.getElementById('fin-method').value;
     
     const item = {
-        id: Date.now().toString(),
+        id: novoId(),
         category,
         type,
         value,
@@ -279,12 +380,11 @@ document.getElementById('finance-form').addEventListener('submit', (e) => {
         item.checkDate = document.getElementById('fin-check-date').value;
     }
 
-    financeItems.push(item);
-    saveFinance();
-    
+    if (!(await gravarLancamentos([item]))) return;
+
     // Atualiza o painel para refletir a mesma data que o usuário acabou de preencher (Facilita lançamento atrasado)
     document.getElementById('filter-date').value = document.getElementById('fin-date').value;
-    
+
     renderFinance();
     e.target.reset();
     
@@ -294,30 +394,19 @@ document.getElementById('finance-form').addEventListener('submit', (e) => {
     toggleCheckFields();
 });
 
-function deleteFinanceItem(id) {
-    financeItems = financeItems.filter(i => i.id !== id);
-    saveFinance();
-    renderFinance();
-}
-
-async function saveFinance() {
-    // Continua salvando no LocalStorage como redundância offline
-    localStorage.setItem('madeireira_finance', JSON.stringify(financeItems));
-    
-    // Tenta salvar no banco de dados da Vercel
+async function deleteFinanceItem(id) {
+    if (!podeGravar()) return;
+    const item = financeItems.find(i => i.id === id);
+    if (!item) return;
+    const resumo = `${item.date.split('-').reverse().join('/')} - ${formatCurrency(item.value)}${item.description ? ' - ' + item.description : ''}`;
+    if (!confirm(`Excluir este lançamento?\n\n${resumo}`)) return;
     try {
-        const res = await fetch('/api/saveFinance', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ financeItems })
-        });
-        if (!res.ok) {
-            console.error("Erro na Vercel:", await res.text());
-            alert("Atenção: Os dados não foram salvos na nuvem. Verifique se rodou 'npx vercel --prod' após conectar o banco.");
-        }
+        await api(`/api/lancamento?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
     } catch (e) {
-        console.warn('Salvamento local efetuado, mas falha ao sincronizar com nuvem.', e);
+        alert(`Não foi excluído: ${e.message}`);
+        return;
     }
+    await carregarDados();
 }
 
 function renderFinance() {
@@ -389,9 +478,9 @@ function renderFinance() {
 
         const tr = document.createElement('tr');
         
-        let methodStr = item.method.toUpperCase();
+        let methodStr = esc(String(item.method).toUpperCase());
         if(item.method === 'cheque') {
-            methodStr += `<br><small style="color:var(--text-muted)">Nº: ${item.checkNumber || '-'} | Para: ${item.checkDate ? item.checkDate.split('-').reverse().join('/') : '-'}</small>`;
+            methodStr += `<br><small style="color:var(--text-muted)">Nº: ${esc(item.checkNumber || '-')} | Para: ${item.checkDate ? esc(item.checkDate.split('-').reverse().join('/')) : '-'}</small>`;
         }
         
         let catStr = "";
@@ -402,11 +491,11 @@ function renderFinance() {
 
         tr.innerHTML = `
             <td>${item.date.split('-').reverse().join('/')}</td>
-            <td>${item.description}</td>
+            <td>${esc(item.description)}</td>
             <td class="${isIncome ? 'type-income' : 'type-expense'}">${catStr}</td>
             <td>${methodStr}</td>
             <td class="${isIncome ? 'type-income' : 'type-expense'}">${formatCurrency(item.value)}</td>
-            <td><button class="delete-btn" onclick="deleteFinanceItem('${item.id}')">Excluir</button></td>
+            <td><button class="delete-btn" onclick="deleteFinanceItem('${esc(item.id)}')">Excluir</button></td>
         `;
         tbody.appendChild(tr);
     });
@@ -534,15 +623,16 @@ async function registerDirectCost() {
         alert("A calculadora está vazia. Adicione itens primeiro.");
         return;
     }
-    
+    if (!podeGravar()) return;
+
     const dateInput = document.getElementById('direct-sale-date').value;
     const date = dateInput ? dateInput : getLocalDateString();
-    
+
     // Extrai o nome dos materiais
     const materialsList = orderItems.map(item => item.material.replace(/_/g, ' ')).join(', ');
-    
+
     const custoItem = {
-        id: Date.now().toString() + 'C',
+        id: novoId('C'),
         category: 'custo',
         type: 'expense',
         value: currentCalcTotal,
@@ -551,10 +641,8 @@ async function registerDirectCost() {
         method: 'cheque'
     };
     
-    financeItems.push(custoItem);
-    await saveFinance();
-    renderFinance();
-    
+    if (!(await gravarLancamentos([custoItem]))) return;
+
     alert(`Pronto! Apenas o custo de ${formatCurrency(currentCalcTotal)} foi registrado no caixa.`);
     orderItems = [];
     renderCalcTable();
@@ -574,6 +662,7 @@ async function registerDirectSale() {
         salePriceInput.focus();
         return;
     }
+    if (!podeGravar()) return;
     const saleMethod = document.getElementById('direct-sale-method').value;
     const dateInput = document.getElementById('direct-sale-date').value;
     const date = dateInput ? dateInput : getLocalDateString();
@@ -583,7 +672,7 @@ async function registerDirectSale() {
     
     // Cria Lançamento da Venda
     const vendaItem = {
-        id: Date.now().toString() + 'V',
+        id: novoId('V'),
         category: 'venda',
         type: 'income',
         value: salePrice,
@@ -594,7 +683,7 @@ async function registerDirectSale() {
     
     // Cria Lançamento do Custo daquele material
     const custoItem = {
-        id: Date.now().toString() + 'C',
+        id: novoId('C'),
         category: 'custo',
         type: 'expense',
         value: currentCalcTotal,
@@ -603,12 +692,10 @@ async function registerDirectSale() {
         method: 'cheque' // Assumimos que o custo material gerado entra no controle de custos (cheque/prazo)
     };
     
-    // Salva os dois simultaneamente no array
-    financeItems.push(vendaItem, custoItem);
-    
-    // Salva na nuvem e atualiza a interface
-    await saveFinance();
-    renderFinance();
+    // Salva os dois juntos na nuvem e atualiza a interface
+    // (custo 0, como no retalho, não gera lançamento: o servidor exige valor > 0)
+    const itens = currentCalcTotal > 0 ? [vendaItem, custoItem] : [vendaItem];
+    if (!(await gravarLancamentos(itens))) return;
     
     alert(`Pronto! Lançamento duplo efetuado com sucesso:\n\n✅ Venda registrada: ${formatCurrency(salePrice)}\n✅ Custo extraído: ${formatCurrency(currentCalcTotal)}\n\n(Consulte a aba Gestor de Caixa)`);
     
@@ -636,7 +723,11 @@ function closeAcumuladoModal() {
 }
 
 async function saveAcumulado() {
-    acumulado = {
+    if (somenteLeitura) {
+        alert('Sem conexão com a nuvem. Nada foi salvo.');
+        return;
+    }
+    const novo = {
         dinheiroCaixa: parseFloat(document.getElementById('mod-acc-dinheiro').value) || 0,
         venda: parseFloat(document.getElementById('mod-acc-venda').value) || 0,
         pix: parseFloat(document.getElementById('mod-acc-pix').value) || 0,
@@ -646,87 +737,97 @@ async function saveAcumulado() {
         despesa: parseFloat(document.getElementById('mod-acc-despesa').value) || 0,
         func: parseFloat(document.getElementById('mod-acc-func').value) || 0,
     };
-    
-    // Salva localmente (redundância)
-    localStorage.setItem('madeireira_acumulado', JSON.stringify(acumulado));
-    
-    // Tenta salvar no banco de dados da Vercel
+
     try {
-        const res = await fetch('/api/saveFinance', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ acumulado })
-        });
-        if (!res.ok) {
-            console.error("Erro na Vercel:", await res.text());
-            alert("Atenção: Os Acumulados não foram salvos na nuvem. Verifique o banco.");
-        } else {
-            alert("Saldos acumulados salvos com sucesso na nuvem!");
-        }
+        await api('/api/acumulado', { method: 'POST', body: { acumulado: novo } });
+        alert("Saldos acumulados salvos com sucesso na nuvem!");
     } catch (e) {
-        console.warn('Falha ao sincronizar com nuvem.', e);
-        alert("Erro de conexão ao salvar Acumulados.");
+        alert(`Os acumulados não foram salvos: ${e.message}`);
+        return;
     }
-    
+
     closeAcumuladoModal();
-    renderFinance();
+    await carregarDados();
 }
 
 // --- BACKUP ---
-function exportBackup() {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ financeItems, acumulado }));
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", `madeireira_backup_${new Date().toISOString().split('T')[0]}.json`);
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
+function baixarArquivo(objeto, nome) {
+    const blob = new Blob([JSON.stringify(objeto, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = nome;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
 }
 
-function importBackup(event) {
-    const file = event.target.files[0];
-    if (!file) return;
+// Backup completo, direto do servidor (todas as chaves, inclusive excluídos)
+async function baixarBackup() {
+    try {
+        const backup = await api('/api/backup');
+        baixarArquivo(backup, `madeireira_backup_${backup.ambiente}_${getLocalDateString()}.json`);
+        backupBaixado = true;
+        atualizarAviso();
+        return true;
+    } catch (e) {
+        alert(`Não foi possível baixar o backup: ${e.message}`);
+        return false;
+    }
+}
 
-    const reader = new FileReader();
-    reader.onload = async function(e) {
-        try {
-            const imported = JSON.parse(e.target.result);
-            
-            if (Array.isArray(imported)) {
-                financeItems = imported;
-                await saveFinance();
-            } else if (imported.financeItems) {
-                financeItems = imported.financeItems;
-                if (imported.acumulado) {
-                    acumulado = imported.acumulado;
-                    // Salva acumulado localmente
-                    localStorage.setItem('madeireira_acumulado', JSON.stringify(acumulado));
-                }
-                
-                // Envia TUDO em uma única requisição para a nuvem para evitar erros!
-                const res = await fetch('/api/saveFinance', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ financeItems, acumulado })
-                });
-                
-                if (!res.ok) {
-                    throw new Error("Falha ao salvar na nuvem");
-                }
-            } else {
-                throw new Error("Formato inválido");
-            }
-            
-            renderFinance();
-            alert("Backup restaurado e sincronizado com sucesso!");
-        } catch (err) {
-            console.error(err);
-            alert("Erro ao ler o arquivo ou salvar na nuvem. Verifique sua conexão.");
-        }
-    };
-    reader.readAsText(file);
-    event.target.value = ''; // Reset input
+async function exportBackup() {
+    if (somenteLeitura) {
+        // Sem nuvem: exporta pelo menos a cópia deste aparelho
+        baixarArquivo({ financeItems, acumulado }, `madeireira_copia_local_${getLocalDateString()}.json`);
+        return;
+    }
+    await baixarBackup();
+}
+
+function lerArquivoJson(event) {
+    const file = event.target.files[0];
+    event.target.value = ''; // permite escolher o mesmo arquivo de novo
+    if (!file) return Promise.resolve(null);
+    return file.text().then(JSON.parse).catch(() => {
+        alert('Não consegui ler o arquivo. Ele precisa ser um backup .json do sistema.');
+        return null;
+    });
+}
+
+// Importar = JUNTAR: adiciona só os lançamentos que ainda não existem. Não apaga nada.
+async function importBackup(event) {
+    const arquivo = await lerArquivoJson(event);
+    if (!arquivo || !podeGravar()) return;
+    try {
+        const r = await api('/api/importar', { method: 'POST', body: arquivo });
+        alert(`Importação concluída.\n\nNovos lançamentos: ${r.adicionados}\nJá existiam: ${r.existentes}\nIgnorados (inválidos): ${r.invalidos}`);
+    } catch (e) {
+        alert(`Erro ao importar: ${e.message}`);
+    }
+    await carregarDados();
+}
+
+// Restaurar = VOLTAR NO TEMPO: deixa os dados exatamente como estão no arquivo.
+// O servidor guarda uma cópia do estado atual antes, então dá para desfazer.
+async function restoreBackup(event) {
+    const arquivo = await lerArquivoJson(event);
+    if (!arquivo) return;
+    if (somenteLeitura) {
+        alert('Sem conexão com a nuvem. Nada foi restaurado.');
+        return;
+    }
+    const resposta = prompt('ATENÇÃO: isto substitui TODOS os dados pelos do arquivo.\nUma cópia do estado atual é guardada antes.\n\nPara continuar, digite RESTAURAR:');
+    if (resposta !== 'RESTAURAR') return;
+    try {
+        const r = await api('/api/restaurar', { method: 'POST', body: { confirmacao: 'RESTAURAR', arquivo } });
+        alert(`Backup restaurado.\n\nLista antiga: ${r.listaAntiga} lançamentos\nSalvamento seguro: ${r.migrado ? `ativo (${r.lancamentos} lançamentos)` : 'desativado'}\n\nCópia do estado anterior: ${r.copia}`);
+    } catch (e) {
+        alert(`Erro ao restaurar: ${e.message}`);
+    }
+    backupBaixado = false;
+    await carregarDados();
 }
 
 // Inicializa a conexão com o Banco
-initDB();
+carregarDados();
