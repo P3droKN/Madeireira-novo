@@ -1,0 +1,340 @@
+{
+  "_info": {
+    "descricao": "Tabela de CUSTOS da madeireira (out/2026). Regra de atualização: o custo novo das fotos só substituiu o antigo quando era MAIOR; itens sem custo foram adicionados.",
+    "chaves": "Chaves de material e dimensão a reutilizar na futura tabela de venda (mesmo id para custo e venda).",
+    "unidades": "madeiras_metro_linear = R$/m linear (bruto). pinus/rolico = R$/peça. m2 = R$/m². jogos = R$/jogo."
+  },
+  "madeiras_metro_linear": {
+    "CEDRO": {
+      "_obs": "Vale para CEDRO_MESCLADO e CEDRO_VERMELHO (mesmo custo, venda diferente).",
+      "dimensoes": {
+        "1x2": 3.62,
+        "1x3": 5.44,
+        "1x4": 7.25,
+        "1x6": 10.88,
+        "1x8": 16.24,
+        "1x10": 18.13,
+        "1x12": 21.75,
+        "2x2": 7.25,
+        "2x4": 14.5,
+        "2x6": 21.75,
+        "2x8": 29.0,
+        "2x10": 36.25,
+        "2x12": 43.5,
+        "3x3": 16.32,
+        "3x4": 21.75,
+        "3x6": 32.63,
+        "3x8": 43.5,
+        "3x10": 54.38,
+        "3x12": 65.25,
+        "1.5x2": 5.6,
+        "1.5x3": 8.41,
+        "1.5x4": 11.2,
+        "1.5x6": 16.87,
+        "1.5x8": 22.4,
+        "1.5x10": 28.0,
+        "1.5x12": 33.73,
+        "2x3": 10.53
+      }
+    },
+    "CAMBARA": {
+      "dimensoes": {
+        "1x2": 3.44,
+        "1x3": 5.16,
+        "1x4": 6.88,
+        "1x6": 10.31,
+        "1x8": 13.75,
+        "1x10": 17.19,
+        "1x12": 20.63,
+        "2x2": 6.88,
+        "2x4": 13.75,
+        "2x6": 20.63,
+        "2x8": 27.5,
+        "2x10": 34.38,
+        "2x12": 41.25,
+        "3x3": 15.47,
+        "3x4": 20.63,
+        "3x6": 30.94,
+        "3x8": 41.25,
+        "3x10": 51.56,
+        "3x12": 61.88,
+        "2x3": 9.96,
+        "3x5": 30.11,
+        "6x6": 60.23,
+        "8x8": 106.0
+      }
+    },
+    "ITAUBA": {
+      "dimensoes": {
+        "1x2": 7.0,
+        "1x3": 10.5,
+        "1x4": 14.0,
+        "1x6": 21.0,
+        "1x8": 28.0,
+        "1x10": 35.0,
+        "1x12": 42.0,
+        "2x2": 14.0,
+        "2x4": 28.0,
+        "2x6": 42.0,
+        "2x8": 56.0,
+        "2x10": 70.0,
+        "2x12": 84.0,
+        "3x3": 31.0,
+        "3x4": 42.0,
+        "3x6": 63.0,
+        "3x8": 84.0,
+        "3x10": 105.0,
+        "3x12": 126.0,
+        "1.5x2": 9.4,
+        "1.5x3": 14.11,
+        "1.5x4": 18.8,
+        "1.5x6": 28.31,
+        "1.5x8": 37.6,
+        "1.5x10": 47.0,
+        "1.5x12": 56.63,
+        "2x3": 17.67,
+        "4x4": 47.0,
+        "6x6": 106.82
+      }
+    },
+    "JEQUITIBA": {
+      "dimensoes": {
+        "1x2": 3.75,
+        "1x3": 5.62,
+        "1x4": 7.5,
+        "1x6": 11.28,
+        "1x8": 15.0,
+        "1x10": 18.75,
+        "1x12": 22.55,
+        "1.5x2": 6.0,
+        "1.5x3": 9.0,
+        "1.5x4": 12.0,
+        "1.5x6": 18.08,
+        "1.5x8": 24.0,
+        "1.5x10": 30.0,
+        "1.5x12": 36.14
+      }
+    },
+    "EUCALIPTO": {
+      "dimensoes": {
+        "1x2": 1.72,
+        "1x10": 8.57,
+        "2x4": 6.85,
+        "2x6": 10.28,
+        "1x3": 2.54,
+        "1x4": 3.38,
+        "1x5": 5.08,
+        "1x6": 5.08,
+        "1x8": 6.75,
+        "2x2": 3.38,
+        "2x3": 6.75
+      }
+    }
+  },
+  "pinus_por_peca": {
+    "dimensoes": {
+      "1x2x2.50": 2.97,
+      "1x3x2.50": 4.46,
+      "1x4x2.50": 5.94,
+      "1x6x2.50": 8.88,
+      "1x8x2.50": 11.88,
+      "1x10x2.50": 14.85,
+      "1x12x2.50": 23.2,
+      "2x4x3.00": 18.36,
+      "2x4x4.00": 24.6,
+      "2x2x2.50": 5.94,
+      "2x2x3.00": 7.15,
+      "2x2x4.00": 12.3,
+      "2x4x2.50": 11.88
+    }
+  },
+  "eucalipto_rolico_autoclavado_por_peca": {
+    "_obs": "diâmetro em cm x comprimento em m",
+    "dimensoes": {
+      "11a13x2.50": 34.9,
+      "14a16x3.00": 49.5,
+      "18a20x4.00": 165.0,
+      "11a13x3.00": 49.9,
+      "11a13x4.00": 65.8
+    }
+  },
+  "chapas": {
+    "MADEIRITE_1.10x2.20": {
+      "9mm": 37.0,
+      "12mm": 52.0,
+      "14mm": 63.0,
+      "10mm": 36.9
+    }
+  },
+  "metro_quadrado": {
+    "FORRO": {
+      "CEDRO_MESCLADO_CURTO": 37.0,
+      "CEDRO_MESCLADO_COMPRIDO": 70.0,
+      "CEDRO_VERMELHO_CURTO": 75.0,
+      "CEDRO_VERMELHO_COMPRIDO": 90.0,
+      "PINUS_COMPRIDO": 16.0
+    },
+    "DECK": {
+      "ITAUBA_10cm": 185.0,
+      "ITAUBA_7cm": 149.0,
+      "PINUS_AUTOCLAVE_10cm": 58.0
+    },
+    "ASSOALHO": {
+      "GARAPEIRA_10cm": 100.0,
+      "PINUS_11.5cm": 29.5,
+      "CEDRO_EMENDADO_9cm": null,
+      "CAMBARA_EMENDADO_13cm": null
+    }
+  },
+  "metro_linear_acabamentos": {
+    "MEIA_CANA": {
+      "CEDRO_1pol_2.5cm": 5.0,
+      "CEDRO_1.5pol_4.0cm": 7.9,
+      "PINUS_1.5pol_4.0cm": 2.8
+    },
+    "RODAPE": {
+      "CEDRO_6cm": 7.9,
+      "PINUS_6cm": 2.25
+    },
+    "BEIRAL": {
+      "CEDRO_A": 10.53,
+      "CEDRO_B": 15.0,
+      "CEDRO_C": 17.5,
+      "CEDRO_D": 21.05,
+      "PINUS_A": 5.0,
+      "PINUS_B": 7.5
+    }
+  },
+  "jogos": {
+    "CAIXILHO_TAUARI": {
+      "_obs": "jogo completo com vistas",
+      "jogo": {
+        "10cm": 131.5,
+        "12cm": 148.5,
+        "14cm": 165.5,
+        "15cm": 125,
+        "16cm": 183.5,
+        "18cm": 200.5,
+        "20cm": 217.5,
+        "23cm": 220,
+        "25cm": 240
+      }
+    },
+    "VISTAS_TAUARI": {
+      "jogo": {
+        "6.5cm": 45.5,
+        "7.0cm": 55.0,
+        "10cm": 115.0
+      },
+      "meio_jogo": {
+        "6.5cm": 22.75,
+        "7.0cm": 27.5,
+        "10cm": 57.5
+      }
+    }
+  },
+  "pregos_por_saco": {
+    "12x12": 12.4,
+    "13x15": 11.5,
+    "15x21": 10.1,
+    "16x24": 9.6,
+    "17x27": 9.2,
+    "18x36": 8.8
+  },
+  "retalho": {
+    "custo": 0
+  },
+  "_alteracoes": [
+    "CEDRO 1.5x2: ADICIONADO 5.60",
+    "CEDRO 1.5x3: ADICIONADO 8.41",
+    "CEDRO 1.5x4: ADICIONADO 11.20",
+    "CEDRO 1.5x6: ADICIONADO 16.87",
+    "CEDRO 1.5x8: ADICIONADO 22.40",
+    "CEDRO 1.5x10: ADICIONADO 28.00",
+    "CEDRO 1.5x12: ADICIONADO 33.73",
+    "CEDRO 2x3: ADICIONADO 10.53",
+    "CAMBARA 2x3: ADICIONADO 9.96",
+    "CAMBARA 3x5: ADICIONADO 30.11",
+    "CAMBARA 6x6: ADICIONADO 60.23",
+    "CAMBARA 8x8: ADICIONADO 106.00",
+    "ITAUBA 1.5x2: ADICIONADO 9.40",
+    "ITAUBA 1.5x3: ADICIONADO 14.11",
+    "ITAUBA 1.5x4: ADICIONADO 18.80",
+    "ITAUBA 1.5x6: ADICIONADO 28.31",
+    "ITAUBA 1.5x8: ADICIONADO 37.60",
+    "ITAUBA 1.5x10: ADICIONADO 47.00",
+    "ITAUBA 1.5x12: ADICIONADO 56.63",
+    "ITAUBA 2x3: ADICIONADO 17.67",
+    "ITAUBA 4x4: ADICIONADO 47.00",
+    "ITAUBA 6x6: ADICIONADO 106.82",
+    "JEQUITIBA 1x2: ADICIONADO 3.75",
+    "JEQUITIBA 1x3: ADICIONADO 5.62",
+    "JEQUITIBA 1x4: ADICIONADO 7.50",
+    "JEQUITIBA 1x6: ADICIONADO 11.28",
+    "JEQUITIBA 1x8: ADICIONADO 15.00",
+    "JEQUITIBA 1x10: ADICIONADO 18.75",
+    "JEQUITIBA 1x12: ADICIONADO 22.55",
+    "JEQUITIBA 1.5x2: ADICIONADO 6.00",
+    "JEQUITIBA 1.5x3: ADICIONADO 9.00",
+    "JEQUITIBA 1.5x4: ADICIONADO 12.00",
+    "JEQUITIBA 1.5x6: ADICIONADO 18.08",
+    "JEQUITIBA 1.5x8: ADICIONADO 24.00",
+    "JEQUITIBA 1.5x10: ADICIONADO 30.00",
+    "JEQUITIBA 1.5x12: ADICIONADO 36.14",
+    "EUCALIPTO 1x3: ADICIONADO 2.54",
+    "EUCALIPTO 1x4: ADICIONADO 3.38",
+    "EUCALIPTO 1x5: ADICIONADO 5.08",
+    "EUCALIPTO 1x6: ADICIONADO 5.08",
+    "EUCALIPTO 1x8: ADICIONADO 6.75",
+    "EUCALIPTO 2x2: ADICIONADO 3.38",
+    "EUCALIPTO 2x3: ADICIONADO 6.75",
+    "PINUS 1x2x2.50: 2.40 -> 2.97",
+    "PINUS 1x3x2.50: 3.60 -> 4.46",
+    "PINUS 1x4x2.50: 5.00 -> 5.94",
+    "PINUS 1x6x2.50: 7.50 -> 8.88",
+    "PINUS 1x8x2.50: 10.00 -> 11.88",
+    "PINUS 1x10x2.50: 14.40 -> 14.85",
+    "PINUS 1x12x2.50: 23.00 -> 23.20",
+    "PINUS 2x4x3.00: 13.50 -> 18.36",
+    "PINUS 2x4x4.00: 23.00 -> 24.60",
+    "PINUS 2x2x2.50: ADICIONADO 5.94",
+    "PINUS 2x2x3.00: ADICIONADO 7.15",
+    "PINUS 2x2x4.00: ADICIONADO 12.30",
+    "PINUS 2x4x2.50: ADICIONADO 11.88",
+    "EUCALIPTO_ROLICO 11a13x2.50: 33.50 -> 34.90",
+    "EUCALIPTO_ROLICO 11a13x3.00: ADICIONADO 49.90",
+    "EUCALIPTO_ROLICO 11a13x4.00: ADICIONADO 65.80",
+    "MADEIRITE 10mm: ADICIONADO 36.90",
+    "FORRO PINUS_COMPRIDO: 15.00 -> 16.00",
+    "ASSOALHO GARAPEIRA_10cm: ADICIONADO 100.00",
+    "ASSOALHO PINUS_11.5cm: ADICIONADO 29.50",
+    "MEIA_CANA CEDRO_1pol_2.5cm: 4.80 -> 5.00",
+    "MEIA_CANA CEDRO_1.5pol_4.0cm: 7.50 -> 7.90",
+    "RODAPE CEDRO_6cm: ADICIONADO 7.90",
+    "RODAPE PINUS_6cm: ADICIONADO 2.25",
+    "BEIRAL CEDRO_A: ADICIONADO 10.53",
+    "BEIRAL CEDRO_B: ADICIONADO 15.00",
+    "BEIRAL CEDRO_C: ADICIONADO 17.50",
+    "BEIRAL CEDRO_D: ADICIONADO 21.05",
+    "BEIRAL PINUS_A: ADICIONADO 5.00",
+    "BEIRAL PINUS_B: ADICIONADO 7.50",
+    "CAIXILHO_JOGO 10cm: 60.00 -> 131.50",
+    "CAIXILHO_JOGO 12cm: 100.00 -> 148.50",
+    "CAIXILHO_JOGO 14cm: 120.00 -> 165.50",
+    "CAIXILHO_JOGO 16cm: 130.00 -> 183.50",
+    "CAIXILHO_JOGO 18cm: 150.00 -> 200.50",
+    "CAIXILHO_JOGO 20cm: 162.00 -> 217.50",
+    "VISTAS_JOGO 6.5cm: 45.00 -> 45.50",
+    "VISTAS meio jogo: custo = metade do jogo"
+  ],
+  "duvidas": [
+    "CEDRO 3x3: na foto está 52,83 (igual ao 3x10, parece erro de cópia; o esperado seria ~15,80). Mantido o custo antigo 16,32.",
+    "ITAÚBA: as bitolas novas (1,5x…, 2x3, 4x4, 6x6) vieram da folha nova (base R$ 4.700/m³). As antigas continuaram com o custo antigo, que é ~19% mais alto. Confirmar qual base vale.",
+    "EUCALIPTO 1x6: número rasurado na foto (5,08 ou 6,08); usado 5,08. 1x5 e 2x3 não batem com o preço do m³ (esperado ~4,22 e ~5,08). Confirmar.",
+    "EUCALIPTO ROLIÇO: a folha nova mostra 3,00 m e 4,00 m com diâmetro 11 a 13 cm; a tabela antiga tinha 14x16 (3 m) e 18x20 (4 m). Mantive os dois. Confirmar se as peças antigas ainda existem.",
+    "MADEIRITE: a tabela antiga tinha 9 mm (R$ 37,00) e a folha nova tem 10 mm (R$ 36,90). É a mesma chapa? Se for, apagar a de 9 mm.",
+    "ASSOALHO: cedro emendado e cambará emendado estão sem custo na folha. Pinus lido como 29,50 (número pouco legível).",
+    "BEIRAL: a folha tem 4 custos de cedro (10,53 / 15,00 / 17,50 / 21,05) e 2 de pinus (5,00 / 7,50), sem largura. Quais medidas são? Beiral também não tem preço de venda.",
+    "CAIXILHO: o custo novo é o jogo completo (madeira + R$ 45,50 de vistas 6,5 cm). 15, 23 e 25 cm ficaram com o custo antigo, que provavelmente NÃO inclui as vistas. Confirmar."
+  ]
+}

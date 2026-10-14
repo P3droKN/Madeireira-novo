@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema Madeireira - Calculadora & Caixa</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>Sistema Madeireira</h1>
+            <nav class="tabs">
+                <button class="tab-btn active" id="btn-tab-calculator" onclick="switchTab('calculator')">Calculadora de Custos</button>
+                <button class="tab-btn" id="btn-tab-finance" onclick="switchTab('finance')">Gestor de Caixa</button>
+            </nav>
+        </header>
+
+        <main>
+            <!-- ABA: CALCULADORA -->
+            <div id="tab-calculator" class="tab-content active">
+                <section class="calculator-section glass-panel">
+                    <form id="calc-form">
+                        <div class="form-group">
+                            <label for="material">Material</label>
+                            <select id="material" required>
+                                <option value="" disabled selected>Selecione um material</option>
+                                <option value="CEDRO">Cedro</option>
+                                <option value="CAMBARÁ">Cambará</option>
+                                <option value="PINUS">Pinus</option>
+                                <option value="ITAÚBA">Itaúba</option>
+                                <option value="EUCALIPTO">Eucalipto</option>
+                                <option value="MADEIRITE">Madeirite</option>
+                                <option value="CAIXILHO">Caixilho</option>
+                                <option value="VISTAS">Vistas</option>
+                                <option value="PREGOS">Pregos</option>
+                                <option value="MEIA_CANA_CEDRO">Meia Cana - Cedro</option>
+                                <option value="MEIA_CANA_PINUS">Meia Cana - Pinus</option>
+                                <option value="DECK">Deck</option>
+                                <option value="FORRO">Forro</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="dimension">Dimensão / Tipo</label>
+                            <select id="dimension" required disabled>
+                                <option value="" disabled selected>Selecione a dimensão/tipo</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label id="quantity-pieces-label" for="quantity-pieces">Qtd de Peças</label>
+                            <input type="number" id="quantity-pieces" step="1" min="1" required placeholder="Ex: 6" disabled>
+                        </div>
+
+                        <div class="form-group" id="length-group" style="display: none;">
+                            <label id="quantity-length-label" for="quantity-length">Comprimento (m)</label>
+                            <input type="number" id="quantity-length" step="0.01" min="0.01" required placeholder="Ex: 2.50" disabled>
+                        </div>
+
+                        <button type="submit" class="btn-primary">Adicionar Item</button>
+                    </form>
+                </section>
+
+                <section class="results-section glass-panel">
+                    <h2>Resumo do Pedido</h2>
+                    <div class="table-container">
+                        <table id="items-table">
+                            <thead>
+                                <tr>
+                                    <th>Material</th>
+                                    <th>Dimensão</th>
+                                    <th>Qtd</th>
+                                    <th>Preço Unit.</th>
+                                    <th>Subtotal</th>
+                                    <th>Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody id="items-body">
+                                <!-- Items will be added here -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="total-container">
+                        <span>Custo Total Estimado:</span>
+                        <span id="grand-total">R$ 0,00</span>
+                    </div>
+
+                    <div class="direct-sale-box" style="background: #f8fafc; padding: 15px; border-radius: 8px; margin-top: 15px; border: 1px solid #e2e8f0;">
+                        <h3 style="margin-top:0; color: var(--primary); font-size: 1.1rem; margin-bottom: 15px;">Lançamento Inteligente Direto pro Caixa</h3>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label style="font-weight: bold; color: var(--text-main);">Por quanto você vendeu? (R$)</label>
+                                <input type="number" id="direct-sale-price" step="0.01" min="0.01" placeholder="Ex: 500.00">
+                            </div>
+                            <div class="form-group">
+                                <label style="font-weight: bold; color: var(--text-main);">Forma de Recebimento</label>
+                                <select id="direct-sale-method">
+                                    <option value="pix">PIX</option>
+                                    <option value="bradesco">Bradesco (Transferência)</option>
+                                    <option value="dinheiro">Dinheiro Físico</option>
+                                    <option value="debito">Cartão de Débito</option>
+                                    <option value="credito">Cartão de Crédito</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row" style="margin-top: 10px;">
+                            <div class="form-group">
+                                <label style="font-weight: bold; color: var(--text-main);">Data do Lançamento</label>
+                                <input type="date" id="direct-sale-date" required>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px; margin-top: 10px;">
+                            <button class="btn-success" style="flex: 1; padding: 12px; font-size: 1rem;" onclick="registerDirectSale()" title="Registra automaticamente a Venda e extrai o Custo ao mesmo tempo">
+                                ✅ Lançar Venda e Custo Juntos
+                            </button>
+                        </div>
+                        
+                        <div class="export-actions" style="margin-top: 15px; border-top: 1px solid #e2e8f0; padding-top: 15px;">
+                            <button class="btn-icon" onclick="window.print()" title="Imprimir este pedido">🖨️ Imprimir Pedido</button>
+                            <button class="btn-danger" onclick="registerDirectCost()" title="Registrar apenas a compra do material, sem venda">Lançar apenas Custo</button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- ABA: GESTOR DE CAIXA -->
+            <div id="tab-finance" class="tab-content" style="display: none;">
+                <div class="print-only-header" style="display: none;">
+                    <h2 style="text-align: center; margin-bottom: 10px; font-size: 18px;">Relatório de Fechamento Financeiro - <span id="print-month-label"></span></h2>
+                </div>
+                <section class="dashboard-section glass-panel">
+                    <div class="dashboard-header">
+                        <h2>Resumo Financeiro</h2>
+                        <div class="dashboard-controls">
+                            <input type="date" id="filter-date" class="month-picker">
+                            <div class="backup-controls">
+                                <button onclick="openAcumuladoModal()" class="btn-icon text-success" title="Lançar Acumulado Anterior">➕ Saldos Passados</button>
+                                <button onclick="window.print()" class="btn-icon" title="Imprimir Relatório">🖨️ Imprimir</button>
+                                <button onclick="exportBackup()" class="btn-icon" title="Salvar Backup">💾 Exportar</button>
+                                <label class="btn-icon" title="Carregar Backup">
+                                    📂 Importar
+                                    <input type="file" id="import-file" accept=".json" style="display: none;" onchange="importBackup(event)">
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="cards-grid">
+                        <div class="card cash">
+                            <h3>💵 Dinheiro Físico (Gaveta)</h3>
+                            <p id="dash-cash">R$ 0,00</p>
+                            <small>Saldo Físico Atual</small>
+                        </div>
+                        <div class="card total">
+                            <h3>📊 Saldo do Mês (Bruto)</h3>
+                            <p id="dash-total">R$ 0,00</p>
+                            <small>Entradas - Custos - Despesas</small>
+                        </div>
+                    </div>
+
+                    <div class="methods-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2rem;">
+                        <div class="card" style="padding: 15px; text-align: center;">
+                            <h4 style="margin:0; font-size: 0.9rem; color: var(--text-muted);">📱 Total Mês (Pix)</h4>
+                            <p id="dash-tot-pix" style="margin: 5px 0 0; font-size: 1.4rem; font-weight: bold; color: var(--text-main);">R$ 0,00</p>
+                        </div>
+                        <div class="card" style="padding: 15px; text-align: center;">
+                            <h4 style="margin:0; font-size: 0.9rem; color: var(--text-muted);">💳 Total Mês (Crédito)</h4>
+                            <p id="dash-tot-cred" style="margin: 5px 0 0; font-size: 1.4rem; font-weight: bold; color: var(--text-main);">R$ 0,00</p>
+                        </div>
+                        <div class="card" style="padding: 15px; text-align: center;">
+                            <h4 style="margin:0; font-size: 0.9rem; color: var(--text-muted);">💳 Total Mês (Débito)</h4>
+                            <p id="dash-tot-deb" style="margin: 5px 0 0; font-size: 1.4rem; font-weight: bold; color: var(--text-main);">R$ 0,00</p>
+                        </div>
+                    </div>
+
+                    <div class="monthly-summary">
+                        <h3>Monitoramento Detalhado para Declaração (Visão do Mês)</h3>
+                        <table class="summary-table">
+                            <thead>
+                                <tr>
+                                    <th>Indicador</th>
+                                    <th>Lançado no Dia (<span id="current-date-label"></span>)</th>
+                                    <th>Acumulado (Mês + Passado)</th>
+                                    <th>Total Geral do Mês</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="font-bold">
+                                    <td>Vendas no Geral (Bruto)</td>
+                                    <td id="sys-vendas">R$ 0,00</td>
+                                    <td id="acc-vendas">R$ 0,00</td>
+                                    <td id="tot-vendas">R$ 0,00</td>
+                                </tr>
+                                <tr class="sub-row">
+                                    <td>↳ em PIX / Bradesco</td>
+                                    <td id="sys-pix">R$ 0,00</td>
+                                    <td id="acc-pix">R$ 0,00</td>
+                                    <td id="tot-pix">R$ 0,00</td>
+                                </tr>
+                                <tr class="sub-row">
+                                    <td>↳ em Crédito</td>
+                                    <td id="sys-cred">R$ 0,00</td>
+                                    <td id="acc-cred">R$ 0,00</td>
+                                    <td id="tot-cred">R$ 0,00</td>
+                                </tr>
+                                <tr class="sub-row">
+                                    <td>↳ em Débito</td>
+                                    <td id="sys-deb">R$ 0,00</td>
+                                    <td id="acc-deb">R$ 0,00</td>
+                                    <td id="tot-deb">R$ 0,00</td>
+                                </tr>
+                                <tr class="text-danger">
+                                    <td>Custo de Material</td>
+                                    <td id="sys-custos">R$ 0,00</td>
+                                    <td id="acc-custos">R$ 0,00</td>
+                                    <td id="tot-custos">R$ 0,00</td>
+                                </tr>
+                                <tr class="text-danger">
+                                    <td>Despesas Gerais</td>
+                                    <td id="sys-despesas">R$ 0,00</td>
+                                    <td id="acc-despesas">R$ 0,00</td>
+                                    <td id="tot-despesas">R$ 0,00</td>
+                                </tr>
+                                <tr class="text-danger">
+                                    <td>Funcionários</td>
+                                    <td id="sys-funcionarios">R$ 0,00</td>
+                                    <td id="acc-funcionarios">R$ 0,00</td>
+                                    <td id="tot-funcionarios">R$ 0,00</td>
+                                </tr>
+                                <tr class="result-row">
+                                    <td id="sum-resultado-label">Resultado do Mês</td>
+                                    <td id="sys-res">R$ 0,00</td>
+                                    <td id="acc-res">R$ 0,00</td>
+                                    <td id="tot-res">R$ 0,00</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="finance-form-section glass-panel">
+                    <h2>Novo Lançamento</h2>
+                    <form id="finance-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Categoria do Lançamento</label>
+                                <select id="fin-category" required>
+                                    <option value="venda">Entrada - Vendas (Bruto)</option>
+                                    <option value="custo">Saída - Custo de Material</option>
+                                    <option value="funcionario">Saída - Pagamento de Funcionários</option>
+                                    <option value="despesa">Saída - Despesas Gerais</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Valor (R$)</label>
+                                <input type="number" id="fin-value" step="0.01" min="0.01" required placeholder="0.00">
+                            </div>
+                            <div class="form-group">
+                                <label>Data</label>
+                                <input type="date" id="fin-date" required>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Descrição</label>
+                                <input type="text" id="fin-description" placeholder="Ex: Compra de Cedro, Salário, Venda #123">
+                            </div>
+                            <div class="form-group">
+                                <label>Método / Conta</label>
+                                <select id="fin-method" required onchange="toggleCheckFields()">
+                                    <option value="dinheiro">Dinheiro Físico</option>
+                                    <option value="pix">PIX</option>
+                                    <option value="bradesco">Bradesco (Transferência)</option>
+                                    <option value="debito">Cartão de Débito</option>
+                                    <option value="credito">Cartão de Crédito</option>
+                                    <option value="cheque">Cheque</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Campos exclusivos para CHEQUE -->
+                        <div class="form-row" id="check-fields" style="display: none;">
+                            <div class="form-group">
+                                <label>Número do Cheque</label>
+                                <input type="text" id="fin-check-number" placeholder="Ex: 000123">
+                            </div>
+                            <div class="form-group">
+                                <label>Emissor (Nome)</label>
+                                <input type="text" id="fin-check-issuer" placeholder="Nome no cheque">
+                            </div>
+                            <div class="form-group">
+                                <label>Data p/ Compensação</label>
+                                <input type="date" id="fin-check-date">
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn-primary" style="margin-top: 1rem;">Registrar Lançamento</button>
+                    </form>
+                </section>
+
+                <section class="finance-history-section glass-panel">
+                    <h2>Histórico de Movimentações</h2>
+                    <div class="table-container">
+                        <table id="finance-table">
+                            <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Descrição</th>
+                                    <th>Categoria</th>
+                                    <th>Método</th>
+                                    <th>Valor</th>
+                                    <th>Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody id="finance-body">
+                                <!-- Finance items here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL ACUMULADO -->
+    <div id="modal-acumulado" class="modal-overlay" style="display: none;">
+        <div class="modal-content glass-panel">
+            <h2>Lançar Acumulado (Dias Anteriores)</h2>
+            <p>Preencha os valores que já haviam acumulado neste mês antes de começar a usar o sistema, para termos a visão do todo.</p>
+            
+            <div class="form-row" style="margin-bottom: 1rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 1rem;">
+                <div class="form-group">
+                    <label>Saldo Inicial na Gaveta (Dinheiro Físico)</label>
+                    <input type="number" id="mod-acc-dinheiro" step="0.01" value="0">
+                </div>
+            </div>
+            
+            <div class="form-row" style="margin-bottom: 1rem;">
+                <div class="form-group">
+                    <label>Total de Vendas (Acumulado Geral)</label>
+                    <input type="number" id="mod-acc-venda" step="0.01" value="0">
+                </div>
+            </div>
+            <div class="form-row" style="margin-bottom: 1rem;">
+                <div class="form-group">
+                    <label>↳ Sendo Vendas no Pix/Bradesco</label>
+                    <input type="number" id="mod-acc-pix" step="0.01" value="0">
+                </div>
+                <div class="form-group">
+                    <label>↳ Sendo Vendas no Crédito</label>
+                    <input type="number" id="mod-acc-credito" step="0.01" value="0">
+                </div>
+                <div class="form-group">
+                    <label>↳ Sendo Vendas no Débito</label>
+                    <input type="number" id="mod-acc-debito" step="0.01" value="0">
+                </div>
+            </div>
+            
+            <div class="form-row" style="margin-top: 1.5rem; border-top: 1px solid var(--panel-border); padding-top: 1.5rem;">
+                <div class="form-group">
+                    <label>Custo de Material (Acumulado)</label>
+                    <input type="number" id="mod-acc-custo" step="0.01" value="0">
+                </div>
+                <div class="form-group">
+                    <label>Despesas Gerais (Acumulado)</label>
+                    <input type="number" id="mod-acc-despesa" step="0.01" value="0">
+                </div>
+                <div class="form-group">
+                    <label>Funcionários (Acumulado)</label>
+                    <input type="number" id="mod-acc-func" step="0.01" value="0">
+                </div>
+            </div>
+            
+            <div class="export-actions" style="margin-top: 2rem;">
+                <button class="btn-danger" onclick="closeAcumuladoModal()">Cancelar</button>
+                <button class="btn-success" onclick="saveAcumulado()">Salvar Acumulado</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="tabela-precos.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "financeItems": [
+    { "id": "1001", "category": "custo", "type": "expense", "value": 748.41, "date": "2026-08-24", "description": "", "method": "cheque" },
+    { "id": "1002", "category": "despesa", "type": "expense", "value": 2267.20, "date": "2026-08-24", "description": "", "method": "bradesco" },
+    { "id": "1003", "category": "venda", "type": "income", "value": 150.00, "date": "2026-08-24", "description": "", "method": "bradesco" },
+    { "id": "1004", "category": "venda", "type": "income", "value": 300.00, "date": "2026-08-24", "description": "", "method": "pix" },
+    { "id": "1005", "category": "venda", "type": "income", "value": 182.50, "date": "2026-08-24", "description": "", "method": "debito" },
+    { "id": "1006", "category": "venda", "type": "income", "value": 45.00, "date": "2026-08-24", "description": "", "method": "pix" },
+    { "id": "1007", "category": "venda", "type": "income", "value": 275.00, "date": "2026-08-24", "description": "", "method": "credito" },
+    { "id": "1008", "category": "venda", "type": "income", "value": 195.00, "date": "2026-08-24", "description": "", "method": "pix" },
+    { "id": "1009", "category": "venda", "type": "income", "value": 960.00, "date": "2026-08-24", "description": "", "method": "debito" },
+    { "id": "1010", "category": "venda", "type": "income", "value": 30.00, "date": "2026-08-24", "description": "", "method": "dinheiro" }
+  ],
+  "acumulado": {
+    "venda": 48866.00,
+    "pix": 12440.00,
+    "credito": 16565.00,
+    "debito": 5757.50,
+    "custo": 23422.50,
+    "despesa": 28910.55,
+    "func": 16160.28,
+    "dinheiroCaixa": 0
+  }
+}
