@@ -1,0 +1,6 @@
+# Arquivos que não devem ser publicados no site (ficam só no repositório)
+dados-iniciais.json
+*.md
+tests
+scripts
+*.zip
