@@ -198,6 +198,31 @@ O sistema é **controle interno gerencial**. A contabilidade oficial fica com o 
 - **Saldos:** cada conta tem saldo inicial e o botão **"Conferir saldo"**. O usuário digita o saldo do extrato e o sistema mostra a diferença em relação ao calculado.
 - **Painel:** saldo de cada conta, saldo total e projeção de 30 dias (recebíveis do PicPay, cheques a receber, cheques emitidos e contas a pagar).
 
+**Formas de pagamento** (substitui a lista anterior; cada venda grava a FORMA e a CONTA separadamente)
+
+| Forma | Conta de destino | tPag NF-e (padrão, editável na config) |
+|---|---|---|
+| Dinheiro | Gaveta | 01 |
+| PIX Bradesco | Bradesco | 17 (ou 20) |
+| PIX PicPay | PicPay | 17 (ou 20) |
+| Transferência/TED | Bradesco | 18 |
+| Débito (maquininha) | PicPay | 04 |
+| Crédito à vista | PicPay | 03 |
+| Crédito parcelado (Nx) | PicPay | 03 |
+| Cheque | Cheques em carteira | 02 |
+| Fiado | Contas a receber | 05 |
+
+- Dinheiro é uma forma própria e alimenta a Gaveta.
+- PIX Bradesco e PIX PicPay são formas **diferentes** e aparecem separados em todos os relatórios.
+- Débito, crédito à vista e crédito parcelado aparecem separados. O parcelado mostra o número de parcelas.
+- **Uma venda pode ter várias formas de pagamento**, como na NF-e. A venda só é aceita se a soma das formas for igual ao total.
+  Modelo: `pagamentos: [{ forma, conta, valor, parcelas?, tPag }]`.
+- Campo opcional **"Nº da NF-e"** em cada venda.
+- **Relatório "Vendas por forma de pagamento"** (dia, mês e ano):
+  - total por forma e por conta, com quantidade de vendas;
+  - a soma das formas tem que bater com o total de vendas;
+  - exporta CSV com data, Nº NF-e, forma, código tPag e valor, para o escritório conferir contra os XMLs.
+
 **Cartão**
 - Taxas e prazos configuráveis por modalidade: débito, crédito à vista e parcelado (por número de parcelas).
 - O padrão é 0%, débito em D+1 e crédito em D+30. Seu pai preenche as taxas reais depois.
