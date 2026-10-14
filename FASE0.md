@@ -163,3 +163,33 @@ Rodei um teste completo contra um banco simulado, com os dados de `dados-iniciai
 - Abrir o site numa janela anônima. Deve pedir a senha.
 - Lançar em dois celulares quase ao mesmo tempo e recarregar. Os dois lançamentos devem aparecer.
 - Ativar o modo avião e recarregar. Deve aparecer o aviso vermelho e não deve ser possível lançar.
+
+---
+
+## Copiar os dados reais para o projeto de testes (v2) e conferir
+
+Site de testes: **https://madeireirav2.vercel.app** (banco Upstash próprio, separado da produção).
+
+1. **No site original** (`madereira-caixa.vercel.app`): Gestor de Caixa › **💾 Exportar**. Isso só baixa o arquivo.
+2. **No v2:** Gestor de Caixa. Confira a linha cinza abaixo do título, `Banco: …`. Ela precisa mostrar o host do banco de **teste**, e não o da produção.
+3. Escolha **um** dos caminhos:
+   - **♻️ Restaurar** › arquivo › digite `RESTAURAR`. Depois, no aviso amarelo: **1. Baixar backup** › **2. Ativar salvamento seguro**.
+   - **📂 Importar** › arquivo. Num banco que ainda não foi migrado, ele também ativa o salvamento seguro e traz o acumulado de agosto.
+4. **🔍 Conferir com arquivo** › o mesmo arquivo. A tela compara arquivo × banco:
+   - a quantidade de lançamentos;
+   - vendas, custos, despesas e funcionários de cada mês;
+   - o acumulado de agosto/2026.
+
+   Deve aparecer **"Tudo confere"**. As linhas em vermelho mostram o que não bate.
+
+Se algo falhar, o aviso vermelho agora mostra o **motivo** (senha, banco, configuração).
+
+### Trava contra o banco de produção (só no v2)
+1. Descubra o host do banco de produção: projeto **madereira** › Storage › `upstash-kv-canary-chair`. O host aparece na REST URL, algo como `xxxx.upstash.io`. Você também encontra o valor da `KV_REST_API_URL` em Settings › Environment Variables desse projeto.
+2. No projeto **madeireira.v2** › Settings › Environment Variables: `BANCO_PRODUCAO_HOST` = esse host (Production e Preview) › **Redeploy**.
+3. A linha `Banco: …` passa a mostrar "trava de produção: ativa".
+4. Se o v2 for ligado por engano ao banco de produção, toda gravação é recusada e aparece "⛔ GRAVAÇÃO BLOQUEADA".
+5. **Nunca** crie essa variável no projeto de produção.
+
+Outras proteções:
+- Se o projeto tiver `KV_REST_API_URL` e `UPSTASH_REDIS_REST_URL` apontando para bancos diferentes, a API recusa tudo em vez de escolher um.

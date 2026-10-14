@@ -1,4 +1,4 @@
-import { kv, chaves, autorizar, responderErro } from "./_lib.js";
+import { kv, chaves, autorizar, responderErro, gravacaoBloqueada } from "./_lib.js";
 import { montarBackup, salvarCopia, listarCopias, lerCopia } from "./_dados.js";
 
 // GET              -> baixa o backup completo (e guarda uma cópia no KV)
@@ -15,7 +15,7 @@ export default async function handler(request, response) {
     if (request.query.copia) {
       backup = await lerCopia(kv(), k, String(request.query.copia));
     } else {
-      await salvarCopia(kv(), k, "download");
+      if (!gravacaoBloqueada()) await salvarCopia(kv(), k, "download");
       backup = await montarBackup(kv(), k);
     }
     const dia = new Date().toISOString().slice(0, 10);

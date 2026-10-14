@@ -223,10 +223,30 @@ function listaDoArquivo(arquivo) {
   return null;
 }
 
+function acumuladoDoArquivo(arquivo) {
+  if (arquivo?.chaves) return desembrulhar(arquivo.chaves.madeireira_acumulado) || null;
+  return arquivo && !Array.isArray(arquivo) ? arquivo.acumulado || null : null;
+}
+
+const acumuladoVazio = (a) => !a || Object.values(a).every((v) => !Number(v));
+
 export async function importar(kv, k, arquivo) {
-  await exigirMigracao(kv, k);
   const lista = listaDoArquivo(arquivo);
   if (!Array.isArray(lista)) throw erro(400, "Arquivo sem lançamentos reconhecíveis.");
+
+  // Banco ainda no formato antigo: ativa o salvamento seguro antes (a migração guarda cópia)
+  let migrou = false;
+  if (!(await estaMigrado(kv, k))) {
+    await migrar(kv, k);
+    migrou = true;
+  }
+  // Acumulado do arquivo só entra se o banco ainda não tiver um (nunca substitui)
+  let acumuladoImportado = false;
+  const accArquivo = acumuladoDoArquivo(arquivo);
+  if (accArquivo && !acumuladoVazio(accArquivo) && acumuladoVazio(desembrulhar(await kv.get(k.acumulado)))) {
+    await kv.set(k.acumulado, validarAcumulado(accArquivo));
+    acumuladoImportado = true;
+  }
 
   let adicionados = 0, existentes = 0, invalidos = 0;
   for (const item of lista) {
@@ -241,7 +261,7 @@ export async function importar(kv, k, arquivo) {
     if (await kv.hsetnx(k.lancamentos, limpo.id, limpo)) adicionados++;
     else existentes++;
   }
-  return { adicionados, existentes, invalidos };
+  return { adicionados, existentes, invalidos, migrou, acumuladoImportado };
 }
 
 // Volta o sistema exatamente ao estado do arquivo. Antes, guarda uma cópia do estado atual.

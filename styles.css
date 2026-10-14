@@ -320,6 +320,15 @@ button {
 .aviso-acoes .btn-icon { margin-left: 0; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* Status do banco e conferência */
+.status-banco { color: var(--text-muted); font-size: 0.8rem; margin: -0.75rem 0 1.25rem; font-variant-numeric: tabular-nums; }
+.modal-largo { max-width: 820px; }
+.tabela-conferencia td, .tabela-conferencia th { padding: 0.45rem 0.6rem; font-size: 0.875rem; }
+.tabela-conferencia tr.diferente td { background: rgba(239, 68, 68, 0.12); }
+.ok-sim { color: #34d399; font-weight: 700; }
+.ok-nao { color: #f87171; font-weight: 700; }
+.aviso-ok { background: rgba(16, 185, 129, 0.15); border-color: var(--success); }
+
 /* MODAL STYLES */
 .modal-overlay {
     position: fixed;

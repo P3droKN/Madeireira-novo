@@ -255,10 +255,15 @@
                                     ♻️ Restaurar
                                     <input type="file" id="restore-file" accept=".json" style="display: none;" onchange="restoreBackup(event)">
                                 </label>
+                                <label class="btn-icon" title="Comparar um arquivo de backup com o que está no banco">
+                                    🔍 Conferir com arquivo
+                                    <input type="file" id="conferir-file" accept=".json" style="display: none;" onchange="Conferencia.abrir(event)">
+                                </label>
                             </div>
                         </div>
                     </div>
                     
+                    <p class="status-banco" id="status-banco"></p>
                     <div class="cards-grid">
                         <div class="card cash">
                             <h3>💵 Dinheiro Físico (Gaveta)</h3>
@@ -508,6 +513,24 @@
         </div>
     </div>
 
+    <!-- MODAL CONFERÊNCIA -->
+    <div id="modal-conferencia" class="modal-overlay" style="display: none;">
+        <div class="modal-content glass-panel modal-largo">
+            <h2>Conferência: arquivo × banco</h2>
+            <p id="conferencia-status"></p>
+            <div id="conferencia-veredito" class="aviso"></div>
+            <div class="table-container">
+                <table class="tabela-conferencia">
+                    <thead><tr><th>Mês / grupo</th><th>Item</th><th class="num">Arquivo</th><th class="num">Banco</th><th></th></tr></thead>
+                    <tbody id="conferencia-body"></tbody>
+                </table>
+            </div>
+            <div class="export-actions">
+                <button class="btn-icon" onclick="Conferencia.fechar()">Fechar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL SENHA -->
     <div id="modal-senha" class="modal-overlay" style="display: none;">
         <div class="modal-content glass-panel">
@@ -524,5 +547,6 @@
 
     <script src="script.js"></script>
     <script type="module" src="calculadora.js"></script>
+    <script type="module" src="conferencia.js"></script>
 </body>
 </html>

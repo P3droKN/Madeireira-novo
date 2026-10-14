@@ -103,7 +103,7 @@ test("importar junta: adiciona só o que falta e não altera os existentes", asy
   const kv = sistemaAntigo();
   await migrar(kv, K);
   const r = await importar(kv, K, { financeItems: [{ ...ANTIGOS[0], value: 1 }, lanc("novo"), { id: "ruim" }], acumulado: {} });
-  assert.deepEqual(r, { adicionados: 1, existentes: 1, invalidos: 1 });
+  assert.deepEqual(r, { adicionados: 1, existentes: 1, invalidos: 1, migrou: false, acumuladoImportado: false });
   assert.equal((await kv.hget(K.lancamentos, "1001")).value, 748.41);
   const vazio = await importar(kv, K, { financeItems: [] });
   assert.equal(vazio.adicionados, 0);
@@ -231,4 +231,66 @@ test("venda da calculadora guarda CMV e itens no próprio lançamento", () => {
   assert.equal(v.itens[0].hack, undefined);
   assert.equal(validarLancamento(lanc("v2")).cmv, undefined);
   assert.throws(() => validarLancamento(lanc("v3", { cmv: -1 })), { status: 400 });
+});
+
+import { lerArquivoBackup, resumirLancamentos, compararResumos } from "../lib/resumo.js";
+import { hostDe, gravacaoBloqueada, bancoHost } from "../api/_lib.js";
+
+test("importar num banco vazio: ativa o salvamento seguro, traz o acumulado e os totais batem", async () => {
+  const kv = kvFalso({});
+  const arquivo = { financeItems: ANTIGOS.slice(0, 2), acumulado: ACUMULADO };
+  const r = await importar(kv, K, arquivo);
+  assert.equal(r.migrou, true);
+  assert.equal(r.acumuladoImportado, true);
+  assert.equal(r.adicionados, 2);
+  const banco = await lerTudo(kv, K);
+  const doArquivo = lerArquivoBackup(arquivo);
+  const cmp = compararResumos(resumirLancamentos(doArquivo.lista, doArquivo.acumulado), resumirLancamentos(banco.financeItems, banco.acumulado));
+  assert.equal(cmp.diferencas, 0);
+});
+
+test("importar não substitui um acumulado que já existe", async () => {
+  const kv = sistemaAntigo();
+  const r = await importar(kv, K, { financeItems: [], acumulado: { ...ACUMULADO, venda: 1 } });
+  assert.equal(r.acumuladoImportado, false);
+  assert.equal((await kv.get(K.acumulado)).venda, 48866);
+});
+
+test("conferência: restaurar arquivo antigo + migrar dá zero diferenças; diferença é apontada", async () => {
+  const kv = kvFalso({});
+  const arquivo = { financeItems: ANTIGOS, acumulado: ACUMULADO };
+  await restaurar(kv, K, arquivo);
+  await migrar(kv, K);
+  const banco = await lerTudo(kv, K);
+  const a = lerArquivoBackup(arquivo);
+  const resA = resumirLancamentos(a.lista, a.acumulado);
+  assert.equal(compararResumos(resA, resumirLancamentos(banco.financeItems, banco.acumulado)).diferencas, 0);
+  assert.equal(resA.quantidade, 3); // o id repetido não some
+  const outro = resumirLancamentos(banco.financeItems.slice(1), banco.acumulado);
+  assert.ok(compararResumos(resA, outro).diferencas > 0);
+});
+
+test("resumo soma em centavos (sem erro de arredondamento)", () => {
+  const lista = Array.from({ length: 10 }, (_, i) => ({ id: String(i), category: "venda", value: 0.1, date: "2026-09-01" }));
+  assert.equal(resumirLancamentos(lista, null).porMes[0].venda, 1);
+});
+
+test("trava: recusa gravar quando o banco em uso é o da produção", () => {
+  const antes = { ...process.env };
+  try {
+    process.env.UPSTASH_REDIS_REST_URL = "https://teste-123.upstash.io";
+    delete process.env.KV_REST_API_URL;
+    process.env.BANCO_PRODUCAO_HOST = "canary-chair.upstash.io";
+    assert.equal(bancoHost(), "teste-123.upstash.io");
+    assert.equal(gravacaoBloqueada(), false);
+    process.env.BANCO_PRODUCAO_HOST = "https://TESTE-123.upstash.io/";
+    assert.equal(gravacaoBloqueada(), true);
+    process.env.KV_REST_API_URL = "https://outro.upstash.io";
+    assert.throws(() => bancoHost(), /duas configurações/);
+  } finally {
+    for (const k of ["UPSTASH_REDIS_REST_URL", "KV_REST_API_URL", "BANCO_PRODUCAO_HOST"]) {
+      if (antes[k] === undefined) delete process.env[k]; else process.env[k] = antes[k];
+    }
+  }
+  assert.equal(hostDe("abc.upstash.io"), "abc.upstash.io");
 });

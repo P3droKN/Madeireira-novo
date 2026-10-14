@@ -82,6 +82,8 @@ let somenteLeitura = false;
 // Até o backup + migração, os lançamentos ficam na lista antiga, que é regravada inteira.
 let migrado = true;
 let backupBaixado = false;
+let erroConexao = '';
+let statusBanco = null;
 
 async function carregarDados() {
     try {
@@ -89,17 +91,21 @@ async function carregarDados() {
         financeItems = data.financeItems || [];
         acumulado = Object.assign({ ...ACUMULADO_VAZIO }, data.acumulado || {});
         migrado = data.migrado;
+        statusBanco = data.status || null;
         somenteLeitura = false;
+        erroConexao = '';
         // Cópia local só para leitura quando estiver sem conexão
         localStorage.setItem('madeireira_finance', JSON.stringify(financeItems));
         localStorage.setItem('madeireira_acumulado', JSON.stringify(acumulado));
     } catch (e) {
         console.warn('Sem conexão com a nuvem. Mostrando a última cópia local, sem gravar.', e);
         somenteLeitura = true;
+        erroConexao = e.message || String(e);
         financeItems = JSON.parse(localStorage.getItem('madeireira_finance')) || [];
         acumulado = JSON.parse(localStorage.getItem('madeireira_acumulado')) || { ...ACUMULADO_VAZIO };
     }
     atualizarAviso();
+    atualizarStatusBanco();
     renderFinance();
 }
 
@@ -108,6 +114,7 @@ function atualizarAviso() {
     if (somenteLeitura) {
         aviso.className = 'aviso aviso-erro';
         aviso.innerHTML = `<strong>Sem conexão com a nuvem.</strong> Mostrando a última cópia deste aparelho, só para consulta. Nada pode ser lançado até a conexão voltar.
+            <br><small>Motivo: ${esc(erroConexao || 'desconhecido')}</small>
             <button class="btn-icon" onclick="carregarDados()">🔄 Tentar de novo</button>`;
         aviso.style.display = 'block';
     } else if (!migrado) {
@@ -121,6 +128,19 @@ function atualizarAviso() {
     } else {
         aviso.style.display = 'none';
     }
+}
+
+function atualizarStatusBanco() {
+    const el = document.getElementById('status-banco');
+    if (!el) return;
+    if (!statusBanco) { el.textContent = ''; return; }
+    const partes = [`Banco: ${statusBanco.bancoHost || '—'}`, `ambiente: ${statusBanco.ambiente}`];
+    if (statusBanco.prefixo) partes.push(`prefixo: ${statusBanco.prefixo}`);
+    partes.push(migrado ? 'salvamento seguro: ativo' : 'salvamento seguro: não ativado');
+    if (statusBanco.gravacaoBloqueada) partes.push('⛔ GRAVAÇÃO BLOQUEADA (banco de produção)');
+    else if (statusBanco.travaConfigurada) partes.push('trava de produção: ativa');
+    el.textContent = partes.join(' · ');
+    el.classList.toggle('texto-ruim', Boolean(statusBanco.gravacaoBloqueada));
 }
 
 function podeGravar() {
@@ -578,7 +598,8 @@ async function baixarBackup() {
 
 async function exportBackup() {
     if (somenteLeitura) {
-        // Sem nuvem: exporta pelo menos a cópia deste aparelho
+        // Sem nuvem: exporta pelo menos a cópia deste aparelho, avisando
+        alert(`Sem conexão com a nuvem (${erroConexao || 'motivo desconhecido'}).\n\nVou exportar só a cópia guardada neste aparelho, que pode estar vazia ou desatualizada. Para o backup completo, resolva a conexão e exporte de novo.`);
         baixarArquivo({ financeItems, acumulado }, `madeireira_copia_local_${getLocalDateString()}.json`);
         return;
     }
@@ -598,10 +619,18 @@ function lerArquivoJson(event) {
 // Importar = JUNTAR: adiciona só os lançamentos que ainda não existem. Não apaga nada.
 async function importBackup(event) {
     const arquivo = await lerArquivoJson(event);
-    if (!arquivo || !podeGravar()) return;
+    if (!arquivo) return;
+    if (somenteLeitura) {
+        alert(`Sem conexão com a nuvem (${erroConexao || 'motivo desconhecido'}). Nada foi importado.`);
+        return;
+    }
+    if (!migrado && !confirm('Importar também ativa o salvamento seguro (uma cópia do banco é guardada antes).\n\nContinuar?')) return;
     try {
         const r = await api('/api/importar', { method: 'POST', body: arquivo });
-        alert(`Importação concluída.\n\nNovos lançamentos: ${r.adicionados}\nJá existiam: ${r.existentes}\nIgnorados (inválidos): ${r.invalidos}`);
+        alert(`Importação concluída.\n\nNovos lançamentos: ${r.adicionados}\nJá existiam: ${r.existentes}\nIgnorados (inválidos): ${r.invalidos}` +
+            (r.acumuladoImportado ? '\nAcumulado de agosto: importado' : '') +
+            (r.migrou ? '\nSalvamento seguro: ativado' : '') +
+            '\n\nDica: use "🔍 Conferir com arquivo" para comparar os totais.');
     } catch (e) {
         alert(`Erro ao importar: ${e.message}`);
     }
