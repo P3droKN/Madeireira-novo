@@ -441,11 +441,12 @@ test("orçamento: número sequencial, validade, cliente cadastrado pelo telefone
   assert.equal(c.validoAte, "2026-10-13");
 });
 
-test("orçamento: contato vira 'aguardando'; perdido pede motivo; editar mantém o número", async () => {
+test("orçamento: contato não muda a situação (continua em aberto); perdido pede motivo; editar mantém o número", async () => {
   const kv = kvFalso({});
   const o = await salvarOrcamento(kv, K, novoOrc(), {});
   const c = await atualizarOrcamento(kv, K, { id: o.id, acao: "contato", tipo: "cobrar" });
-  assert.equal(c.status, "aguardando");
+  assert.equal(c.status, "aberto");
+  await assert.rejects(atualizarOrcamento(kv, K, { id: o.id, acao: "status", status: "aguardando" }), /Ação inválida/);
   assert.ok(c.ultimoContato);
   assert.equal(c.contatos[0].tipo, "cobrar");
   await assert.rejects(atualizarOrcamento(kv, K, { id: o.id, acao: "perdido", motivo: "qualquer" }), /motivo/);
@@ -472,6 +473,39 @@ test("orçamento: converter em venda fecha com vínculo; fechado não edita; atu
   await assert.rejects(salvarOrcamento(kv, K, novoOrc({ id: o.id }), {}), /Duplicar/);
   const venda = validarLancamentoV2({ id: "1760V", v: 2, conta: "venda_produtos", value: 1760, competencia: "2026-10-21", pagamentos: [{ forma: "dinheiro", valor: 1760 }], orcamento: "ORC-0001" }, {});
   assert.equal(venda.orcamento, "ORC-0001");
+});
+
+test("orçamento: excluir vai para a lixeira e restaura; convertido não pode ser excluído", async () => {
+  const kv = kvFalso({});
+  const o = await salvarOrcamento(kv, K, novoOrc(), {});
+  const x = await atualizarOrcamento(kv, K, { id: o.id, acao: "excluir" });
+  assert.ok(x.excluidoEm);
+  assert.equal(x.status, "aberto"); // situação não muda: só sai da lista
+  assert.equal((await listarOrcamentos(kv, K)).orcamentos.length, 1); // continua guardado
+  await assert.rejects(atualizarOrcamento(kv, K, { id: o.id, acao: "contato" }), /lixeira/);
+  await assert.rejects(salvarOrcamento(kv, K, novoOrc({ id: o.id }), {}), /lixeira/);
+  const r = await atualizarOrcamento(kv, K, { id: o.id, acao: "restaurar" });
+  assert.equal(r.excluidoEm, undefined);
+  await assert.rejects(atualizarOrcamento(kv, K, { id: o.id, acao: "restaurar" }), /não está na lixeira/);
+  await atualizarOrcamento(kv, K, { id: o.id, acao: "fechar", vendaId: "1760V", hoje: "2026-10-21" });
+  await assert.rejects(atualizarOrcamento(kv, K, { id: o.id, acao: "excluir" }), /convertido em venda não pode ser excluído/);
+});
+
+test("orçamento: reabrir fechado só se a venda foi estornada; perdido reabre", async () => {
+  const kv = kvFalso({});
+  const o = await salvarOrcamento(kv, K, novoOrc(), {});
+  await atualizarOrcamento(kv, K, { id: o.id, acao: "fechar", vendaId: "1760V", hoje: "2026-10-21" });
+  await kv.hset(K.lancamentos, { "1760V": { id: "1760V", v: 2, conta: "venda_produtos", value: 1650 } });
+  await assert.rejects(atualizarOrcamento(kv, K, { id: o.id, acao: "reabrir" }), /estorne/);
+  await kv.hset(K.lancamentos, { "1760V": { id: "1760V", v: 2, conta: "venda_produtos", value: 1650, excluido: true } });
+  const r = await atualizarOrcamento(kv, K, { id: o.id, acao: "reabrir" });
+  assert.equal(r.status, "aberto");
+  assert.equal(r.vendaId, undefined);
+  assert.equal(r.vendaIdAnterior, "1760V");
+  // fechado sem venda vinculada (dado antigo) também reabre
+  const o2 = await salvarOrcamento(kv, K, novoOrc(), {});
+  await kv.hset(K.orcamentos, { [o2.id]: { ...o2, status: "fechado" } });
+  assert.equal((await atualizarOrcamento(kv, K, { id: o2.id, acao: "reabrir" })).status, "aberto");
 });
 
 test("backup e restauração incluem orçamentos, clientes e o contador", async () => {

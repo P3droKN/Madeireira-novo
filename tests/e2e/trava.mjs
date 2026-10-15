@@ -16,7 +16,7 @@ const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromi
 const page = await browser.newPage();
 await page.goto(URL);
 await page.fill("#senha-input", "pinho123"); await page.click("#senha-form button");
-await page.click("#btn-tab-finance");
+await page.click("#btn-tab-ajustes"); await page.click('.subtabs[data-grupo="ajustes"] .subtab[data-sub="dados"]');
 await page.waitForFunction(() => document.getElementById("status-banco").textContent.includes("Banco:"));
 const st = await page.textContent("#status-banco");
 ok(st.includes("GRAVAÇÃO BLOQUEADA"), "tela mostra: " + st);

@@ -66,33 +66,24 @@ async function api(caminho, { method = 'GET', body, timeoutMs = 60000 } = {}) {
     return dados || {};
 }
 
-// --- TAB SWITCHING ---
+// --- ABAS ---
+// Vender · Orçamentos · Caixa · Relatórios · Ajustes. O sistema abre em Vender; o Caixa abre em Lançar.
+const ABAS = ['vender', 'orcamentos', 'caixa', 'relatorios', 'ajustes'];
 function switchTab(tabId) {
-    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+    if (!ABAS.includes(tabId)) tabId = 'vender';
+    document.querySelectorAll('.tab-content').forEach(el => { el.classList.remove('active'); el.style.display = 'none'; });
     document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-    
     document.getElementById(`tab-${tabId}`).style.display = 'block';
     document.getElementById(`tab-${tabId}`).classList.add('active');
     document.getElementById(`btn-tab-${tabId}`).classList.add('active');
-    
-    if(tabId === 'finance') {
-        renderFinance();
-    }
-    if(tabId === 'prices' && window.Precos) {
-        window.Precos.abrir();
-    }
-    if(tabId === 'orcamentos' && window.Orcamentos) {
-        window.Orcamentos.abrir();
-    }
-    if(tabId === 'financeiro' && window.Financeiro) {
-        window.Financeiro.abrir();
-    }
+
+    if (tabId === 'orcamentos' && window.Orcamentos) window.Orcamentos.abrir();
+    if (['caixa', 'relatorios', 'ajustes'].includes(tabId) && window.Financeiro) window.Financeiro.abrir(tabId);
 }
 
 // --- CALCULADORA: ver calculadora.js (módulo) ---
 
-// --- GESTOR DE CAIXA LOGIC ---
+// --- DADOS DO CAIXA (lidos uma vez e usados por todas as abas) ---
 let financeItems = [];
 const ACUMULADO_VAZIO = { venda: 0, pix: 0, credito: 0, debito: 0, custo: 0, despesa: 0, func: 0, dinheiroCaixa: 0 };
 let acumulado = { ...ACUMULADO_VAZIO };
@@ -133,11 +124,10 @@ async function carregarDados() {
     }
     atualizarAviso();
     atualizarStatusBanco();
-    renderFinance();
     if (window.Financeiro) window.Financeiro.atualizar();
 }
 
-// Acesso da aba Financeiro (módulo) aos dados carregados aqui
+// Acesso das abas Caixa, Relatórios e Ajustes (módulos) aos dados carregados aqui
 window.Caixa = {
     get itens() { return financeItems; },
     get acumulado() { return acumulado; },
@@ -151,6 +141,7 @@ window.Caixa = {
     gravar: (itens) => gravarLancamentos(itens),
     recarregar: () => carregarDados(),
     baixarBackup: () => baixarBackup(),
+    excluir: (id) => deleteFinanceItem(id),
     novoId: (s) => novoId(s),
     hoje: () => getLocalDateString(),
 };
@@ -233,105 +224,16 @@ function getLocalDateString() {
     return `${year}-${month}-${day}`;
 }
 
-const filterDateEl = document.getElementById('filter-date');
+// A data da venda começa com hoje (YYYY-MM-DD local)
 const directSaleDateEl = document.getElementById('direct-sale-date');
-
-// Começa com a data de hoje (YYYY-MM-DD) local
-const initialDate = getLocalDateString();
-filterDateEl.value = initialDate;
-if (directSaleDateEl) directSaleDateEl.value = initialDate;
-
-filterDateEl.addEventListener('change', () => {
-    if (directSaleDateEl) directSaleDateEl.value = filterDateEl.value;
-    renderFinance();
-});
-
-const finCategory = document.getElementById('fin-category');
-const finMethod = document.getElementById('fin-method');
-
-finCategory.addEventListener('change', () => {
-    const cat = finCategory.value;
-    const currentMethod = finMethod.value;
-    
-    finMethod.innerHTML = `
-        <option value="dinheiro">Dinheiro Físico</option>
-        <option value="pix">PIX</option>
-        <option value="bradesco">Bradesco (Transferência)</option>
-        <option value="debito">Cartão de Débito</option>
-        <option value="credito">Cartão de Crédito</option>
-        <option value="cheque">Cheque</option>
-    `;
-    
-    if (cat === 'custo') {
-        Array.from(finMethod.options).forEach(opt => {
-            if (['pix', 'debito', 'credito'].includes(opt.value)) {
-                opt.remove();
-            }
-        });
-        finMethod.value = 'cheque';
-    } else {
-        finMethod.value = currentMethod || 'dinheiro';
-    }
-    
-    toggleCheckFields();
-});
-
-function toggleCheckFields() {
-    const method = document.getElementById('fin-method').value;
-    const checkFields = document.getElementById('check-fields');
-    if (method === 'cheque') {
-        checkFields.style.display = 'flex';
-    } else {
-        checkFields.style.display = 'none';
-    }
-}
-
-document.getElementById('finance-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!podeGravar()) return;
-
-    const category = document.getElementById('fin-category').value;
-    const type = category === 'venda' ? 'income' : 'expense';
-    const value = parseFloat(document.getElementById('fin-value').value);
-    const date = document.getElementById('fin-date').value;
-    const description = document.getElementById('fin-description').value;
-    const method = document.getElementById('fin-method').value;
-    
-    const item = {
-        id: novoId(),
-        category,
-        type,
-        value,
-        date,
-        description,
-        method
-    };
-
-    if (method === 'cheque') {
-        item.checkNumber = document.getElementById('fin-check-number').value;
-        item.checkIssuer = document.getElementById('fin-check-issuer').value;
-        item.checkDate = document.getElementById('fin-check-date').value;
-    }
-
-    if (!(await gravarLancamentos([item]))) return;
-
-    // Atualiza o painel para refletir a mesma data que o usuário acabou de preencher (Facilita lançamento atrasado)
-    document.getElementById('filter-date').value = document.getElementById('fin-date').value;
-
-    renderFinance();
-    e.target.reset();
-    
-    // Devolve a data para o que estava antes do reset do formulário
-    document.getElementById('fin-date').value = document.getElementById('filter-date').value;
-    
-    toggleCheckFields();
-});
+if (directSaleDateEl) directSaleDateEl.value = getLocalDateString();
 
 async function deleteFinanceItem(id) {
     if (!podeGravar()) return;
     const item = financeItems.find(i => i.id === id);
     if (!item) return;
-    const resumo = `${item.date.split('-').reverse().join('/')} - ${formatCurrency(item.value)}${item.description ? ' - ' + item.description : ''}`;
+    const data = item.competencia || item.date || '';
+    const resumo = `${data.split('-').reverse().join('/')} - ${formatCurrency(item.value)}${item.description ? ' - ' + item.description : ''}`;
     if (!confirm(`Excluir este lançamento?\n\n${resumo}`)) return;
     try {
         await api(`/api/lancamento?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
@@ -340,196 +242,6 @@ async function deleteFinanceItem(id) {
         return;
     }
     await carregarDados();
-}
-
-function renderFinance() {
-    const tbody = document.getElementById('finance-body');
-    tbody.innerHTML = '';
-    
-    const filterDate = filterDateEl.value; // "YYYY-MM-DD"
-    const filterMonth = filterDate.substring(0, 7); // "YYYY-MM"
-    
-    const dateLabel = filterDate.split('-').reverse().join('/');
-    const dateLabelEl = document.getElementById('current-date-label');
-    if(dateLabelEl) dateLabelEl.textContent = dateLabel;
-    
-    // Atualiza o título de impressão com o mês selecionado
-    const printMonthEl = document.getElementById('print-month-label');
-    if (printMonthEl) {
-        const [, month, year] = dateLabel.split('/');
-        printMonthEl.textContent = `${month}/${year}`;
-    }
-    
-    let cashInMonth = 0;
-    let grandTotal = 0;
-    
-    // O que foi lançado EXATAMENTE no dia selecionado (sys)
-    let sysVenda = 0, sysPix = 0, sysCred = 0, sysDeb = 0;
-    let sysCusto = 0, sysFunc = 0, sysDesp = 0;
-
-    // O que foi lançado no mesmo MÊS, mas em dias ANTERIORES ao dia selecionado (past)
-    let pastVenda = 0, pastPix = 0, pastCred = 0, pastDeb = 0;
-    let pastCusto = 0, pastFunc = 0, pastDesp = 0;
-
-    // Filtra histórico só para o mês selecionado até o dia atual
-    const filtered = financeItems.filter(item => !item.abertura && item.conta !== 'transferencia' && item.date.startsWith(filterMonth) && item.date <= filterDate)
-                                 .sort((a, b) => new Date(b.date) - new Date(a.date));
-
-    filtered.forEach(item => {
-        const isIncome = item.type === 'income';
-        const val = isIncome ? item.value : -item.value;
-        
-        if (item.method === 'dinheiro') {
-            cashInMonth += val;
-        }
-        
-        const cat = item.category || (isIncome ? 'venda' : 'despesa');
-        
-        // Separa a lógica: Foi no dia selecionado? ou foi nos dias anteriores?
-        if (item.date === filterDate) {
-            if (cat === 'venda') {
-                sysVenda += item.value;
-                if (item.method === 'pix' || item.method === 'bradesco') sysPix += item.value;
-                if (item.method === 'credito') sysCred += item.value;
-                if (item.method === 'debito') sysDeb += item.value;
-            }
-            else if (cat === 'custo') sysCusto += item.value;
-            else if (cat === 'funcionario') sysFunc += item.value;
-            else if (cat === 'despesa') sysDesp += item.value;
-        } else {
-            // Dias anteriores dentro do mesmo mês
-            if (cat === 'venda') {
-                pastVenda += item.value;
-                if (item.method === 'pix' || item.method === 'bradesco') pastPix += item.value;
-                if (item.method === 'credito') pastCred += item.value;
-                if (item.method === 'debito') pastDeb += item.value;
-            }
-            else if (cat === 'custo') pastCusto += item.value;
-            else if (cat === 'funcionario') pastFunc += item.value;
-            else if (cat === 'despesa') pastDesp += item.value;
-        }
-
-        const tr = document.createElement('tr');
-        
-        let methodStr = esc(String(item.method).toUpperCase());
-        if(item.method === 'cheque') {
-            methodStr += `<br><small style="color:var(--text-muted)">Nº: ${esc(item.checkNumber || '-')} | Para: ${item.checkDate ? esc(item.checkDate.split('-').reverse().join('/')) : '-'}</small>`;
-        }
-        
-        let catStr = "";
-        if (cat === 'venda') catStr = "Venda (Bruto)";
-        if (cat === 'custo') catStr = "Custo Material";
-        if (cat === 'funcionario') catStr = "Funcionário";
-        if (cat === 'despesa') catStr = "Despesa Geral";
-
-        tr.innerHTML = `
-            <td>${item.date.split('-').reverse().join('/')}</td>
-            <td>${esc(item.description)}</td>
-            <td class="${isIncome ? 'type-income' : 'type-expense'}">${catStr}</td>
-            <td>${methodStr}</td>
-            <td class="${isIncome ? 'type-income' : 'type-expense'}">${formatCurrency(item.value)}</td>
-            <td><button class="delete-btn" onclick="deleteFinanceItem('${esc(item.id)}')">Excluir</button></td>
-        `;
-        tbody.appendChild(tr);
-    });
-
-    // Migration/Fix: O acumulado manual que foi inserido era referente apenas aos dias 1 a 23 de Agosto.
-    // Ele não deve ser somado nos meses seguintes (Setembro em diante).
-    const isAgosto2026 = filterMonth === '2026-08';
-
-    // Calculates Totals: Acumulado = (Anterior no Mês) + (Manual de Agosto)
-    let accVenda = pastVenda + (isAgosto2026 ? (acumulado.venda || 0) : 0);
-    let accPix = pastPix + (isAgosto2026 ? (acumulado.pix || 0) : 0);
-    let accCred = pastCred + (isAgosto2026 ? (acumulado.credito || 0) : 0);
-    let accDeb = pastDeb + (isAgosto2026 ? (acumulado.debito || 0) : 0);
-    let accCusto = pastCusto + (isAgosto2026 ? (acumulado.custo || 0) : 0);
-    let accFunc = pastFunc + (isAgosto2026 ? (acumulado.func || 0) : 0);
-    let accDesp = pastDesp + (isAgosto2026 ? (acumulado.despesa || 0) : 0);
-
-    // Total Geral = (Hoje) + (Acumulado do Mês)
-    let totVenda = sysVenda + accVenda;
-    let totPix = sysPix + accPix;
-    let totCred = sysCred + accCred;
-    let totDeb = sysDeb + accDeb;
-    let totCusto = sysCusto + accCusto;
-    let totFunc = sysFunc + accFunc;
-    let totDesp = sysDesp + accDesp;
-
-    // Calcula os Resultados
-    let sysRes = sysVenda - sysCusto - sysDesp; // Resultado só do dia
-    let accRes = accVenda - accCusto - accDesp; // Resultado de dias anteriores
-    grandTotal = totVenda - totCusto - totDesp; // Resultado final
-
-    // Total na Gaveta Físico
-    // Para a gaveta ser real, precisamos somar TODO o dinheiro físico de todos os tempos até a data atual.
-    const dateLimit = filterDateEl.value;
-    let allTimeCash = acumulado.dinheiroCaixa || 0;
-    financeItems.forEach(item => {
-        if (item.date <= dateLimit && !item.abertura && item.conta !== 'transferencia') {
-            if (item.method === 'dinheiro') {
-                if (item.type === 'income') allTimeCash += item.value;
-                else if (item.type === 'expense') allTimeCash -= item.value;
-            }
-        }
-    });
-    document.getElementById('dash-cash').textContent = formatCurrency(allTimeCash);
-    
-    const totalEl = document.getElementById('dash-total');
-    totalEl.textContent = formatCurrency(grandTotal);
-    totalEl.className = grandTotal >= 0 ? 'positive' : 'negative';
-
-    // Atualiza os cartões novos de métodos de pagamento (Totais do Mês)
-    document.getElementById('dash-tot-pix').textContent = formatCurrency(totPix);
-    document.getElementById('dash-tot-cred').textContent = formatCurrency(totCred);
-    document.getElementById('dash-tot-deb').textContent = formatCurrency(totDeb);
-    
-    // Atualiza Resumo Tabela
-    document.getElementById('sys-vendas').textContent = formatCurrency(sysVenda);
-    document.getElementById('acc-vendas').textContent = formatCurrency(accVenda);
-    document.getElementById('tot-vendas').textContent = formatCurrency(totVenda);
-
-    document.getElementById('sys-pix').textContent = formatCurrency(sysPix);
-    document.getElementById('acc-pix').textContent = formatCurrency(accPix);
-    document.getElementById('tot-pix').textContent = formatCurrency(totPix);
-
-    document.getElementById('sys-cred').textContent = formatCurrency(sysCred);
-    document.getElementById('acc-cred').textContent = formatCurrency(accCred);
-    document.getElementById('tot-cred').textContent = formatCurrency(totCred);
-
-    document.getElementById('sys-deb').textContent = formatCurrency(sysDeb);
-    document.getElementById('acc-deb').textContent = formatCurrency(accDeb);
-    document.getElementById('tot-deb').textContent = formatCurrency(totDeb);
-
-    document.getElementById('sys-custos').textContent = formatCurrency(sysCusto);
-    document.getElementById('acc-custos').textContent = formatCurrency(accCusto);
-    document.getElementById('tot-custos').textContent = formatCurrency(totCusto);
-
-    document.getElementById('sys-despesas').textContent = formatCurrency(sysDesp);
-    document.getElementById('acc-despesas').textContent = formatCurrency(accDesp);
-    document.getElementById('tot-despesas').textContent = formatCurrency(totDesp);
-
-    document.getElementById('sys-funcionarios').textContent = formatCurrency(sysFunc);
-    document.getElementById('acc-funcionarios').textContent = formatCurrency(accFunc);
-    document.getElementById('tot-funcionarios').textContent = formatCurrency(totFunc);
-
-    document.getElementById('sys-res').textContent = formatCurrency(sysRes);
-    document.getElementById('acc-res').textContent = formatCurrency(accRes);
-    
-    const totResEl = document.getElementById('tot-res');
-    totResEl.textContent = formatCurrency(grandTotal);
-    
-    const resultLabel = document.getElementById('sum-resultado-label');
-    
-    if (grandTotal > 0) {
-        totResEl.className = 'text-success font-bold';
-        resultLabel.textContent = 'LUCRO BRUTO DO MÊS';
-    } else if (grandTotal < 0) {
-        totResEl.className = 'text-danger font-bold';
-        resultLabel.textContent = 'PREJUÍZO BRUTO DO MÊS';
-    } else {
-        totResEl.className = 'font-bold';
-        resultLabel.textContent = 'RESULTADO BRUTO DO MÊS';
-    }
 }
 
 // Registra a venda do pedido da calculadora: um lançamento só, com o custo dos itens (CMV)

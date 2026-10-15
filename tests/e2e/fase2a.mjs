@@ -24,13 +24,14 @@ const backup = await (await fetch(URL + "/api/backup", { headers: H })).json();
 fs.writeFileSync("backup-2a.json", JSON.stringify(backup));
 await page.reload();
 
-// Tela antiga: total de agosto antes da migração v2
-await page.click("#btn-tab-finance");
-await page.fill("#filter-date", "2026-08-31"); await page.dispatchEvent("#filter-date", "change");
-const totAgoAntes = await page.textContent("#tot-vendas");
+// Relatórios › Resumo do mês (a antiga tela do Gestor de Caixa): total de agosto antes da migração v2
+await page.click("#btn-tab-relatorios");
+await page.fill("#rel-dia", "2026-08-31"); await page.dispatchEvent("#rel-dia", "change");
+const totAgoAntes = await page.textContent("#rel-tot-vendas");
+ok(nb(totAgoAntes) === "R$ 51.003,50", "resumo de agosto antes da migração = acumulado + vendas de agosto: " + nb(totAgoAntes));
 
 // 1. Migração v2
-await page.click("#btn-tab-financeiro");
+await page.click("#btn-tab-caixa");
 ok(await page.isVisible("#fin-aviso-v2"), "aviso para migrar ao financeiro novo");
 const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#fin-v2-backup")]);
 await page.click("#fin-v2-migrar");
@@ -43,10 +44,10 @@ ok((await porId("1003")).pagamentos[0].forma === "transferencia", "método 'brad
 ok((await porId("1760000000002C")).chequeEmitido.compensacao === "2026-10-20", "custo em cheque → cheque emitido com compensação");
 ok(todos.filter((l) => l.abertura).length === 7, "7 lançamentos de abertura (agosto)");
 
-// Tela antiga não conta agosto em dobro
-await page.click("#btn-tab-finance");
-await page.fill("#filter-date", "2026-08-31"); await page.dispatchEvent("#filter-date", "change");
-ok(await page.textContent("#tot-vendas") === totAgoAntes, "tela antiga: total de agosto igual antes e depois (" + nb(totAgoAntes) + ")");
+// Resumo do mês não conta agosto em dobro
+await page.click("#btn-tab-relatorios");
+await page.fill("#rel-dia", "2026-08-31"); await page.dispatchEvent("#rel-dia", "change");
+ok(await page.textContent("#rel-tot-vendas") === totAgoAntes, "resumo do mês: total de agosto igual antes e depois (" + nb(totAgoAntes) + ")");
 
 // Conferência com o backup de antes
 await page.setInputFiles("#conferir-file", "backup-2a.json");
@@ -56,7 +57,7 @@ ok((await page.textContent("#conferencia-body")).includes("Abertura × acumulado
 await page.click("#modal-conferencia >> text=Fechar");
 
 // 2. Reclassificação em lote
-await page.click("#btn-tab-financeiro");
+await page.click("#btn-tab-caixa");
 await page.click('.subtab[data-sub="lista"]');
 await page.selectOption("#fin-f-tipo", "sugestao");
 const comSug = await page.locator("#fin-lista-body tr").count();
@@ -135,7 +136,7 @@ await page.waitForTimeout(400);
 ok((await lanc()).some((l) => l.conta === "transferencia" && l.de === "picpay" && l.para === "bradesco"), "transferência PicPay → Bradesco");
 
 // 4. Calculadora com duas formas
-await page.click("#btn-tab-calculator");
+await page.click("#btn-tab-vender");
 await page.waitForFunction(() => document.getElementById("catalogo-status").textContent.includes("itens"));
 await page.selectOption("#material", "CAMBARA"); await page.selectOption("#dimension", "CAMBARA|1x2");
 await page.fill("#quantity-pieces", "6"); await page.fill("#quantity-length", "3"); await page.click("#btn-adicionar");
@@ -152,13 +153,14 @@ const vc = (await lanc()).find((l) => l.nfe === "999");
 ok(vc && vc.v === 2 && vc.cmv === 61.92 && vc.pagamentos.map((p) => `${p.forma}:${p.valor}`).join(",") === "dinheiro:40,debito:50", "calculadora grava venda v2 com 2 formas, NF-e e CMV");
 
 // 5. Config + DRE
-await page.click("#btn-tab-financeiro");
-await page.click('.subtab[data-sub="config"]');
+await page.click("#btn-tab-ajustes");
+await page.click('.subtabs[data-grupo="ajustes"] .subtab[data-sub="financeiro"]');
 await page.fill("#cfg-deb-taxa", "2");
 await page.click("#fin-config-form button[type=submit]");
 await page.waitForTimeout(300);
+await page.click("#btn-tab-relatorios");
 await page.click('.subtab[data-sub="dre"]');
-await page.fill("#fin-dre-mes", "2026-10"); await page.dispatchEvent("#fin-dre-mes", "change");
+await page.fill("#rel-mes", "2026-10"); await page.dispatchEvent("#rel-mes", "change");
 const dre = nb(await page.textContent("#fin-dre-conteudo"));
 // receita de outubro: 500 + 1200 + 300 (manual) + 90 (calculadora)
 ok(dre.includes("R$ 2.090,00"), "DRE outubro: receita bruta R$ 2.090,00");
@@ -166,13 +168,22 @@ ok(dre.includes("−R$ 1,00") || dre.includes("-R$ 1,00"), "taxa de débito 2% s
 ok(dre.includes("CMV estimado") && dre.includes("estimado"), "venda manual sem custo: CMV estimado e marcado");
 ok(dre.includes("Compras do mês") && dre.includes("R$ 3.400,00"), "compras (900 + 2.500) aparecem como estoque, fora do resultado");
 await page.screenshot({ path: "dre-mes.png", fullPage: true });
-await page.locator('label:has(input[name="fin-dre-visao"][value="ano"])').click();
+await page.locator('label:has(input[name="rel-visao"][value="ano"])').click();
 ok((await page.locator(".tabela-dre.anual tbody tr").count()) > 15, "DRE anual com 12 meses + total");
 await page.screenshot({ path: "dre-ano.png", fullPage: false });
-await page.locator('label:has(input[name="fin-dre-visao"][value="mes"])').click();
-await page.fill("#fin-dre-mes", "2026-08"); await page.dispatchEvent("#fin-dre-mes", "change");
+await page.locator('label:has(input[name="rel-visao"][value="mes"])').click();
+await page.fill("#rel-mes", "2026-08"); await page.dispatchEvent("#rel-mes", "change");
 const ago = nb(await page.textContent("#fin-dre-conteudo"));
 ok(ago.includes("não classificados"), "agosto avisa custos não classificados (abertura)");
+// Relatórios › Formas de pagamento (outubro) e Imprimir A4
+await page.click('.subtabs[data-grupo="relatorios"] .subtab[data-sub="formas"]');
+await page.fill("#rel-mes", "2026-10"); await page.dispatchEvent("#rel-mes", "change");
+const formas = nb(await page.textContent("#rel-formas-conteudo"));
+ok(formas.includes("R$ 2.090,00") && formas.includes("PIX PicPay") && formas.includes("Débito"), "formas de pagamento de outubro somam a receita (R$ 2.090,00)");
+ok(!(await page.isVisible("#rel-visao-grupo")), "Mês/Ano só aparece no DRE");
+await page.click("#rel-imprimir");
+ok((await page.textContent("#rel-titulo-impressao")).includes("Vendas por forma de pagamento"), "imprimir usa o título da seção aberta");
+await page.click("#btn-tab-caixa");
 await page.click('.subtab[data-sub="lista"]');
 await page.selectOption("#fin-f-tipo", "todos");
 await page.screenshot({ path: "lancamentos.png", fullPage: false });

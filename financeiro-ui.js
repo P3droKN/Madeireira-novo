@@ -1,6 +1,9 @@
-// Aba Financeiro (Fase 2A): lançar, lançamentos (reclassificação em lote), DRE e configuração.
+// Navegação das abas Caixa, Relatórios e Ajustes (sub-abas) e as telas de:
+// Caixa › Lançar e Lançamentos; Relatórios › Resumo do mês, DRE e Formas de pagamento; Ajustes › Financeiro e Orçamentos.
+// Saldos, Cheques, Fluxo de caixa e Abertura de saldos ficam em caixa-ui.js.
 import { CONTAS, GRUPOS, contaPorId, grupoPorId, naturezaDaConta, FORMAS_PADRAO, PAGO_COM, mesclarConfigFinanceiro } from "./lib/planoContas.js";
 import { montarDRE, montarDREAnual, normalizar, mesDe, estoqueEstimado } from "./lib/financeiro.js";
+import { resumoDoMes, vendasPorForma } from "./lib/relatorios.js";
 import { criarEditorPagamentos } from "./pagamentos.js";
 
 const $ = (id) => document.getElementById(id);
@@ -15,7 +18,14 @@ const FORMAS = Object.fromEntries(FORMAS_PADRAO.map((f) => [f.id, f]));
 const NOME_PAGO = Object.fromEntries(PAGO_COM.map((p) => [p.id, p.nome]));
 const CONTAS_FIN = { gaveta: "Gaveta", bradesco: "Bradesco", picpay: "PicPay", cheques_carteira: "Cheques em carteira" };
 
-const estado = { sub: "lancar", selecionados: new Set(), editor: null, visivel: [] };
+const estado = { aba: null, sub: { caixa: "lancar", relatorios: "resumo", ajustes: "precos" }, selecionados: new Set(), editor: null, visivel: [] };
+
+// Sub-aba -> elemento da tela
+const TELAS = {
+  caixa: { lancar: "fin-lancar", saldos: "fin-saldos", cheques: "fin-cheques", lista: "fin-lista" },
+  relatorios: { resumo: "rel-resumo", dre: "fin-dre", fluxo: "rel-fluxo", formas: "rel-formas", orcamentos: "rel-orcamentos" },
+  ajustes: { precos: "aj-precos", financeiro: "aj-financeiro", orcamentos: "aj-orcamentos", saldos: "aj-saldos", dados: "aj-dados" },
+};
 
 function opcoesContas(filtro, selecionada) {
   return GRUPOS.map((g) => {
@@ -30,20 +40,40 @@ const ehReceitaVenda = (c) => ["venda_produtos", "frete_cobrado", "servicos"].in
 
 // ---------- Sub-abas ----------
 
-function mostrarSub(sub) {
-  estado.sub = sub;
-  document.querySelectorAll(".subtab").forEach((b) => b.classList.toggle("ativo", b.dataset.sub === sub));
-  for (const s of ["lancar", "lista", "caixa", "cheques", "dre", "config"]) $(`fin-${s}`).hidden = s !== sub;
+function mostrarSub(grupo, sub) {
+  estado.sub[grupo] = sub;
+  document.querySelectorAll(`.subtabs[data-grupo="${grupo}"] .subtab`).forEach((b) => b.classList.toggle("ativo", b.dataset.sub === sub));
+  for (const [s, id] of Object.entries(TELAS[grupo])) $(id).hidden = s !== sub;
   renderSub();
 }
 
+const mesRelatorio = () => $("rel-mes").value || (C()?.hoje() || "").slice(0, 7);
+
 function renderSub() {
-  avisoMigracao();
-  if (estado.sub === "lancar") renderFormulario();
-  if (estado.sub === "lista") renderLista();
-  if (estado.sub === "caixa" || estado.sub === "cheques") window.CaixaUI?.render(estado.sub);
-  if (estado.sub === "dre") renderDRE();
-  if (estado.sub === "config") renderConfig();
+  const grupo = estado.aba;
+  const sub = estado.sub[grupo];
+  if (grupo === "caixa") {
+    avisoMigracao();
+    if (sub === "lancar") renderFormulario();
+    if (sub === "lista") renderLista();
+    if (sub === "saldos") window.CaixaUI?.saldos($("fin-saldos"));
+    if (sub === "cheques") window.CaixaUI?.cheques($("fin-cheques"));
+  }
+  if (grupo === "relatorios") {
+    if (!$("rel-mes").value) $("rel-mes").value = mesRelatorio();
+    $("rel-visao-grupo").hidden = sub !== "dre";
+    if (sub === "resumo") renderResumo();
+    if (sub === "dre") renderDRE();
+    const mesBR = mesRelatorio().split("-").reverse().join("/");
+    if (sub === "fluxo") { $("rel-titulo-impressao").textContent = `Fluxo de caixa · ${mesBR}`; window.CaixaUI?.fluxo($("rel-fluxo"), mesRelatorio()); }
+    if (sub === "formas") renderFormas();
+    if (sub === "orcamentos") { $("rel-titulo-impressao").textContent = `Orçamentos · ${mesBR}`; window.Orcamentos?.relatorio($("rel-orcamentos-conteudo"), mesRelatorio()); }
+  }
+  if (grupo === "ajustes") {
+    if (sub === "precos") window.Precos?.abrir();
+    if (sub === "financeiro" || sub === "orcamentos") renderConfig();
+    if (sub === "saldos") window.CaixaUI?.abertura($("aj-abertura"));
+  }
 }
 
 function avisoMigracao() {
@@ -62,7 +92,7 @@ function avisoMigracao() {
   $("fin-v2-migrar").onclick = async () => {
     try {
       const r = await window.api("/api/migrar?versao=2", { method: "POST", timeoutMs: 90000 });
-      alert(r.jaMigrado ? "A migração já tinha sido feita." : `Migração concluída.\n\nLançamentos convertidos: ${r.convertidos}\nLançamentos de abertura (agosto): ${r.abertura}\n\nConfira com "🔍 Conferir com arquivo" no Gestor de Caixa e classifique os custos em Lançamentos › A classificar.`);
+      alert(r.jaMigrado ? "A migração já tinha sido feita." : `Migração concluída.\n\nLançamentos convertidos: ${r.convertidos}\nLançamentos de abertura (agosto): ${r.abertura}\n\nConfira com "🔍 Conferir com arquivo" em Ajustes › Dados e classifique os custos em Lançamentos › A classificar.`);
     } catch (e) {
       alert(`A migração não foi feita: ${e.message}`);
     }
@@ -107,7 +137,7 @@ function renderFormulario() {
     <div class="form-group"><label>Formas de pagamento</label><div id="ff-pagamentos"></div></div>
     <div class="form-group"><label for="ff-cmv">Custo dos produtos (CMV), se souber</label>
       <input type="number" id="ff-cmv" step="0.01" min="0" inputmode="decimal" placeholder="vazio = estimado pela margem padrão">
-      <small class="texto-suave">Vendas pela Calculadora já gravam o custo exato. Aqui, sem custo, o DRE estima e marca como "estimado".</small></div>`;
+      <small class="texto-suave">Vendas pela aba Vender já gravam o custo exato. Aqui, sem custo, o DRE estima e marca como "estimado".</small></div>`;
   } else if (tipo === "transferencia") {
     const op = (sel) => Object.entries(CONTAS_FIN).map(([id, n]) => `<option value="${id}" ${id === sel ? "selected" : ""}>${n}</option>`).join("");
     html += `
@@ -263,8 +293,9 @@ function renderLista() {
       <td>${esc(c?.nome || (l.conta === "transferencia" ? "Transferência" : l.conta))} ${tags}${sug}</td>
       <td>${esc(descreverForma(l))}</td>
       <td class="num ${l.conta === "transferencia" ? "" : entrada ? "type-income" : "type-expense"}">${moeda(l.value)}</td>
+      <td><button class="delete-btn" data-excluir="${esc(l.id)}" title="Excluir (estornar) este lançamento">Excluir</button></td>
     </tr>`;
-  }).join("") || '<tr><td colspan="6" class="texto-suave">Nenhum lançamento com esse filtro.</td></tr>';
+  }).join("") || '<tr><td colspan="7" class="texto-suave">Nenhum lançamento com esse filtro.</td></tr>';
   const total = lista.reduce((s, l) => s + (l.conta === "transferencia" ? 0 : (naturezaDaConta(l.conta) === "entrada" ? 1 : -1) * Math.round(l.value * 100)), 0) / 100;
   $("fin-lista-contagem").textContent = `${lista.length} lançamentos${lista.length > LIMITE ? ` (mostrando ${LIMITE})` : ""} · saldo do filtro ${moeda(total)}`;
   $("fin-sel-todos").checked = lista.length > 0 && lista.every((l) => estado.selecionados.has(String(l.id)));
@@ -304,16 +335,15 @@ const variacao = (atual, antes) => (antes ? (atual - antes) / Math.abs(antes) : 
 function renderDRE() {
   if (!C()) return;
   const cfg = C().configFinanceiro;
-  const mes = $("fin-dre-mes").value || (C().hoje() || "").slice(0, 7);
-  $("fin-dre-mes").value = mes;
-  const visao = document.querySelector('input[name="fin-dre-visao"]:checked').value;
+  const mes = mesRelatorio();
+  const visao = document.querySelector('input[name="rel-visao"]:checked').value;
   const lista = normalizar(C().itens, cfg);
   const alvo = $("fin-dre-conteudo");
 
   if (visao === "ano") {
     const ano = Number(mes.slice(0, 4));
     const a = montarDREAnual(C().itens, cfg, ano);
-    $("fin-dre-titulo-impressao").textContent = `DRE gerencial ${ano}`;
+    $("rel-titulo-impressao").textContent = `DRE gerencial ${ano}`;
     const nomes = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
     alvo.innerHTML = `<div class="table-container"><table class="tabela-dre anual">
       <thead><tr><th>${ano}</th>${nomes.map((n) => `<th class="num">${n}</th>`).join("")}<th class="num">Total</th><th class="num">%</th></tr></thead>
@@ -332,7 +362,7 @@ function renderDRE() {
   const ant = montarDRE(lista, cfg, mesAnterior(mes), { jaNormalizado: true });
   const anoAnt = montarDRE(lista, cfg, mesAnterior(mes, 12), { jaNormalizado: true });
   const rb = d.valores.receitaBruta;
-  $("fin-dre-titulo-impressao").textContent = `DRE gerencial · ${mes.split("-").reverse().join("/")}`;
+  $("rel-titulo-impressao").textContent = `DRE gerencial · ${mes.split("-").reverse().join("/")}`;
   const linha = (l) => {
     const va = ant.valores[l.id] ?? 0, vb = anoAnt.valores[l.id] ?? 0;
     const dv = variacao(l.valor, va), dy = variacao(l.valor, vb);
@@ -364,6 +394,62 @@ function renderDRE() {
 }
 
 const fmtCurto = (v) => (v ? v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : "–");
+
+// ---------- Resumo do mês e formas de pagamento ----------
+
+function ultimoDia(mes) {
+  const [a, m] = mes.split("-").map(Number);
+  return new Date(Date.UTC(a, m, 0)).toISOString().slice(0, 10);
+}
+
+// Dia de referência do resumo: hoje, se for o mês escolhido; senão o último dia do mês
+function diaDoMes(mes) {
+  const h = C()?.hoje() || "";
+  return h.startsWith(mes) ? h : ultimoDia(mes);
+}
+
+function renderResumo() {
+  if (!C()) return;
+  const mes = mesRelatorio();
+  if (!$("rel-dia").value.startsWith(mes)) $("rel-dia").value = diaDoMes(mes);
+  const dia = $("rel-dia").value;
+  const r = resumoDoMes(C().itens, C().acumulado, dia);
+  const linhas = [
+    ["vendas", "Vendas no geral (bruto)", "font-bold"],
+    ["pix", "↳ em PIX / transferência", "sub-row"],
+    ["cred", "↳ em Crédito", "sub-row"],
+    ["deb", "↳ em Débito", "sub-row"],
+    ["custos", "Custo de material", "text-danger"],
+    ["despesas", "Despesas gerais", "text-danger"],
+    ["funcionarios", "Funcionários", "text-danger"],
+  ];
+  const t = r.total.resultado;
+  const rotuloRes = t > 0 ? "LUCRO BRUTO DO MÊS" : t < 0 ? "PREJUÍZO BRUTO DO MÊS" : "RESULTADO BRUTO DO MÊS";
+  $("rel-titulo-impressao").textContent = `Resumo do mês · ${dataBR(dia)}`;
+  $("rel-resumo-conteudo").innerHTML = `<table class="summary-table">
+    <thead><tr><th>Indicador</th><th class="num">Lançado no dia (${dataBR(dia)})</th><th class="num">Acumulado (mês + passado)</th><th class="num">Total do mês</th></tr></thead>
+    <tbody>${linhas.map(([k, rot, cls]) => `<tr class="${cls}"><td>${rot}</td><td class="num">${moeda(r.doDia[k])}</td><td class="num">${moeda(r.acumulado[k])}</td><td class="num" id="rel-tot-${k}">${moeda(r.total[k])}</td></tr>`).join("")}
+      <tr class="result-row"><td>${rotuloRes}<small class="texto-suave">vendas − custo de material − despesas gerais (como na tela antiga)</small></td>
+        <td class="num">${moeda(r.doDia.resultado)}</td><td class="num">${moeda(r.acumulado.resultado)}</td>
+        <td class="num ${t > 0 ? "text-success" : t < 0 ? "text-danger" : ""} font-bold">${moeda(t)}</td></tr>
+    </tbody></table>`;
+}
+
+function renderFormas() {
+  if (!C()) return;
+  const mes = mesRelatorio();
+  const cfg = mesclarConfigFinanceiro(C().configFinanceiro);
+  const r = vendasPorForma(normalizar(C().itens, cfg), mes, cfg);
+  $("rel-titulo-impressao").textContent = `Vendas por forma de pagamento · ${mes.split("-").reverse().join("/")}`;
+  $("rel-formas-conteudo").innerHTML = `
+    <div class="table-container"><table class="tabela-fin">
+      <thead><tr><th>Forma</th><th>tPag</th><th class="num">Vendas</th><th class="num">Valor</th><th class="num">%</th></tr></thead>
+      <tbody>${r.linhas.map((l) => `<tr><td>${esc(l.nome)}</td><td>${esc(l.tPag)}</td><td class="num">${l.quantidade}</td><td class="num"><strong>${moeda(l.valor)}</strong></td><td class="num">${pct(l.pct)}</td></tr>`).join("")
+        || '<tr><td colspan="5" class="texto-suave">Nenhuma venda no mês.</td></tr>'}</tbody>
+      <tfoot><tr class="dre-total"><td colspan="2">Total</td><td class="num">${r.vendas}</td><td class="num"><strong>${moeda(r.total)}</strong></td><td></td></tr></tfoot>
+    </table></div>
+    <p class="texto-suave">Pela data da venda (competência). Uma venda paga com duas formas aparece nas duas. O arquivo CSV e o detalhamento chegam na Fase 2D.</p>`;
+}
 
 // ---------- Configuração ----------
 
@@ -421,15 +507,14 @@ function renderConfig() {
       <select id="cfg-cheque-deposito">${["bradesco", "picpay"].map((x) => `<option value="${x}" ${c.cheques.contaDeposito === x ? "selected" : ""}>${CONTAS_FIN[x]}</option>`).join("")}</select>
       <small class="texto-suave">Pode ser trocada em cada cheque, na seção Cheques.</small></div></div>
 
-    <h3 class="cfg-titulo">Orçamentos</h3>
+    <div class="export-actions"><button type="submit" class="btn-primary">Salvar configuração</button></div>`;
+  $("orc-config-form").innerHTML = `
     <div class="form-row">
-      <div class="form-group"><label>Validade padrão (dias)</label><input type="number" min="1" max="90" step="1" id="cfg-orc-validade" value="${c.orcamentos.validadeDias}"></div>
-      <div class="form-group"><label>Lembrar de cobrar após (dias sem contato)</label><input type="number" min="1" max="60" step="1" id="cfg-orc-cobrar" value="${c.orcamentos.diasParaCobrar}"></div>
-      <div class="form-group"><label>Amarelo após (dias sem contato)</label><input type="number" min="1" max="60" step="1" id="cfg-orc-amarelo" value="${c.orcamentos.diasAmarelo}"></div>
+      <div class="form-group"><label for="cfg-orc-validade">Validade padrão (dias)</label><input type="number" min="1" max="90" step="1" id="cfg-orc-validade" value="${c.orcamentos.validadeDias}"></div>
+      <div class="form-group"><label for="cfg-orc-cobrar">Mostrar o 🔔 (cobrar) depois de quantos dias sem contato</label><input type="number" min="1" max="60" step="1" id="cfg-orc-cobrar" value="${c.orcamentos.diasParaCobrar}"></div>
     </div>
-    <label>Modelos de mensagem de cobrança (variáveis: {nome}, {numero}, {valor}, {dias}, {validade}). Deixe em branco para apagar.</label>
+    <label>Modelos de mensagem de cobrança do WhatsApp (variáveis: {nome}, {numero}, {valor}, {dias}, {validade}). Deixe em branco para apagar.</label>
     <div class="modelos-orc">${[0, 1, 2].map((i) => `<textarea data-modelo="${i}" maxlength="600" placeholder="Modelo ${i + 1}">${esc(c.orcamentos.modelos[i] || "")}</textarea>`).join("")}</div>
-
     <div class="export-actions"><button type="submit" class="btn-primary">Salvar configuração</button></div>`;
 }
 
@@ -456,7 +541,7 @@ async function salvarConfig(e) {
     orcamentos: {
       validadeDias: num($("cfg-orc-validade").value),
       diasParaCobrar: num($("cfg-orc-cobrar").value),
-      diasAmarelo: num($("cfg-orc-amarelo").value),
+      diasAmarelo: mesclarConfigFinanceiro(C().configFinanceiro).orcamentos.diasAmarelo, // não usado mais (o 🔔 substituiu o amarelo)
       modelos: [...document.querySelectorAll("[data-modelo]")].map((t) => t.value.trim()).filter(Boolean),
     },
   };
@@ -464,6 +549,7 @@ async function salvarConfig(e) {
     const r = await window.api("/api/config", { method: "POST", body: { financeiro } });
     C().configFinanceiro = r.financeiro;
     alert("Configuração salva.");
+    window.Orcamentos?.configMudou();
   } catch (err) {
     alert(`A configuração não foi salva: ${err.message}`);
   }
@@ -471,10 +557,14 @@ async function salvarConfig(e) {
 
 // ---------- Eventos ----------
 
-document.querySelectorAll(".subtab").forEach((b) => b.addEventListener("click", () => mostrarSub(b.dataset.sub)));
+document.querySelectorAll(".subtabs[data-grupo]").forEach((nav) => nav.addEventListener("click", (e) => {
+  const b = e.target.closest(".subtab");
+  if (b) mostrarSub(nav.dataset.grupo, b.dataset.sub);
+}));
 $("fin-tipo").addEventListener("change", renderFormulario);
 $("fin-form").addEventListener("submit", enviarFormulario);
 $("fin-config-form").addEventListener("submit", salvarConfig);
+$("orc-config-form").addEventListener("submit", salvarConfig);
 for (const id of ["fin-f-mes", "fin-f-tipo", "fin-f-conta"]) $(id).addEventListener("change", () => { estado.selecionados.clear(); renderLista(); });
 $("fin-f-busca").addEventListener("input", () => renderLista());
 $("fin-lista-body").addEventListener("change", (e) => {
@@ -482,6 +572,10 @@ $("fin-lista-body").addEventListener("change", (e) => {
   if (e.target.checked) estado.selecionados.add(e.target.value); else estado.selecionados.delete(e.target.value);
   e.target.closest("tr").classList.toggle("selecionado", e.target.checked);
   atualizarLote();
+});
+$("fin-lista-body").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-excluir]");
+  if (b) C().excluir(b.dataset.excluir);
 });
 $("fin-sel-todos").addEventListener("change", (e) => {
   for (const l of estado.visivel) { if (e.target.checked) estado.selecionados.add(String(l.id)); else estado.selecionados.delete(String(l.id)); }
@@ -500,19 +594,35 @@ $("fin-lote-forma-aplicar").addEventListener("click", () => {
   if (!forma) return alert("Escolha a nova forma.");
   if (confirm(`Trocar a forma de pagamento para "${FORMAS[forma].nome}" nas vendas selecionadas?`)) aplicarLote({ forma });
 });
-$("fin-dre-mes").addEventListener("change", renderDRE);
-$("fin-dre-visao").addEventListener("change", renderDRE);
-$("fin-dre-imprimir").addEventListener("click", () => {
-  document.body.classList.add("imprimindo-dre");
-  document.body.classList.toggle("dre-anual", document.querySelector('input[name="fin-dre-visao"]:checked').value === "ano");
+$("rel-mes").addEventListener("change", () => { $("rel-dia").value = ""; renderSub(); });
+$("rel-visao").addEventListener("change", renderSub);
+$("rel-dia").addEventListener("change", () => {
+  const d = $("rel-dia").value;
+  if (d) $("rel-mes").value = d.slice(0, 7);
+  renderResumo();
+});
+// Imprimir A4: só a seção aberta de Relatórios
+$("rel-imprimir").addEventListener("click", () => {
+  const sub = estado.sub.relatorios;
+  document.body.classList.add("imprimindo-rel");
+  document.body.classList.toggle("dre-anual", sub === "dre" && document.querySelector('input[name="rel-visao"]:checked').value === "ano");
   window.print();
-  document.body.classList.remove("imprimindo-dre", "dre-anual");
+  document.body.classList.remove("imprimindo-rel", "dre-anual");
 });
 
 window.Financeiro = {
-  abrir() { renderSub(); },
+  // Abrir a aba: o Caixa sempre abre em Lançar
+  abrir(aba) {
+    estado.aba = aba;
+    if (aba === "caixa") estado.sub.caixa = "lancar";
+    mostrarSub(aba, estado.sub[aba]);
+  },
   atualizar() {
-    if (!$("tab-financeiro") || $("tab-financeiro").style.display === "none") return;
+    if (!estado.aba || $(`tab-${estado.aba}`).style.display === "none") return;
     renderSub();
+  },
+  irPara(aba, sub) {
+    window.switchTab(aba);
+    mostrarSub(aba, sub);
   },
 };

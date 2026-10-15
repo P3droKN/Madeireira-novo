@@ -12,7 +12,7 @@ page.on("dialog", async (d) => { dialogos.push(d.message()); d.type() === "promp
 page.on("pageerror", (e) => console.log("ERRO JS:", e.message));
 await page.goto(URL);
 await page.fill("#senha-input", "pinho123"); await page.click("#senha-form button");
-await page.click("#btn-tab-finance");
+await page.click("#btn-tab-ajustes"); await page.click('.subtabs[data-grupo="ajustes"] .subtab[data-sub="dados"]');
 await page.waitForFunction(() => document.getElementById("status-banco").textContent.includes("Banco:"));
 console.log("     status:", await page.textContent("#status-banco"));
 if (MODO === "restaurar") {

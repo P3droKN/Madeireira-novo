@@ -1,5 +1,5 @@
-// Financeiro › Caixa e saldos (abertura, saldo por conta, conferir saldo, projeção 30 dias, fluxo mensal)
-// e Financeiro › Cheques (recebidos e emitidos). Fase 2B.
+// Caixa › Saldos (saldo por conta, conferir com o extrato, fechar gaveta, projeção de 30 dias),
+// Caixa › Cheques (recebidos e emitidos), Relatórios › Fluxo de caixa e Ajustes › Saldos (abertura). Fase 2B.
 import { movimentos, saldos, projecao, fluxoMensal, cheques, carteiraNaData, CONTAS_CAIXA, NOMES_CONTAS, rotuloTipo } from "./lib/caixa.js";
 import { grupoPorId } from "./lib/planoContas.js";
 import { somarDias } from "./lib/orcamentos.js";
@@ -54,29 +54,30 @@ function formAbertura(ab) {
   </section>`;
 }
 
-function renderCaixa() {
-  const el = $("fin-caixa");
+let alvos = { saldos: null, fluxo: null, abertura: null, cheques: null };
+
+function semAbertura(el) {
+  el.innerHTML = `<div class="aviso aviso-alerta"><strong>Faça a abertura de saldos.</strong> Os saldos, a projeção e o fluxo de caixa dependem dela: sem a abertura, o sistema não sabe quanto dinheiro já existia em cada conta.
+    <div class="aviso-acoes"><button class="btn-icon" data-ir-abertura>Ir para Ajustes › Saldos</button></div></div>`;
+  el.querySelector("[data-ir-abertura]").addEventListener("click", () => window.Financeiro.irPara("ajustes", "saldos"));
+}
+
+// Caixa › Saldos: saldo hoje por conta (conferir / fechar gaveta) e projeção de 30 dias
+function renderSaldos(el) {
+  alvos.saldos = el;
   if (!C()) return;
   const { movs, ab } = dados();
   const h = hoje();
-  if (!ab) {
-    el.innerHTML = '<div class="aviso aviso-alerta"><strong>Faça a abertura de saldos.</strong> Os saldos, a projeção e o fluxo de caixa dependem dela: sem a abertura, o sistema não sabe quanto dinheiro já existia em cada conta.</div>' + formAbertura(null);
-    ligarAbertura(null);
-    return;
-  }
+  if (!ab) return semAbertura(el);
   const s = saldos(movs, ab, h);
   const confs = C().saldos?.conferencias || [];
   const ultima = (c) => [...confs].reverse().find((x) => x.conta === c);
   const p = projecao(movs, ab, h, 30);
-  const mes = estado.mesFluxo || h.slice(0, 7);
-  const f = fluxoMensal(movs, ab, mes, estado.contaFluxo || null);
-  const nomeSaida = (k) => grupoPorId[k]?.nome || rotuloTipo(k);
-
   const chequesAReceber = p.porDia.flatMap((d) => d.movimentos).filter((m) => m.tipo === "cheque_compensado" && m.valor > 0).reduce((t, m) => t + Math.round(m.valor * 100), 0) / 100;
-  el.innerHTML = `${estado.refazer ? formAbertura(ab) : ""}
+  el.innerHTML = `
   <section class="glass-panel">
     <div class="painel-titulo"><h2>Saldos hoje · ${dataBR(h)}</h2>
-      <div class="painel-acoes"><span class="texto-suave">abertura em ${dataBR(ab.data)}</span><button class="btn-icon" id="cx-refazer">Refazer abertura</button></div></div>
+      <div class="painel-acoes"><span class="texto-suave">abertura em ${dataBR(ab.data)} (Ajustes › Saldos)</span></div></div>
     <div class="saldos-grid">
       ${CONTAS_CAIXA.map((c) => {
         const u = ultima(c);
@@ -108,12 +109,23 @@ function renderCaixa() {
           : `<small>${esc(rotuloTipo(m.tipo))} · ${NOMES_CONTAS[m.conta]}${m.cheque ? ` nº ${esc(m.cheque)}` : ""}${m.descricao ? ` · ${esc(m.descricao)}` : ""}: ${moeda(m.valor)}</small>`).join("")}</td>
         <td class="num type-income">${d.entradas ? moeda(d.entradas) : ""}</td><td class="num type-expense">${d.saidas ? moeda(d.saidas) : ""}</td><td class="num"><strong>${moeda(d.saldo)}</strong></td></tr>`).join("") || '<tr><td colspan="5" class="texto-suave">Nada previsto para os próximos 30 dias.</td></tr>'}</tbody>
     </table></div>
-  </section>
+  </section>`;
+  el.querySelectorAll("[data-conferir]").forEach((b) => b.addEventListener("click", () => conferir(b.dataset.conferir)));
+}
 
+// Relatórios › Fluxo de caixa do mês (consolidado ou por conta)
+function renderFluxo(el, mes) {
+  alvos.fluxo = el;
+  estado.mesFluxo = mes || estado.mesFluxo || hoje().slice(0, 7);
+  if (!C()) return;
+  const { movs, ab } = dados();
+  if (!ab) return semAbertura(el);
+  const f = fluxoMensal(movs, ab, estado.mesFluxo, estado.contaFluxo || null);
+  const nomeSaida = (k) => grupoPorId[k]?.nome || rotuloTipo(k);
+  el.innerHTML = `
   <section class="glass-panel">
     <div class="painel-titulo"><h2>Fluxo de caixa</h2>
       <div class="painel-acoes">
-        <input type="month" id="cx-fluxo-mes" value="${mes}" aria-label="Mês">
         <select id="cx-fluxo-conta" aria-label="Conta"><option value="">Consolidado</option>${CONTAS_CAIXA.map((c) => `<option value="${c}" ${estado.contaFluxo === c ? "selected" : ""}>${NOMES_CONTAS[c]}</option>`).join("")}</select>
       </div></div>
     <div class="fluxo-grid">
@@ -134,17 +146,31 @@ function renderCaixa() {
     </div>
     ${estado.contaFluxo ? "" : '<p class="texto-suave">No consolidado, transferências entre contas não aparecem (saem de uma e entram na outra).</p>'}
   </section>`;
+  $("cx-fluxo-conta").addEventListener("change", (e) => { estado.contaFluxo = e.target.value; renderFluxo(el, estado.mesFluxo); });
+}
 
-  if (estado.refazer) ligarAbertura(ab);
-  $("cx-refazer").addEventListener("click", () => { estado.refazer = true; renderCaixa(); });
-  el.querySelectorAll("[data-conferir]").forEach((b) => b.addEventListener("click", () => conferir(b.dataset.conferir)));
-  $("cx-fluxo-mes").addEventListener("change", (e) => { estado.mesFluxo = e.target.value; renderCaixa(); });
-  $("cx-fluxo-conta").addEventListener("change", (e) => { estado.contaFluxo = e.target.value; renderCaixa(); });
+// Ajustes › Saldos: abertura de saldos (fazer ou refazer)
+function renderAbertura(el) {
+  alvos.abertura = el;
+  if (!C()) return;
+  const ab = C().saldos?.abertura || null;
+  if (!ab || estado.refazer) {
+    el.innerHTML = (ab ? "" : '<div class="aviso aviso-alerta"><strong>Faça a abertura de saldos.</strong> Os saldos, a projeção e o fluxo de caixa dependem dela.</div>') + formAbertura(ab);
+    ligarAbertura(ab);
+    return;
+  }
+  el.innerHTML = `<section class="glass-panel">
+    <div class="painel-titulo"><h2>Abertura de saldos</h2><button class="btn-icon" id="cx-refazer">Refazer abertura</button></div>
+    <p>Feita em <strong>${dataBR(ab.data)}</strong> (saldo do início do dia):
+      ${CONTAS_CAIXA.map((c) => `${NOMES_CONTAS[c]} <strong>${moeda(ab.contas[c] || 0)}</strong>`).join(" · ")}</p>
+    ${ab.obs ? `<p class="texto-suave">${esc(ab.obs)}</p>` : ""}
+  </section>`;
+  $("cx-refazer").addEventListener("click", () => { estado.refazer = true; renderAbertura(el); });
 }
 
 function ligarAbertura(ab) {
   $("cx-abertura").addEventListener("submit", salvarAbertura);
-  $("cx-ab-cancelar")?.addEventListener("click", () => { estado.refazer = false; renderCaixa(); });
+  $("cx-ab-cancelar")?.addEventListener("click", () => { estado.refazer = false; renderAbertura(alvos.abertura); });
   $("cx-ab-data").addEventListener("change", (e) => {
     const c = carteiraNaData(C().itens, C().configFinanceiro, e.target.value);
     $("cx-ab-cheques-info").textContent = `Pelos lançamentos: ${moeda(c.valor)} em ${c.quantidade} cheque(s) recebidos antes e que compensam a partir da data. Confira com os cheques na gaveta.`;
@@ -190,8 +216,8 @@ async function conferir(conta) {
 
 // ---------- Cheques ----------
 
-function renderCheques() {
-  const el = $("fin-cheques");
+function renderCheques(el) {
+  alvos.cheques = el;
   if (!C()) return;
   const h = hoje();
   const { recebidos, emitidos } = cheques(C().itens, C().configFinanceiro, h);
@@ -248,8 +274,8 @@ function renderCheques() {
     </table></div>
   </section>`;
 
-  $("ch-f-rec").addEventListener("change", (e) => { estado.filtroRecebidos = e.target.value; renderCheques(); });
-  $("ch-f-emi").addEventListener("change", (e) => { estado.filtroEmitidos = e.target.value; renderCheques(); });
+  $("ch-f-rec").addEventListener("change", (e) => { estado.filtroRecebidos = e.target.value; renderCheques(el); });
+  $("ch-f-emi").addEventListener("change", (e) => { estado.filtroEmitidos = e.target.value; renderCheques(el); });
 }
 
 async function acaoCheque(corpo) {
@@ -285,8 +311,8 @@ document.addEventListener("click", (e) => {
 });
 
 window.CaixaUI = {
-  render(sub) {
-    if (sub === "caixa") renderCaixa();
-    if (sub === "cheques") renderCheques();
-  },
+  saldos: renderSaldos,
+  cheques: renderCheques,
+  fluxo: renderFluxo,
+  abertura: renderAbertura,
 };

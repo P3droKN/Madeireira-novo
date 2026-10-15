@@ -1,4 +1,4 @@
-// Calculadora (pedido) e aba Preços. Os cálculos ficam em lib/calculo.js (calcularItem).
+// Aba Vender (pedido, modo balcão) e Ajustes › Preços. Os cálculos ficam em lib/calculo.js (calcularItem).
 import { criarEditorPagamentos } from "./pagamentos.js";
 import { montarCatalogo, chavePreco, UNIDADES, ACABAMENTOS, CEPILHADO_PADRAO } from "./lib/catalogo.js";
 import { calcularItem, totalizarPedido, distribuirTotal, arred, MOTIVOS_AJUSTE, textoWhatsApp } from "./lib/calculo.js";
@@ -69,16 +69,46 @@ function acabamentoEscolhido() {
   return marcado ? marcado.value : material($("material").value)?.acabamentos[0];
 }
 
+// ---------- Modo balcão: esconde custo e margem (a escolha fica guardada neste aparelho) ----------
+
+const BALCAO_KEY = "madeireira_modo_balcao";
+function lerBalcao() {
+  try { return localStorage.getItem(BALCAO_KEY) === "1"; } catch { return false; }
+}
+function aplicarBalcao(ligado) {
+  document.body.classList.toggle("modo-balcao", ligado);
+  const b = $("btn-balcao");
+  if (b) {
+    b.setAttribute("aria-pressed", String(ligado));
+    b.textContent = ligado ? "👁 Balcão (custo escondido)" : "👁 Modo balcão";
+    b.title = ligado ? "Mostrar custo e margem de novo" : "Esconde custo e margem para o cliente não ver a tela";
+  }
+  // Medidas no seletor: o custo aparece no texto da opção
+  for (const opt of $("dimension").options) {
+    const it = estado.catalogo?.itens.get(opt.value);
+    if (it) opt.textContent = rotuloMedida(it);
+  }
+}
+function alternarBalcao() {
+  const ligado = !document.body.classList.contains("modo-balcao");
+  try { localStorage.setItem(BALCAO_KEY, ligado ? "1" : "0"); } catch { /* aparelho sem armazenamento: vale só agora */ }
+  aplicarBalcao(ligado);
+  if (estado.catalogo) { renderPedido(); atualizarPrevia(); }
+}
+
+function rotuloMedida(it) {
+  if (document.body.classList.contains("modo-balcao")) return it.rotuloDimensao;
+  const u = UNIDADES[it.unidade].cobranca;
+  const custo = it.custo == null ? "sem custo" : `custo ${moeda(it.custo)}/${u}`;
+  return `${it.rotuloDimensao} — ${custo}`;
+}
+
 function aoEscolherMaterial() {
   const m = material($("material").value);
   if (!m) return;
   const dim = $("dimension");
   dim.innerHTML = '<option value="" disabled selected>Selecione a medida</option>' +
-    m.itens.map((it) => {
-      const u = UNIDADES[it.unidade].cobranca;
-      const custo = it.custo == null ? "sem custo" : `custo ${moeda(it.custo)}/${u}`;
-      return `<option value="${esc(it.id)}">${esc(it.rotuloDimensao)} — ${custo}</option>`;
-    }).join("");
+    m.itens.map((it) => `<option value="${esc(it.id)}">${esc(rotuloMedida(it))}</option>`).join("");
   dim.disabled = false;
   if (m.itens.length === 1) dim.value = m.itens[0].id;
 
@@ -141,10 +171,10 @@ function atualizarPrevia() {
   try {
     const r = calcularLinha(l);
     const partes = [`<span>${numero(r.quantidadeCobrada, r.unidadeCobranca === "m" || r.unidadeCobranca === "m²" ? 2 : 0)} ${r.unidadeCobranca}</span>`,
-      `<span>Custo <strong>${moeda(r.custoTotal)}</strong></span>`];
+      `<span class="sigilo">Custo <strong>${moeda(r.custoTotal)}</strong></span>`];
     partes.push(r.vendaTotal == null
       ? '<span class="texto-alerta">Sem preço de tabela: digite no pedido</span>'
-      : `<span>Tabela <strong>${moeda(r.vendaTotal)}</strong></span><span>Margem <strong>${pct(r.margem)}</strong></span>`);
+      : `<span>Tabela <strong>${moeda(r.vendaTotal)}</strong></span><span class="sigilo">Margem <strong>${pct(r.margem)}</strong></span>`);
     previa.innerHTML = partes.join("");
     previa.hidden = false;
   } catch {
@@ -262,7 +292,7 @@ function renderPedido() {
     return `<tr class="linha-item">
       <td class="col-item"><strong>${esc(item.material)}</strong> ${esc(livre ? (l.descricao || "") : item.rotuloDimensao)} ${tags}</td>
       <td class="num">${descreverQtd(l, r)}</td>
-      <td class="num so-tela">${r.custoTotal == null ? '<span class="texto-alerta">sem custo</span>' : moeda(r.custoTotal)}${r.custoUnitario != null && !livre ? `<small>${moeda(r.custoUnitario)}/${r.unidadeCobranca}</small>` : ""}</td>
+      <td class="num so-tela sigilo">${r.custoTotal == null ? '<span class="texto-alerta">sem custo</span>' : moeda(r.custoTotal)}${r.custoUnitario != null && !livre ? `<small>${moeda(r.custoUnitario)}/${r.unidadeCobranca}</small>` : ""}</td>
       <td class="num">
         <div class="preco-cel">
           <input type="number" class="preco-input ${r.vendaTotal == null ? "falta" : ""} ${r.ajustado ? "alterado" : ""}" step="0.01" min="0" inputmode="decimal"
@@ -272,7 +302,7 @@ function renderPedido() {
         </div>
       </td>
       <td class="num"><strong>${moeda(r.vendaTotal)}</strong></td>
-      <td class="num so-tela"><span class="${margemClasse(r.margem)}">${pct(r.margem)}</span></td>
+      <td class="num so-tela sigilo"><span class="${margemClasse(r.margem)}">${pct(r.margem)}</span></td>
       <td><button class="delete-btn" title="Remover" aria-label="Remover item" onclick="Calculadora.remover('${l.uid}')">✕</button></td>
     </tr>${linhaAjuste(l, r, item)}`;
   }).join("");
@@ -303,7 +333,7 @@ function renderPedido() {
 
   const pend = [];
   if (t.semPreco) pend.push(`${t.semPreco} ${t.semPreco > 1 ? "itens sem" : "item sem"} preço: digite o preço na linha do item.`);
-  if (t.semCusto) pend.push(`${t.semCusto} ${t.semCusto > 1 ? "itens sem" : "item sem"} custo cadastrado: a margem não considera ${t.semCusto > 1 ? "esses itens" : "esse item"}.`);
+  if (t.semCusto && !document.body.classList.contains("modo-balcao")) pend.push(`${t.semCusto} ${t.semCusto > 1 ? "itens sem" : "item sem"} custo cadastrado: a margem não considera ${t.semCusto > 1 ? "esses itens" : "esse item"}.`);
   $("pendencias").innerHTML = pend.map((p) => `<li>${esc(p)}</li>`).join("");
 
   $("ajuste-geral").hidden = vazio;
@@ -787,4 +817,6 @@ window.addEventListener("beforeunload", (e) => {
   if (Object.keys(admin.alteracoes).length) e.preventDefault();
 });
 
+$("btn-balcao").addEventListener("click", alternarBalcao);
+aplicarBalcao(lerBalcao());
 carregar();

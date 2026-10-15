@@ -1,8 +1,9 @@
-// Aba Orçamentos: salvar (da Calculadora), lista com lembretes e indicadores, WhatsApp,
-// converter em venda, duplicar, editar, imprimir, perdido e atualizar preços.
+// Aba Orçamentos: salvar (de Vender), lista em 3 abas (Em aberto · Fechados · Perdidos) com o 🔔 de cobrar,
+// WhatsApp, converter em venda, duplicar, editar, imprimir, perdido, atualizar preços, excluir e lixeira.
+// A situação muda pelas ações (converter, perdido, reabrir), nunca por uma caixa de seleção.
 import {
   ORIGENS, STATUS, MOTIVOS_PERDA, CONFIG_ORCAMENTOS_PADRAO, normalizarTelefone, linkWhatsApp, preencherModelo,
-  textoParaCliente, situacao, indicadores, ordenar, atualizarPrecos,
+  textoParaCliente, situacao, indicadores, ordenar, atualizarPrecos, grupoDaLista, naLixeira, visivelNaLixeira,
 } from "./lib/orcamentos.js";
 import { mesclarConfigFinanceiro } from "./lib/planoContas.js";
 
@@ -14,7 +15,7 @@ const dataHora = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { day: "2
 const hoje = () => window.Caixa?.hoje() || new Date().toISOString().slice(0, 10);
 const cfgOrc = () => mesclarConfigFinanceiro(window.Caixa?.configFinanceiro).orcamentos || CONFIG_ORCAMENTOS_PADRAO;
 
-const estado = { orcamentos: [], clientes: [], carregado: false, atual: null };
+const estado = { orcamentos: [], clientes: [], carregado: false, atual: null, soSino: false, lixeira: false };
 
 async function carregar() {
   try {
@@ -23,16 +24,18 @@ async function carregar() {
     estado.clientes = r.clientes;
     estado.carregado = true;
   } catch (e) {
-    $("orc-body").innerHTML = `<tr><td colspan="9" class="texto-alerta">Não foi possível carregar os orçamentos: ${esc(e.message)}</td></tr>`;
+    $("orc-body").innerHTML = `<tr><td colspan="7" class="texto-alerta">Não foi possível carregar os orçamentos: ${esc(e.message)}</td></tr>`;
     return false;
   }
   atualizarContador();
   return true;
 }
 
+const paraCobrar = () => estado.orcamentos.filter((o) => situacao(o, hoje(), cfgOrc()).cobrarHoje);
+
 function atualizarContador() {
-  const n = estado.orcamentos.filter((o) => situacao(o, hoje(), cfgOrc()).cobrarHoje).length;
-  $("orc-contador").textContent = n;
+  const n = paraCobrar().length;
+  $("orc-contador").textContent = `🔔 ${n}`;
   $("orc-contador").hidden = n === 0;
 }
 
@@ -40,17 +43,18 @@ const porId = (id) => estado.orcamentos.find((o) => o.id === id);
 
 // ---------- Lista ----------
 
+const abaAtual = () => document.querySelector('input[name="orc-aba"]:checked').value;
+const ativos = () => estado.orcamentos.filter((o) => !naLixeira(o));
+
 function filtrar() {
-  const st = $("orc-f-status").value;
+  const aba = abaAtual();
   const de = $("orc-f-de").value, ate = $("orc-f-ate").value;
   const busca = $("orc-f-busca").value.trim().toLowerCase();
   const buscaDig = busca.replace(/\D/g, "");
   const h = hoje(), cfg = cfgOrc();
-  const lista = estado.orcamentos.filter((o) => {
-    const s = situacao(o, h, cfg);
-    if (st === "abertos" && !s.emAberto) return false;
-    if (st === "cobrar" && !s.cobrarHoje) return false;
-    if (["aberto", "aguardando", "fechado", "perdido"].includes(st) && o.status !== st) return false;
+  const lista = ativos().filter((o) => {
+    if (grupoDaLista(o) !== aba) return false;
+    if (estado.soSino && !situacao(o, h, cfg).cobrarHoje) return false;
     if (de && o.data < de) return false;
     if (ate && o.data > ate) return false;
     if (busca) {
@@ -63,22 +67,33 @@ function filtrar() {
   return ordenar(lista, $("orc-f-ordem").value, h);
 }
 
+// Só 3 indicadores no topo; tempo médio, motivos de perda e origem ficam em Relatórios
 function renderIndicadores() {
   const ind = indicadores(estado.orcamentos, hoje().slice(0, 7));
-  const pct = (v) => (v == null ? "—" : `${(v * 100).toFixed(0)}%`);
-  const motivos = Object.entries(ind.motivosPerda).sort((a, b) => b[1] - a[1]).map(([m, n]) => `${esc(m)}: ${n}`).join(" · ") || "nenhum";
-  const origens = Object.entries(ORIGENS).map(([id, n]) => `${n}: ${ind.porOrigem[id] || 0}`).join(" · ");
+  const pctTxt = (v) => (v == null ? "—" : `${(v * 100).toFixed(0)}%`);
+  const n = paraCobrar().length;
   $("orc-indicadores").innerHTML = `
-    <div class="total-bloco"><span>Valor em aberto</span><strong>${moeda(ind.valorAberto)}</strong></div>
-    <div class="total-bloco"><span>Conversão do mês</span><strong>${pct(ind.taxaConversaoMes)}</strong><small class="texto-suave">${ind.totalMes} orçamentos no mês</small></div>
-    <div class="total-bloco"><span>Tempo médio até fechar</span><strong>${ind.tempoMedioFechar == null ? "—" : `${ind.tempoMedioFechar.toFixed(1).replace(".", ",")} dias`}</strong></div>
-    <div class="total-bloco"><span>Por origem (mês)</span><small>${origens}</small></div>
-    <div class="total-bloco"><span>Motivos de perda</span><small>${motivos}</small></div>`;
-  const cobrar = estado.orcamentos.filter((o) => situacao(o, hoje(), cfgOrc()).cobrarHoje);
-  const lem = $("orc-lembrete");
-  lem.hidden = cobrar.length === 0;
-  lem.innerHTML = `<strong>${cobrar.length} ${cobrar.length === 1 ? "orçamento para cobrar" : "orçamentos para cobrar"} hoje</strong> (em aberto há ${cfgOrc().diasParaCobrar} ou mais dias sem contato).
-    <button class="btn-icon" onclick="Orcamentos.verCobrar()">Ver</button>`;
+    <div class="total-bloco"><span>Em aberto</span><strong>${moeda(ind.valorAberto)}</strong><small class="texto-suave">${ind.qtdAberto} ${ind.qtdAberto === 1 ? "orçamento" : "orçamentos"}</small></div>
+    <div class="total-bloco"><span>Conversão do mês</span><strong>${pctTxt(ind.taxaConversaoMes)}</strong><small class="texto-suave">${ind.totalMes} orçamentos no mês</small></div>
+    <button type="button" class="total-bloco bloco-sino ${n ? "tem" : ""} ${estado.soSino ? "ativo" : ""}" id="orc-sino" title="Mostrar só os orçamentos para cobrar hoje">
+      <span>🔔 Para cobrar hoje</span><strong>${n}</strong><small class="texto-suave">${n ? "clique para ver só esses" : "nenhum"}</small></button>`;
+  $("orc-sino").addEventListener("click", () => verCobrar(!estado.soSino));
+  $("orc-legenda-sino").textContent = `🔔 = em aberto há ${cfgOrc().diasParaCobrar} ou mais dias sem contato`;
+}
+
+function verCobrar(ligar) {
+  estado.soSino = ligar;
+  if (ligar) document.querySelector('input[name="orc-aba"][value="aberto"]').checked = true;
+  renderTudo();
+}
+
+// Fechado pode ser reaberto se não há venda ativa vinculada (venda estornada ou dado antigo)
+function podeReabrir(o) {
+  if (o.status === "perdido") return true;
+  if (o.status !== "fechado") return false;
+  if (!o.vendaId) return true;
+  const itens = window.Caixa?.itens;
+  return Array.isArray(itens) && !window.Caixa.somenteLeitura && !itens.some((l) => String(l.id) === String(o.vendaId));
 }
 
 function renderLista() {
@@ -86,9 +101,6 @@ function renderLista() {
   const lista = filtrar();
   $("orc-body").innerHTML = lista.map((o) => {
     const s = situacao(o, h, cfg);
-    const statusCel = s.emAberto
-      ? `<select class="orc-status" data-id="${o.id}" aria-label="Status">${["aberto", "aguardando"].map((x) => `<option value="${x}" ${o.status === x ? "selected" : ""}>${STATUS[x]}</option>`).join("")}</select>`
-      : `<span class="tag ${o.status === "fechado" ? "tag-mais" : "tag-menos"}">${STATUS[o.status]}</span>${o.motivoPerda ? `<small>${esc(o.motivoPerda)}${o.motivoPerdaTexto ? ": " + esc(o.motivoPerdaTexto) : ""}</small>` : ""}${o.vendaId ? `<small>venda ${esc(o.vendaId)}</small>` : ""}`;
     const acoes = [];
     if (s.emAberto) {
       acoes.push(`<button class="btn-icon mini" data-acao="enviar" data-id="${o.id}">Enviar</button>`);
@@ -96,32 +108,85 @@ function renderLista() {
       acoes.push(`<button class="btn-icon mini destaque-verde" data-acao="converter" data-id="${o.id}">Converter em venda</button>`);
     }
     const mais = [
-      s.emAberto ? `<button data-acao="precos" data-id="${o.id}">Atualizar preços</button>` : "",
       s.emAberto ? `<button data-acao="editar" data-id="${o.id}">Editar</button>` : "",
       `<button data-acao="duplicar" data-id="${o.id}">Duplicar</button>`,
       `<button data-acao="imprimir" data-id="${o.id}">Imprimir</button>`,
+      s.emAberto ? `<button data-acao="precos" data-id="${o.id}">Atualizar preços</button>` : "",
       s.emAberto ? `<button data-acao="perdido" data-id="${o.id}">Marcar como perdido</button>` : "",
-      o.status === "perdido" ? `<button data-acao="reabrir" data-id="${o.id}">Reabrir</button>` : "",
+      podeReabrir(o) ? `<button data-acao="reabrir" data-id="${o.id}">Reabrir</button>` : "",
+      o.status === "fechado"
+        ? '<small class="menu-nota">Excluir: não dá, virou venda. Para desfazer, estorne a venda no Caixa.</small>'
+        : `<button data-acao="excluir" data-id="${o.id}" class="item-perigo">Excluir</button>`,
     ].filter(Boolean).join("");
-    acoes.push(`<details class="menu-mais"><summary class="btn-icon mini">Mais ▾</summary><div class="menu-itens">${mais}</div></details>`);
+    acoes.push(`<details class="menu-mais"><summary class="btn-icon mini" aria-label="Mais ações">⋯</summary><div class="menu-itens">${mais}</div></details>`);
+    const selo = o.status === "perdido"
+      ? `<small class="texto-ruim">perdido: ${esc(o.motivoPerda || "")}${o.motivoPerdaTexto ? " – " + esc(o.motivoPerdaTexto) : ""}</small>`
+      : o.status === "fechado" ? `<small class="texto-ok">fechado${o.vendaId ? ` · venda ${esc(o.vendaId)}` : ""}</small>` : "";
     return `<tr class="${s.cor ? "cor-" + s.cor : ""}">
-      <td><strong>${o.id}</strong></td>
-      <td>${esc(o.cliente?.nome)}<small>${esc(o.cliente?.telefone)}</small>${o.obs ? `<small class="texto-suave">${esc(o.obs)}</small>` : ""}</td>
-      <td>${dataBR(o.data)}${s.vencido && s.emAberto ? '<small class="texto-ruim">vencido: preços podem ter mudado</small>' : `<small>vale até ${dataBR(o.validoAte)}</small>`}</td>
+      <td><strong>${o.id}</strong>${s.cobrarHoje ? ` <span class="sino" title="${s.diasSemContato} dias sem contato: cobrar hoje">🔔</span>` : ""}</td>
+      <td>${esc(o.cliente?.nome)}<small>${esc(o.cliente?.telefone)} · ${ORIGENS[o.origem] || esc(o.origem)}</small>${o.obs ? `<small class="texto-suave">${esc(o.obs)}</small>` : ""}${selo}</td>
+      <td>${dataBR(o.data)}${s.vencido && s.emAberto ? '<small class="selo-vencido">vencido – preços podem ter mudado</small>' : `<small>vale até ${dataBR(o.validoAte)}</small>`}</td>
       <td class="num">${s.emAberto ? s.diasAberto : "—"}</td>
       <td class="num"><strong>${moeda(o.total)}</strong></td>
-      <td>${ORIGENS[o.origem] || o.origem}</td>
-      <td>${statusCel}</td>
       <td>${dataHora(o.ultimoContato)}${s.emAberto && o.ultimoContato ? `<small>${s.diasSemContato} dia(s)</small>` : ""}</td>
       <td class="orc-acoes">${s.vencido && s.emAberto ? `<button class="btn-icon mini destaque-vermelho" data-acao="precos" data-id="${o.id}">Atualizar preços</button>` : ""}${acoes.join("")}</td>
     </tr>`;
-  }).join("") || '<tr><td colspan="9" class="texto-suave">Nenhum orçamento com esse filtro.</td></tr>';
-  $("orc-contagem").textContent = `${lista.length} de ${estado.orcamentos.length}`;
+  }).join("") || `<tr><td colspan="7" class="texto-suave">${estado.soSino ? "Nenhum orçamento para cobrar hoje." : "Nenhum orçamento aqui."}</td></tr>`;
+  const cont = { aberto: 0, fechado: 0, perdido: 0 };
+  for (const o of ativos()) cont[grupoDaLista(o)]++;
+  for (const g of Object.keys(cont)) $(`orc-n-${g}`).textContent = cont[g] ? `(${cont[g]})` : "";
+  $("orc-filtro-sino").hidden = !estado.soSino;
+  const nLixeira = estado.orcamentos.filter((o) => visivelNaLixeira(o, h)).length;
+  $("orc-lixeira-link").textContent = `🗑 Lixeira${nLixeira ? ` (${nLixeira})` : ""}`;
+  $("orc-contagem").textContent = `· mostrando ${lista.length}`;
+}
+
+function renderLixeira() {
+  const h = hoje();
+  const lista = estado.orcamentos.filter((o) => visivelNaLixeira(o, h)).sort((a, b) => b.excluidoEm.localeCompare(a.excluidoEm));
+  $("orc-lixeira-body").innerHTML = lista.map((o) => `<tr>
+      <td><strong>${o.id}</strong></td><td>${esc(o.cliente?.nome)}<small>${esc(o.cliente?.telefone)}</small></td>
+      <td>${dataBR(o.data)}</td><td class="num">${moeda(o.total)}</td><td>${dataHora(o.excluidoEm)}</td>
+      <td><button class="btn-icon mini" data-acao="restaurar" data-id="${o.id}">Restaurar</button></td>
+    </tr>`).join("") || '<tr><td colspan="6" class="texto-suave">A lixeira está vazia.</td></tr>';
+}
+
+function mostrarLixeira(ligar) {
+  estado.lixeira = ligar;
+  $("orc-lixeira").hidden = !ligar;
+  $("orc-painel-lista").hidden = ligar;
+  $("orc-indicadores").hidden = ligar;
+  if (ligar) renderLixeira();
+}
+
+// Relatórios › Orçamentos: indicadores completos do mês
+function renderRelatorio(el, mes) {
+  const desenhar = () => {
+    const ind = indicadores(estado.orcamentos, mes);
+    const pctTxt = (v) => (v == null ? "—" : `${(v * 100).toFixed(0)}%`);
+    const motivos = Object.entries(ind.motivosPerda).sort((a, b) => b[1] - a[1]);
+    el.innerHTML = `<div class="saldos-grid">
+        <div class="total-bloco"><span>Em aberto (hoje)</span><strong>${moeda(ind.valorAberto)}</strong><small class="texto-suave">${ind.qtdAberto} orçamento(s)</small></div>
+        <div class="total-bloco"><span>Orçamentos do mês</span><strong>${ind.totalMes}</strong></div>
+        <div class="total-bloco"><span>Conversão do mês</span><strong>${pctTxt(ind.taxaConversaoMes)}</strong></div>
+        <div class="total-bloco"><span>Tempo médio até fechar</span><strong>${ind.tempoMedioFechar == null ? "—" : `${ind.tempoMedioFechar.toFixed(1).replace(".", ",")} dias`}</strong><small class="texto-suave">todos os fechados</small></div>
+      </div>
+      <div class="fluxo-grid">
+        <table class="tabela-fin"><thead><tr><th>Origem (orçamentos do mês)</th><th class="num">Qtd.</th></tr></thead>
+          <tbody>${Object.entries(ORIGENS).map(([id, n]) => `<tr><td>${n}</td><td class="num">${ind.porOrigem[id] || 0}</td></tr>`).join("")}</tbody></table>
+        <table class="tabela-fin"><thead><tr><th>Motivos de perda (todos)</th><th class="num">Qtd.</th></tr></thead>
+          <tbody>${motivos.map(([m, n]) => `<tr><td>${esc(m)}</td><td class="num">${n}</td></tr>`).join("") || '<tr><td colspan="2" class="texto-suave">Nenhum perdido.</td></tr>'}</tbody></table>
+      </div>
+      <p class="texto-suave">Excluídos (lixeira) não contam: foram erro ou teste.</p>`;
+  };
+  if (estado.carregado) desenhar();
+  else carregar().then((ok) => (ok ? desenhar() : (el.innerHTML = '<p class="texto-ruim">Não foi possível carregar os orçamentos.</p>')));
 }
 
 function renderTudo() {
   renderIndicadores();
   renderLista();
+  if (estado.lixeira) renderLixeira();
   atualizarContador();
 }
 
@@ -202,7 +267,7 @@ async function carregarNaCalculadora(o, modo, precos) {
   fecharModais();
   const ok = await window.Calculadora.carregarOrcamento(o, modo, precos);
   if (!ok) return;
-  window.switchTab("calculator");
+  window.switchTab("vender");
   ($(modo === "converter" ? "finalizar" : "btn-salvar-orcamento") || document.body).scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
@@ -233,11 +298,17 @@ async function acao(nome, id) {
   if (nome === "editar") return carregarNaCalculadora(o, "editar", "orcamento");
   if (nome === "duplicar") return carregarNaCalculadora(o, "duplicar", "orcamento");
   if (nome === "reabrir") return patch({ id, acao: "reabrir" }).catch((e) => alert(e.message));
+  if (nome === "excluir") {
+    const msg = `Excluir ${o.id} de ${o.cliente?.nome || "cliente"}?\n\nExcluir = foi erro ou teste: some da lista e dos indicadores (fica 30 dias na Lixeira, de onde dá para restaurar).\nSe o cliente não fechou, cancele e use "Marcar como perdido".`;
+    if (!confirm(msg)) return;
+    return patch({ id, acao: "excluir" }).catch((e) => alert(`Não foi excluído: ${e.message}`));
+  }
+  if (nome === "restaurar") return patch({ id, acao: "restaurar" }).catch((e) => alert(`Não foi restaurado: ${e.message}`));
   if (nome === "converter") {
     estado.atual = { orc: o };
     const s = situacao(o, hoje(), cfgOrc());
     $("orc-converter-titulo").textContent = `Converter ${o.id} em venda`;
-    $("orc-converter-info").innerHTML = `${esc(o.cliente?.nome)} · ${moeda(o.total)}.${s.vencido ? ' <span class="texto-ruim">Orçamento vencido: os preços podem ter mudado.</span>' : ""}<br>O pedido vai para a Calculadora; ao registrar a venda, o orçamento fica como Fechado.`;
+    $("orc-converter-info").innerHTML = `${esc(o.cliente?.nome)} · ${moeda(o.total)}.${s.vencido ? ' <span class="texto-ruim">Orçamento vencido: os preços podem ter mudado.</span>' : ""}<br>O pedido vai para a aba Vender; ao registrar a venda, o orçamento fica como Fechado.`;
     abrirModal("modal-orc-converter");
   }
 }
@@ -298,7 +369,7 @@ async function salvar(e) {
     await carregar();
     renderTudo();
     window.Calculadora.limpar(false);
-    alert(`Orçamento ${r.orcamento.id} ${corpo.id ? "atualizado" : "salvo"}: ${moeda(r.orcamento.total)}, válido até ${dataBR(r.orcamento.validoAte)}.\n\nEle está na aba Orçamentos, com os botões Enviar e Cobrar no WhatsApp.`);
+    alert(`Orçamento ${r.orcamento.id} ${corpo.id ? "atualizado" : "salvo"}: ${moeda(r.orcamento.total)}, válido até ${dataBR(r.orcamento.validoAte)}.\n\nEle está na aba Orçamentos, em "Em aberto", com os botões Enviar e Cobrar no WhatsApp.`);
   } catch (err) {
     alert(`O orçamento não foi salvo: ${err.message}`);
   } finally {
@@ -308,15 +379,19 @@ async function salvar(e) {
 
 // ---------- Eventos ----------
 
-for (const id of ["orc-f-status", "orc-f-de", "orc-f-ate", "orc-f-ordem"]) $(id).addEventListener("change", renderLista);
+for (const id of ["orc-f-de", "orc-f-ate", "orc-f-ordem"]) $(id).addEventListener("change", renderLista);
+$("orc-abas").addEventListener("change", () => { estado.soSino = false; renderTudo(); });
+$("orc-sino-limpar").addEventListener("click", () => verCobrar(false));
+$("orc-lixeira-link").addEventListener("click", () => mostrarLixeira(true));
+$("orc-lixeira-voltar").addEventListener("click", () => mostrarLixeira(false));
+$("orc-lixeira-body").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-acao]");
+  if (b) acao(b.dataset.acao, b.dataset.id);
+});
 $("orc-f-busca").addEventListener("input", renderLista);
 $("orc-body").addEventListener("click", (e) => {
   const b = e.target.closest("[data-acao]");
   if (b) acao(b.dataset.acao, b.dataset.id);
-});
-$("orc-body").addEventListener("change", async (e) => {
-  if (!e.target.classList.contains("orc-status")) return;
-  try { await patch({ id: e.target.dataset.id, acao: "status", status: e.target.value }); } catch (err) { alert(err.message); renderLista(); }
 });
 $("orc-whats-modelo").addEventListener("change", (e) => {
   $("orc-whats-texto").value = preencherModelo(cfgOrc().modelos[Number(e.target.value)], estado.atual.orc, hoje());
@@ -369,10 +444,9 @@ window.Orcamentos = {
     if (!estado.carregado) carregar().then(abrirSalvar); else abrirSalvar();
   },
   fecharModais,
-  verCobrar() {
-    $("orc-f-status").value = "cobrar";
-    renderLista();
-  },
+  verCobrar() { verCobrar(true); },
+  relatorio: renderRelatorio,
+  configMudou() { if (estado.carregado) renderTudo(); },
 };
 
 // Contador de "para cobrar" na aba, assim que houver senha/conexão

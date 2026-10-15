@@ -738,6 +738,7 @@ export async function salvarOrcamento(kv, k, d, cfgSalva) {
     const atual = desembrulhar(await kv.hget(k.orcamentos, String(d.id)));
     if (!atual) throw erro(404, "Orçamento não encontrado.");
     if (atual.status === "fechado") throw erro(409, "Orçamento fechado (virou venda) não pode ser editado. Use Duplicar.");
+    if (atual.excluidoEm) throw erro(409, "Orçamento está na lixeira. Restaure antes de editar.");
     const editado = {
       ...atual, ...valores,
       cliente: { id: cliente.id, nome: cliente.nome, telefone: cliente.telefone },
@@ -761,27 +762,33 @@ export async function salvarOrcamento(kv, k, d, cfgSalva) {
   return orc;
 }
 
-// Ações: status, contato, perdido, fechar (virou venda), reabrir, precos (atualizar pela tabela)
+// Situações: Em aberto -> Fechado (virou venda) ou Perdido. Quem muda a situação são as ações:
+// contato, perdido, fechar, reabrir, precos (atualizar pela tabela), excluir e restaurar (lixeira).
+// "aguardando" (dados antigos) conta como Em aberto.
 export async function atualizarOrcamento(kv, k, p) {
   const orc = desembrulhar(await kv.hget(k.orcamentos, String(p?.id || "")));
   if (!orc) throw erro(404, "Orçamento não encontrado.");
   const agora = new Date().toISOString();
   const novo = { ...orc, atualizadoEm: agora };
   const hist = (evento, extra = {}) => { novo.historico = [...(orc.historico || []), { em: agora, evento, ...extra }].slice(-50); };
+  if (orc.excluidoEm && p.acao !== "restaurar") throw erro(409, "Orçamento está na lixeira. Restaure antes.");
   switch (p.acao) {
-    case "status":
-      if (!["aberto", "aguardando"].includes(p.status)) throw erro(400, "Status inválido.");
-      if (orc.status === "fechado") throw erro(409, "Orçamento já virou venda.");
-      novo.status = p.status;
-      hist(`status: ${p.status}`);
-      break;
     case "contato": {
       const tipo = p.tipo === "cobrar" ? "cobrar" : "enviar";
       novo.contatos = [...(orc.contatos || []), { em: agora, tipo }].slice(-100);
       novo.ultimoContato = agora;
-      if (novo.status === "aberto") novo.status = "aguardando";
       break;
     }
+    case "excluir":
+      if (orc.status === "fechado") throw erro(409, "Orçamento convertido em venda não pode ser excluído. Para desfazer, estorne a venda no Caixa.");
+      novo.excluidoEm = agora;
+      hist("excluído (lixeira)");
+      break;
+    case "restaurar":
+      if (!orc.excluidoEm) throw erro(409, "Orçamento não está na lixeira.");
+      delete novo.excluidoEm;
+      hist("restaurado da lixeira");
+      break;
     case "perdido":
       if (orc.status === "fechado") throw erro(409, "Orçamento já virou venda.");
       if (!MOTIVOS_PERDA.includes(p.motivo) && !String(p.motivo || "").startsWith("Outro")) throw erro(400, "Escolha o motivo da perda.");
@@ -791,13 +798,18 @@ export async function atualizarOrcamento(kv, k, p) {
       novo.perdidoEm = agora;
       hist("perdido", { motivo: novo.motivoPerda });
       break;
-    case "reabrir":
-      if (orc.status !== "perdido") throw erro(409, "Só orçamento perdido pode ser reaberto.");
+    case "reabrir": {
+      if (orc.status !== "perdido" && orc.status !== "fechado") throw erro(409, "Só orçamento perdido ou fechado sem venda pode ser reaberto.");
+      if (orc.status === "fechado" && orc.vendaId) {
+        const venda = desembrulhar(await kv.hget(k.lancamentos, String(orc.vendaId)));
+        if (venda && !venda.excluido) throw erro(409, `Orçamento virou a venda ${orc.vendaId}. Para reabrir, estorne (exclua) a venda no Caixa antes.`);
+        novo.vendaIdAnterior = orc.vendaId;
+      }
       novo.status = "aberto";
-      delete novo.motivoPerda;
-      delete novo.motivoPerdaTexto;
+      for (const c of ["motivoPerda", "motivoPerdaTexto", "perdidoEm", "vendaId", "fechadoEm"]) delete novo[c];
       hist("reaberto");
       break;
+    }
     case "fechar":
       if (!ID.test(String(p.vendaId || ""))) throw erro(400, "Venda inválida.");
       novo.status = "fechado";

@@ -6,7 +6,7 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 ---
 
 ## 1. O projeto e como o usuário trabalha
-- **O sistema:** controle interno da madeireira do pai do usuário (Pedro): Calculadora, Orçamentos, Caixa e Financeiro.
+- **O sistema:** controle interno da madeireira do pai do usuário (Pedro). Abas: **Vender · Orçamentos · Caixa · Relatórios · Ajustes** (reorganização de out/2026; ver `REORGANIZACAO-ENTREGA.md`).
   - É **gerencial**: não substitui a contabilidade do escritório, que cuida do fiscal e manda o DAS pronto.
 - **Tecnologia:** **HTML/JS puro + funções serverless na Vercel + Upstash Redis (`@vercel/kv`)**. Sem framework (decisão do usuário).
 - **Repositório:** `github.com/P3droKN/Madeireira-novo`, branch `main`. **Push na `main` publica sozinho no v2.**
@@ -40,17 +40,22 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 **Limitações desta sessão cloud**
 - A rede **bloqueia `*.vercel.app` e `vercel.com`**. Não dá para chamar a API do v2 daqui. Para isso, o usuário teria que liberar `madeireirav2.vercel.app` em Allowed domains do ambiente.
 - Por isso, os testes de integração rodam contra um servidor local com Redis falso (`tests/e2e/`).
-- **Plano Hobby da Vercel: máximo de 12 funções. Já são 12** (`api/*.js` sem `_`). Coisas novas precisam reaproveitar rotas existentes (por ação no corpo, `?versao=`, `PATCH`).
+- **Plano Hobby da Vercel: máximo de 12 funções.** Desde a reorganização a API é **uma função só**: `api/[recurso].js` despacha para `ROTAS` em `api/_rotas.js`. **Rota nova = uma entrada nova em `ROTAS`** (não criar arquivo em `api/` sem `_`). As URLs continuam `/api/<nome>`.
 
 ## 3. Estrutura do código
-- **`index.html`:** todas as abas, que são Calculadora, Orçamentos, Gestor de Caixa (tela antiga, sai na 2D), Financeiro e Preços, mais as janelas.
-- **`script.js`** (clássico): senha, `api()`, Gestor de Caixa antigo, backup/importar/restaurar, `registerDirectSale`, `window.Caixa` (dados para os módulos).
+- **`index.html`:** as 5 abas e as janelas. O sistema abre em **Vender**; o **Caixa abre sempre em Lançar**.
+  - **Vender:** pedido, Registrar venda / Salvar como orçamento, botão **👁 Modo balcão** (esconde tudo com classe `sigilo`; escolha em `localStorage` `madeireira_modo_balcao`).
+  - **Orçamentos:** 3 indicadores (em aberto, conversão do mês, 🔔 para cobrar), abas Em aberto · Fechados · Perdidos, busca, "Mais filtros", ações Enviar/Cobrar/Converter e menu ⋯, Lixeira.
+  - **Caixa:** sub-abas Lançar · Saldos · Cheques · Lançamentos (formulário único; a lista tem Excluir/estornar por linha). Na 2C entra "A receber".
+  - **Relatórios:** barra de mês (Mês/Ano só no DRE) e Imprimir A4; Resumo do mês (a antiga tabela do Gestor de Caixa), DRE, Fluxo de caixa, Formas de pagamento, Orçamentos.
+  - **Ajustes:** Preços · Financeiro · Orçamentos · Saldos (abertura + saldos passados) · Dados (exportar, importar, restaurar, conferir, linha do banco).
+- **`script.js`** (clássico): senha, `api()`, `switchTab`, carga dos dados (`window.Caixa`, inclusive `excluir(id)`), backup/importar/restaurar, saldos passados, `registerDirectSale`.
 - **Módulos de tela:**
-  - `calculadora.js`: pedido e aba Preços;
+  - `calculadora.js`: aba Vender (pedido, modo balcão) e Ajustes › Preços;
   - `pagamentos.js`: editor de várias formas de pagamento;
-  - `orcamentos-ui.js`;
-  - `financeiro-ui.js`: Lançar, Lançamentos, DRE e Configuração;
-  - `caixa-ui.js`: Caixa e saldos, Cheques;
+  - `orcamentos-ui.js`: aba Orçamentos e Relatórios › Orçamentos;
+  - `financeiro-ui.js`: **navegação das sub-abas** (Caixa, Relatórios, Ajustes), Lançar, Lançamentos, Resumo do mês, DRE, Formas de pagamento, configuração (Financeiro e Orçamentos);
+  - `caixa-ui.js`: Saldos, Cheques, Fluxo de caixa e Abertura de saldos;
   - `conferencia.js`: conferência arquivo × banco.
 - **`lib/`:** funções puras, testadas, que rodam no navegador e no Node.
   - `catalogo.js`: catálogo a partir de `data/custos.json`;
@@ -59,9 +64,10 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
   - `financeiro.js`: DRE, Simples, CMV, estoque;
   - `migracaoV2.js`;
   - `caixa.js`: movimentos, saldos, projeção, fluxo, cheques;
-  - `orcamentos.js`;
+  - `orcamentos.js`: situações (Em aberto/Fechado/Perdido; "aguardando" antigo = em aberto), 🔔, lixeira (30 dias na tela);
+  - `relatorios.js`: resumo do mês (mesmos números da tela antiga) e vendas por forma de pagamento;
   - `resumo.js`: conferência.
-- **`api/`:** `_lib.js` (cliente do banco, chaves, senha, trava), `_dados.js` (toda a lógica de gravação) e as rotas:
+- **`api/`:** `[recurso].js` (roteador único), `_rotas.js` (as rotas), `_lib.js` (cliente do banco, chaves, senha, trava), `_dados.js` (toda a lógica de gravação). Rotas:
   - `getFinance`
   - `lancamento`: POST cria; DELETE exclui (suave); PATCH reclassifica em lote ou, com `acao: "cheque"`, altera um cheque
   - `acumulado`
@@ -73,7 +79,7 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
   - `precos`
   - `config`: `{config}` calculadora, `{financeiro}`, `{abertura}`, `{conferencia}`
   - `resumo`
-  - `orcamentos`
+  - `orcamentos`: GET; POST `{orcamento}`/`{cliente}`; PATCH `{id, acao}` com `contato`, `perdido`, `fechar`, `reabrir` (perdido, ou fechado cuja venda foi excluída), `precos`, `excluir` (lixeira: marca `excluidoEm`; fechado não pode), `restaurar`
 - **`data/custos.json`:** fonte da verdade dos custos. É lido pela API (`vercel.json` › includeFiles) e o acesso direto a `/data/*` é redirecionado.
 - **`.vercelignore`:** não publica `dados-iniciais.json`, `*.md`, `tests`, `scripts`.
 - **Chaves no banco** (com prefixo conforme o ambiente):
@@ -89,10 +95,11 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
   - O backup e a restauração cobrem todas.
 
 ## 4. Como testar
-- **Automáticos:** `npm install && npm test`. São **96 testes** (`node --test`), em `tests/*.test.js`.
+- **Automáticos:** `npm install && npm test`. São **105 testes** (`node --test`), em `tests/*.test.js`.
 - **No navegador:** `bash tests/e2e/rodar.sh` (ou `… rodar.sh fase2b`).
   - São 7 baterias contra um servidor local (`tests/e2e/servidor.mjs`, Redis falso no protocolo REST da Upstash, senha local `pinho123`), **só com dados sintéticos**.
-  - Resultado atual: fluxo 23, fase1b 22, lotes 5, trava 6, fase2a 27, orcamentos 30, fase2b 23, **tudo passando**.
+  - Resultado atual: fluxo 31, fase1b 28, lotes 5, trava 6, fase2a 31, orcamentos 57, fase2b 25, **tudo passando**.
+  - O servidor local imita a Vercel: `/api/x` usa `api/x.js` se existir, senão `api/[recurso].js`.
 - **Importante:** o servidor local precisa ser iniciado **de dentro da pasta do projeto**, porque lê `data/custos.json` pelo `process.cwd()`. O `rodar.sh` já faz isso.
 
 ## 5. O que já foi feito (tudo publicado no v2)
@@ -105,10 +112,12 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 | Fase 2A: plano de contas, lançamento novo, migração v2, reclassificação em lote, DRE | `161de34` | sim: migração ok, "Tudo confere" com abertura × acumulado, sugestões aceitas, venda com duas formas, compra em cheque no DRE |
 | **Orçamentos** | `4f894df` | **ainda não**: entregue, aguardando teste |
 | **Fase 2B**: abertura de saldos, saldos, conferência, projeção de 30 dias, fluxo de caixa, cheques | `4e04bfe` | **ainda não**: entregue, aguardando teste |
+| API num roteador único (mesmo comportamento) | `8e329be` | não precisa (testes iguais) |
+| **Reorganização**: 5 abas, formulário único, modo balcão, orçamentos com 3 situações, 🔔, lixeira, Relatórios e Ajustes | ver `git log` | **ainda não**: aguardando teste (`REORGANIZACAO-ENTREGA.md`) |
 
 **Guias de cada etapa:**
 - `FASE0.md`: inclui restauração, projeto separado, importação e trava;
-- `FASE1.md`, `FASE2A.md`, `ORCAMENTOS-ENTREGA.md`, `FASE2B.md`;
+- `FASE1.md`, `FASE2A.md`, `ORCAMENTOS-ENTREGA.md`, `FASE2B.md`, `REORGANIZACAO-ENTREGA.md`;
 - plano geral em `PLANO.md` e `FASE2-PLANO.md`; especificações originais em `PROMPT-claude-code.md`, `ESPEC-financeiro.md` e (orçamentos) na seção do plano.
 
 ## 6. Decisões do usuário (não perguntar de novo)
@@ -181,8 +190,11 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 
 **Orçamentos** (especificação completa no `ORCAMENTOS.md` que o usuário enviou; implementada)
 - Número ORC-0001…; cliente com WhatsApp com DDD validado; origem Balcão/WhatsApp/Telefone; validade padrão de 7 dias.
-- Status: Aberto → Aguardando cliente → Fechado ou Perdido. A perda tem motivo: Preço, Comprou em outro lugar, Desistiu, Sem resposta, Outro.
-- Cores: amarelo com 3 ou mais dias sem contato, vermelho quando vence. Lembrete "para cobrar hoje" com 2 ou mais dias sem contato. Todos os prazos são configuráveis.
+- **Só 3 situações** (reorganização): Em aberto → Fechado (virou venda) ou Perdido. **Sem "Aguardando cliente"** e sem seletor de status: a situação muda pelas ações (Converter, Marcar como perdido, Reabrir). A perda tem motivo: Preço, Comprou em outro lugar, Desistiu, Sem resposta, Outro.
+- **Vencido é só aviso** (selo vermelho + Atualizar preços): o orçamento continua Em aberto até fechar, perder ou excluir.
+- **🔔** quando está em aberto há X dias sem contato (**padrão 3**, configurável em Ajustes › Orçamentos); "🔔 N para cobrar hoje" no topo filtra.
+- **Excluir** (menu ⋯, com confirmação) = erro ou teste: some da lista e dos indicadores e vai para a **Lixeira** (restaura; some da tela depois de 30 dias, **mas continua guardado no banco e nos backups** — decisão do usuário). Perdido = cliente não fechou (conta nos indicadores). Convertido em venda não pode ser excluído (estornar a venda no Caixa, depois Reabrir).
+- Indicadores no topo: só em aberto, conversão do mês e 🔔. Tempo médio, motivos de perda e origem ficam em Relatórios › Orçamentos.
 - Enviar/Cobrar por `wa.me/55DDDNÚMERO`, com os modelos editáveis (`{nome} {numero} {valor} {dias} {validade}`). O clique registra o contato. **Nada é enviado sozinho.**
 - Converter em venda (preços do orçamento ou de hoje), Duplicar, Editar (mesmo número), Imprimir, Atualizar preços (mesmo % sobre a tabela nova, renova a validade).
 - O cadastro de clientes (nome, WhatsApp, observação, chave = telefone) é **o mesmo que o fiado vai usar**.
@@ -204,18 +216,19 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
   - **total "na rua"** (fiado + cheques em carteira) no painel.
 
 ## 7. Próximos passos
-1. **O usuário testa no v2** Orçamentos e 2B (passo a passo em `ORCAMENTOS-ENTREGA.md` e `FASE2B.md`), incluindo **fazer a abertura de saldos** com os extratos.
+1. **O usuário testa no v2** a reorganização (`REORGANIZACAO-ENTREGA.md`), que já inclui Orçamentos e 2B nos lugares novos, e **faz a abertura de saldos** (Ajustes › Saldos) com os extratos.
 2. **Fase 2C: fiado e clientes**
    - forma "Fiado" na venda: cliente obrigatório e vencimento;
    - contas a receber, com recebimento total ou parcial em cheque ou outra forma;
    - cheque devolvido reabrindo a conta a receber;
    - tela de clientes (cadastro já existe no banco: `madeireira_clientes`);
    - relatórios e total "na rua".
-   - Rotas: reaproveitar `api/orcamentos.js` (clientes) e `api/lancamento.js`, porque não há espaço para funções novas.
+   - Rotas: novas entradas em `ROTAS` (`api/_rotas.js`); o limite de funções não é mais problema.
+   - Tela: "A receber" entra como mais uma sub-aba do Caixa.
 3. **Fase 2D: relatórios, painel e limpeza**
-   - "Vendas por forma de pagamento" (dia, mês e ano; por forma e conta; a soma bate com o total) e **CSV** com data, Nº NF-e, forma, tPag e valor para o escritório;
+   - "Vendas por forma de pagamento": a versão simples do mês já existe em Relatórios; falta dia/ano, por conta e o **CSV** com data, Nº NF-e, forma, tPag e valor para o escritório;
    - **painel inicial**: faturamento do mês e do ano, lucro e margem líquida, margem bruta com alerta de queda de 5 pontos, ponto de equilíbrio e quanto falta, ticket médio, saldos e projeção, % de fixas e pessoal, top 5 materiais por margem, total na rua, indicadores de orçamentos;
-   - remover a tela antiga "Gestor de Caixa" e o código morto (item 13 do PROMPT).
+   - o painel entra em Relatórios; limpar código morto que sobrar (item 13 do PROMPT). A tela antiga "Gestor de Caixa" já saiu na reorganização.
 4. **Virada para a produção** (ainda não decidido; perguntar ao usuário qual caminho):
    - **A)** publicar este código no projeto `madereira`, usando o banco de produção e a mesma `SENHA_APP` forte nova;
    - **B)** passar o pai para o projeto v2, com os dados reais restaurados e o domínio trocado.
@@ -233,9 +246,9 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
   - os itens do campo `duvidas` em `data/custos.json`: cedro 3x3, base da itaúba, eucalipto 1x5/1x6/2x3, roliços antigos, madeirite 9 × 10 mm, assoalho emendado sem custo, medidas do beiral, caixilho 15/23/25 sem vistas;
   - mais dois achados: **CEDRO 1x8 = 16,24** (cerca de 12% acima da curva) e **CAMBARÁ 3x5 = 30,11** (cerca de 17% acima).
 - **Códigos tPag:** o escritório precisa confirmar (principalmente o PIX 17 × 20).
-- **Taxas reais do cartão:** o pai preenche em Financeiro › Configuração. Hoje estão em 0%.
+- **Taxas reais do cartão:** o pai preenche em Ajustes › Financeiro. Hoje estão em 0%.
 - **Preços de venda:** todos vazios até o pai preencher.
 - **Custos "a classificar" (compra ou CMV) dos dados antigos:** o pai precisa classificar no v2 e depois na produção. Enquanto não classifica, o DRE avisa que o lucro pode estar superestimado.
 - **Na 2C**, decidir com o usuário o **prazo padrão do fiado** e se o vencimento é por venda ou por cliente. Ainda não foi perguntado.
 - **A virada (A ou B)** ainda não foi decidida.
-- **Tela antiga "Gestor de Caixa":** continua até a 2D e ignora os lançamentos de abertura e as transferências para não contar em dobro.
+- **Resumo do mês (antiga tela do Gestor de Caixa, agora em Relatórios):** mesmos números de antes (provado em `tests/relatorios.test.js`), ignorando abertura e transferências. O "resultado" dele é vendas − custos − despesas, **sem funcionários** (sempre foi assim); perguntar ao usuário se quer incluir.

@@ -380,26 +380,28 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     .parcelas-grid { grid-template-columns: repeat(3, 1fr); }
 }
 @media print {
-    body.imprimindo-dre .tab-content { display: none !important; }
-    body.imprimindo-dre #tab-financeiro { display: block !important; }
-    body.imprimindo-dre #tab-financeiro > *:not(#fin-dre) { display: none !important; }
-    body.imprimindo-dre header, body.imprimindo-dre .aviso, body.imprimindo-dre .painel-titulo, body.imprimindo-dre .so-tela-dre, body.imprimindo-dre .pendencias { display: none !important; }
-    body.imprimindo-dre .so-impressao { display: block !important; text-align: center; font-size: 14px !important; }
-    body.imprimindo-dre .dre-info { display: flex !important; flex-wrap: wrap; gap: 4px; }
-    body.imprimindo-dre .dre-info div { border: 1px solid #ccc !important; background: none !important; padding: 3px 6px !important; }
-    body.imprimindo-dre .dre-info span, body.imprimindo-dre .dre-info strong, body.imprimindo-dre .nota-gerencial { color: black !important; font-size: 9px !important; }
-    body.imprimindo-dre .tabela-dre td, body.imprimindo-dre .tabela-dre th { font-size: 9px !important; padding: 1px 4px !important; }
-    body.imprimindo-dre.dre-anual .tabela-dre td, body.imprimindo-dre.dre-anual .tabela-dre th { font-size: 7px !important; padding: 1px 2px !important; }
-    body.imprimindo-dre .tag { border: none !important; font-size: 7px !important; }
+    /* Relatórios › Imprimir A4: só a seção aberta */
+    body.imprimindo-rel .tab-content { display: none !important; }
+    body.imprimindo-rel #tab-relatorios { display: block !important; }
+    body.imprimindo-rel #tab-relatorios > *:not(.rel-secao):not(#rel-titulo-impressao) { display: none !important; }
+    body.imprimindo-rel #tab-relatorios > .rel-secao[hidden] { display: none !important; }
+    body.imprimindo-rel header, body.imprimindo-rel .aviso, body.imprimindo-rel .painel-titulo, body.imprimindo-rel .so-tela-dre, body.imprimindo-rel .so-tela-rel, body.imprimindo-rel .pendencias, body.imprimindo-rel select { display: none !important; }
+    body.imprimindo-rel .so-impressao { display: block !important; text-align: center; font-size: 14px !important; color: black !important; margin-bottom: 6px; }
+    body.imprimindo-rel .dre-info, body.imprimindo-rel .saldos-grid { display: flex !important; flex-wrap: wrap; gap: 4px; }
+    body.imprimindo-rel .dre-info div, body.imprimindo-rel .total-bloco { border: 1px solid #ccc !important; background: none !important; padding: 3px 6px !important; }
+    body.imprimindo-rel .dre-info span, body.imprimindo-rel .dre-info strong, body.imprimindo-rel .nota-gerencial, body.imprimindo-rel .total-bloco span, body.imprimindo-rel .total-bloco strong, body.imprimindo-rel p { color: black !important; font-size: 9px !important; }
+    body.imprimindo-rel table td, body.imprimindo-rel table th { color: black !important; font-size: 9px !important; padding: 1px 4px !important; }
+    body.imprimindo-rel.dre-anual .tabela-dre td, body.imprimindo-rel.dre-anual .tabela-dre th { font-size: 7px !important; padding: 1px 2px !important; }
+    body.imprimindo-rel .tag { border: none !important; font-size: 7px !important; }
 }
 @page { size: A4; margin: 10mm; }
 
 /* ---------- ORÇAMENTOS ---------- */
 .contador { display: inline-block; min-width: 1.3rem; padding: 0 0.35rem; margin-left: 0.25rem; border-radius: 999px; background: var(--warning); color: #111; font-size: 0.75rem; font-weight: 700; }
-.orc-indicadores { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.75rem; margin-bottom: 1.25rem; }
+.orc-indicadores { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 1.25rem; }
 .orc-indicadores .total-bloco strong { font-size: 1.25rem; }
 .orc-indicadores .total-bloco small { color: var(--text-main); font-size: 0.8rem; line-height: 1.4; }
-.orc-filtros { grid-template-columns: 2fr 1fr 1fr 1.5fr 1.5fr; }
+.orc-filtros { grid-template-columns: 1fr 1fr 2fr; }
 .tabela-orc td, .tabela-orc th { padding: 0.55rem 0.5rem; font-size: 0.86rem; vertical-align: top; }
 .tabela-orc tr.cor-amarelo td { background: rgba(245, 158, 11, 0.10); }
 .tabela-orc tr.cor-amarelo td:first-child { box-shadow: inset 3px 0 0 var(--warning); }
@@ -972,4 +974,39 @@ a.btn-icon { text-decoration: none; }
     .preco-input { border: none !important; background: none !important; color: black !important; width: auto !important; padding: 0 !important; }
     .tag { background: none !important; color: black !important; border: 1px solid #999; }
     td small { color: #333 !important; }
+}
+
+/* ---------- REORGANIZAÇÃO: modo balcão, orçamentos, relatórios, ajustes ---------- */
+body.modo-balcao .sigilo { display: none !important; }
+#btn-balcao[aria-pressed="true"] { border-color: var(--warning); color: var(--warning); }
+
+.orc-topo { gap: 0.75rem; flex-wrap: wrap; }
+.orc-abas { flex: 0 1 auto; min-width: 320px; }
+.orc-abas b { font-weight: 500; opacity: 0.8; }
+.orc-busca { max-width: 280px; }
+.mais-filtros { margin: 0 0 1rem; }
+.mais-filtros summary { cursor: pointer; color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.5rem; }
+.bloco-sino { cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.bloco-sino.tem { border-color: var(--warning) !important; }
+.bloco-sino.tem strong { color: var(--warning); }
+.bloco-sino.ativo { outline: 2px solid var(--warning); }
+.sino { font-size: 0.95rem; }
+.selo-vencido { display: inline-block; margin-top: 0.2rem; padding: 0.05rem 0.4rem; border-radius: 999px; background: rgba(239, 68, 68, 0.18); color: #f87171; font-weight: 600; }
+.menu-nota { display: block; padding: 0.45rem 0.6rem; color: var(--text-muted); font-size: 0.78rem; max-width: 220px; }
+.menu-itens .item-perigo { color: #f87171; }
+.rodape-lixeira { margin-top: 0.75rem; text-align: right; font-size: 0.85rem; }
+
+.rel-barra { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 1rem; margin-bottom: 1.25rem; }
+.rel-barra .form-group { margin: 0; }
+.rel-barra #rel-imprimir { margin-left: auto; }
+.summary-table small { display: block; font-weight: 400; }
+
+.dados-acoes { display: grid; gap: 0.75rem; }
+.dados-acao { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.dados-acao .btn-icon { min-width: 190px; text-align: left; }
+
+@media (max-width: 700px) {
+    .orc-indicadores { grid-template-columns: 1fr; }
+    .orc-abas { min-width: 0; width: 100%; }
+    .orc-busca { max-width: none; width: 100%; }
 }

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   normalizarTelefone, linkWhatsApp, preencherModelo, textoParaCliente, situacao, indicadores, ordenar,
-  atualizarPrecos, numeroOrcamento, somarDias, CONFIG_ORCAMENTOS_PADRAO,
+  atualizarPrecos, numeroOrcamento, somarDias, CONFIG_ORCAMENTOS_PADRAO, grupoDaLista, visivelNaLixeira,
 } from "../lib/orcamentos.js";
 import { montarCatalogo } from "../lib/catalogo.js";
 
@@ -48,17 +48,30 @@ test("enviar: texto para o cliente sem custo, margem nem tabela", () => {
   assert.ok(!/custo|margem|tabela/i.test(t));
 });
 
-test("validade: vencido fica vermelho; 3 dias sem contato fica amarelo; cobrar a partir de 2 dias", () => {
+test("validade: vencido é só aviso (continua em aberto); 🔔 a partir de 3 dias sem contato", () => {
   assert.deepEqual(
     (({ vencido, cor, cobrarHoje, diasAberto }) => ({ vencido, cor, cobrarHoje, diasAberto }))(situacao(orc(), "2026-10-11")),
     { vencido: false, cor: null, cobrarHoje: false, diasAberto: 1 });
-  assert.equal(situacao(orc(), "2026-10-12").cobrarHoje, true);
-  assert.equal(situacao(orc(), "2026-10-13").cor, "amarelo");
-  assert.equal(situacao(orc({ ultimoContato: "2026-10-12T15:00:00Z" }), "2026-10-13").cor, null);
-  assert.equal(situacao(orc(), "2026-10-18").cor, "vermelho");
-  assert.equal(situacao(orc(), "2026-10-18").vencido, true);
+  assert.equal(CONFIG_ORCAMENTOS_PADRAO.diasParaCobrar, 3);
+  assert.equal(situacao(orc(), "2026-10-12").cobrarHoje, false);
+  assert.equal(situacao(orc(), "2026-10-13").cobrarHoje, true);
+  assert.equal(situacao(orc({ ultimoContato: "2026-10-12T15:00:00Z" }), "2026-10-13").cobrarHoje, false);
+  const vencido = situacao(orc(), "2026-11-30");
+  assert.equal(vencido.vencido, true);
+  assert.equal(vencido.cor, "vermelho");
+  assert.equal(vencido.emAberto, true, "vencido continua em aberto");
+  assert.equal(grupoDaLista(orc()), "aberto");
+  assert.equal(grupoDaLista(orc({ status: "aguardando" })), "aberto", "aguardando (antigo) conta como em aberto");
   assert.equal(situacao(orc({ status: "fechado" }), "2026-10-18").cor, null);
+  assert.equal(situacao(orc({ excluidoEm: "2026-10-12T10:00:00Z" }), "2026-10-18").cobrarHoje, false);
   assert.equal(somarDias("2026-10-28", 7), "2026-11-04");
+});
+
+test("lixeira: aparece por 30 dias e depois some da lista (mas o dado continua)", () => {
+  const x = orc({ excluidoEm: "2026-10-10T12:00:00Z" });
+  assert.equal(visivelNaLixeira(x, "2026-11-09"), true);
+  assert.equal(visivelNaLixeira(x, "2026-11-10"), false);
+  assert.equal(visivelNaLixeira(orc(), "2026-10-11"), false);
 });
 
 test("atualizar preços: recalcula pela tabela atual mantendo o % e mostra a diferença", () => {
@@ -85,4 +98,9 @@ test("indicadores e ordem padrão", () => {
   assert.deepEqual(i.porOrigem, { whatsapp: 2, balcao: 1, telefone: 1 });
   assert.deepEqual(ordenar(lista, "padrao").map((o) => o.numero), [4, 3, 2, 1]);
   assert.deepEqual(ordenar(lista, "valor").map((o) => o.numero), [3, 2, 1, 4]);
+  const comExcluido = [...lista, orc({ id: "ORC-0005", numero: 5, data: "2026-10-06", status: "aberto", total: 999, excluidoEm: "2026-10-07T10:00:00Z" })];
+  const j = indicadores(comExcluido, "2026-10");
+  assert.equal(j.valorAberto, 350, "excluído não conta nos indicadores");
+  assert.equal(j.qtdAberto, 2);
+  assert.equal(j.taxaConversaoMes, 0.25);
 });

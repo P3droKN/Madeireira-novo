@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema Madeireira - Calculadora & Caixa</title>
+    <title>Sistema Madeireira</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -12,23 +12,26 @@
         <header>
             <h1>Sistema Madeireira</h1>
             <nav class="tabs">
-                <button class="tab-btn active" id="btn-tab-calculator" onclick="switchTab('calculator')">Calculadora</button>
+                <button class="tab-btn active" id="btn-tab-vender" onclick="switchTab('vender')">Vender</button>
                 <button class="tab-btn" id="btn-tab-orcamentos" onclick="switchTab('orcamentos')">Orçamentos <span class="contador" id="orc-contador" hidden></span></button>
-                <button class="tab-btn" id="btn-tab-finance" onclick="switchTab('finance')">Gestor de Caixa</button>
-                <button class="tab-btn" id="btn-tab-financeiro" onclick="switchTab('financeiro')">Financeiro</button>
-                <button class="tab-btn" id="btn-tab-prices" onclick="switchTab('prices')">Preços</button>
+                <button class="tab-btn" id="btn-tab-caixa" onclick="switchTab('caixa')">Caixa</button>
+                <button class="tab-btn" id="btn-tab-relatorios" onclick="switchTab('relatorios')">Relatórios</button>
+                <button class="tab-btn" id="btn-tab-ajustes" onclick="switchTab('ajustes')">Ajustes</button>
             </nav>
         </header>
 
         <main>
             <div id="aviso-sistema" class="aviso" style="display: none;"></div>
 
-            <!-- ABA: CALCULADORA -->
-            <div id="tab-calculator" class="tab-content active">
+            <!-- ABA: VENDER -->
+            <div id="tab-vender" class="tab-content active">
                 <section class="calculator-section glass-panel">
                     <div class="painel-titulo">
                         <h2>Adicionar item</h2>
-                        <span id="catalogo-status" class="texto-suave">Carregando catálogo…</span>
+                        <div class="painel-acoes">
+                            <span id="catalogo-status" class="texto-suave">Carregando catálogo…</span>
+                            <button type="button" class="btn-icon" id="btn-balcao" aria-pressed="false" title="Esconde custo e margem para o cliente não ver a tela">👁 Modo balcão</button>
+                        </div>
                     </div>
                     <form id="calc-form" class="calc-grid">
                         <div class="form-group campo-material">
@@ -89,10 +92,10 @@
                                 <tr>
                                     <th>Item</th>
                                     <th class="num">Qtd</th>
-                                    <th class="num so-tela">Custo</th>
+                                    <th class="num so-tela sigilo">Custo</th>
                                     <th class="num">Venda unit.</th>
                                     <th class="num">Venda</th>
-                                    <th class="num so-tela">Margem</th>
+                                    <th class="num so-tela sigilo">Margem</th>
                                     <th></th>
                                 </tr>
                             </thead>
@@ -117,11 +120,11 @@
                             <span>Variação</span>
                             <strong id="total-variacao" class="total-variacao">—</strong>
                         </div>
-                        <div class="total-bloco so-tela">
+                        <div class="total-bloco so-tela sigilo">
                             <span>Custo</span>
                             <strong id="total-custo">R$ 0,00</strong>
                         </div>
-                        <div class="total-bloco so-tela">
+                        <div class="total-bloco so-tela sigilo">
                             <span>Margem</span>
                             <strong id="total-margem">—</strong>
                             <small class="texto-suave" id="total-margem-nota"></small>
@@ -142,7 +145,7 @@
                     <div id="orc-vinculo" class="aviso aviso-alerta vinculo" hidden></div>
                     <div class="finalizar" id="finalizar">
                         <div class="finalizar-topo">
-                            <h3>Registrar venda no caixa</h3>
+                            <h3>Fechar o pedido</h3>
                             <div class="total-cobrar"><span>Total</span><strong id="total-cobrar">R$ 0,00</strong></div>
                         </div>
                         <div class="form-group">
@@ -170,55 +173,61 @@
 
             <!-- ABA: ORÇAMENTOS -->
             <div id="tab-orcamentos" class="tab-content" style="display: none;">
-                <div id="orc-lembrete" class="aviso aviso-alerta" hidden></div>
                 <div class="orc-indicadores" id="orc-indicadores"></div>
-                <section class="glass-panel">
-                    <div class="painel-titulo">
-                        <h2>Orçamentos</h2>
-                        <span class="texto-suave" id="orc-contagem"></span>
-                    </div>
-                    <div class="fin-filtros orc-filtros">
-                        <div class="form-group"><label for="orc-f-status">Status</label>
-                            <select id="orc-f-status">
-                                <option value="abertos">Em aberto (aberto + aguardando)</option>
-                                <option value="cobrar">Para cobrar hoje</option>
-                                <option value="todos">Todos</option>
-                                <option value="aberto">Aberto</option>
-                                <option value="aguardando">Aguardando cliente</option>
-                                <option value="fechado">Fechado</option>
-                                <option value="perdido">Perdido</option>
-                            </select>
+                <section class="glass-panel" id="orc-painel-lista">
+                    <div class="painel-titulo orc-topo">
+                        <div class="segmentado orc-abas" id="orc-abas" role="radiogroup" aria-label="Situação">
+                            <label><input type="radio" name="orc-aba" value="aberto" checked><span>Em aberto <b id="orc-n-aberto"></b></span></label>
+                            <label><input type="radio" name="orc-aba" value="fechado"><span>Fechados <b id="orc-n-fechado"></b></span></label>
+                            <label><input type="radio" name="orc-aba" value="perdido"><span>Perdidos <b id="orc-n-perdido"></b></span></label>
                         </div>
-                        <div class="form-group"><label for="orc-f-de">De</label><input type="date" id="orc-f-de"></div>
-                        <div class="form-group"><label for="orc-f-ate">Até</label><input type="date" id="orc-f-ate"></div>
-                        <div class="form-group"><label for="orc-f-busca">Cliente</label><input type="search" id="orc-f-busca" placeholder="nome ou telefone"></div>
-                        <div class="form-group"><label for="orc-f-ordem">Ordenar</label>
-                            <select id="orc-f-ordem"><option value="padrao">Mais antigos em aberto primeiro</option><option value="valor">Maior valor</option></select>
-                        </div>
+                        <input type="search" id="orc-f-busca" class="orc-busca" placeholder="🔎 nome ou telefone" aria-label="Buscar por nome ou telefone">
                     </div>
+                    <div id="orc-filtro-sino" class="aviso aviso-alerta" hidden>Mostrando só os 🔔 para cobrar hoje. <button class="btn-icon mini" id="orc-sino-limpar">Mostrar todos</button></div>
+                    <details class="mais-filtros" id="orc-mais-filtros">
+                        <summary>Mais filtros</summary>
+                        <div class="fin-filtros orc-filtros">
+                            <div class="form-group"><label for="orc-f-de">De</label><input type="date" id="orc-f-de"></div>
+                            <div class="form-group"><label for="orc-f-ate">Até</label><input type="date" id="orc-f-ate"></div>
+                            <div class="form-group"><label for="orc-f-ordem">Ordenar</label>
+                                <select id="orc-f-ordem"><option value="padrao">Mais antigos em aberto primeiro</option><option value="valor">Maior valor</option></select>
+                            </div>
+                        </div>
+                    </details>
                     <div class="table-container">
                         <table class="tabela-orc">
-                            <thead><tr><th>Nº</th><th>Cliente</th><th>Data</th><th class="num">Dias</th><th class="num">Valor</th><th>Origem</th><th>Status</th><th>Último contato</th><th>Ações</th></tr></thead>
+                            <thead><tr><th>Nº</th><th>Cliente</th><th>Data</th><th class="num">Dias</th><th class="num">Valor</th><th>Último contato</th><th>Ações</th></tr></thead>
                             <tbody id="orc-body"></tbody>
                         </table>
                     </div>
-                    <p class="texto-suave legenda-cores"><span class="bolinha amarelo"></span> 3 ou mais dias sem contato · <span class="bolinha vermelho"></span> vencido (preços podem ter mudado)</p>
+                    <p class="texto-suave legenda-cores"><span id="orc-legenda-sino">🔔 = em aberto há 3 ou mais dias sem contato</span> · <span class="bolinha vermelho"></span> vencido: continua em aberto, só confira os preços<br>
+                        <strong>Perdido</strong> = o cliente não fechou (conta nos indicadores) · <strong>Excluir</strong> = foi erro ou teste (some da lista e dos indicadores; fica 30 dias na Lixeira)</p>
+                    <p class="rodape-lixeira"><button type="button" class="link-suave" id="orc-lixeira-link">🗑 Lixeira</button> <span class="texto-suave" id="orc-contagem"></span></p>
+                </section>
+                <section class="glass-panel" id="orc-lixeira" hidden>
+                    <div class="painel-titulo"><h2>🗑 Lixeira</h2><button type="button" class="btn-icon" id="orc-lixeira-voltar">← Voltar aos orçamentos</button></div>
+                    <p class="texto-suave">Orçamentos excluídos nos últimos 30 dias. Depois disso eles saem desta lista, mas continuam guardados no banco e nos backups.</p>
+                    <div class="table-container">
+                        <table class="tabela-orc">
+                            <thead><tr><th>Nº</th><th>Cliente</th><th>Data</th><th class="num">Valor</th><th>Excluído em</th><th></th></tr></thead>
+                            <tbody id="orc-lixeira-body"></tbody>
+                        </table>
+                    </div>
                 </section>
             </div>
 
-            <!-- ABA: FINANCEIRO (Fase 2A) -->
-            <div id="tab-financeiro" class="tab-content" style="display: none;">
-                <nav class="subtabs" aria-label="Financeiro">
+            
+<!-- ABA: CAIXA (dia a dia) -->
+            <div id="tab-caixa" class="tab-content" style="display: none;">
+                <nav class="subtabs" data-grupo="caixa" aria-label="Caixa">
                     <button class="subtab ativo" data-sub="lancar">Lançar</button>
-                    <button class="subtab" data-sub="lista">Lançamentos</button>
-                    <button class="subtab" data-sub="caixa">Caixa e saldos</button>
+                    <button class="subtab" data-sub="saldos">Saldos</button>
                     <button class="subtab" data-sub="cheques">Cheques</button>
-                    <button class="subtab" data-sub="dre">DRE</button>
-                    <button class="subtab" data-sub="config">Configuração</button>
+                    <button class="subtab" data-sub="lista">Lançamentos</button>
                 </nav>
                 <div id="fin-aviso-v2" class="aviso aviso-alerta" hidden></div>
 
-                <section class="glass-panel fin-sub" id="fin-lancar">
+                <section class="glass-panel fin-sub" id="fin-lancar" data-sub-de="caixa">
                     <div class="painel-titulo"><h2>Novo lançamento</h2></div>
                     <div class="segmentado fin-tipos" id="fin-tipo" role="radiogroup" aria-label="Tipo de lançamento">
                         <label><input type="radio" name="fin-tipo" value="venda" checked><span>Venda</span></label>
@@ -229,7 +238,10 @@
                     <form id="fin-form" class="fin-form"></form>
                 </section>
 
-                <section class="glass-panel fin-sub" id="fin-lista" hidden>
+                <div class="fin-sub" id="fin-saldos" data-sub-de="caixa" hidden></div>
+                <div class="fin-sub" id="fin-cheques" data-sub-de="caixa" hidden></div>
+
+                <section class="glass-panel fin-sub" id="fin-lista" data-sub-de="caixa" hidden>
                     <div class="painel-titulo"><h2>Lançamentos</h2><span class="texto-suave" id="fin-lista-contagem"></span></div>
                     <div class="fin-filtros">
                         <div class="form-group"><label for="fin-f-mes">Mês</label><input type="month" id="fin-f-mes"></div>
@@ -258,41 +270,75 @@
                         <table class="tabela-fin">
                             <thead><tr>
                                 <th><input type="checkbox" id="fin-sel-todos" aria-label="Selecionar todos"></th>
-                                <th>Data</th><th>Descrição</th><th>Conta</th><th>Forma / pago com</th><th class="num">Valor</th>
+                                <th>Data</th><th>Descrição</th><th>Conta</th><th>Forma / pago com</th><th class="num">Valor</th><th></th>
                             </tr></thead>
                             <tbody id="fin-lista-body"></tbody>
                         </table>
                     </div>
                 </section>
+            </div>
 
-                <div class="fin-sub" id="fin-caixa" hidden></div>
-                <div class="fin-sub" id="fin-cheques" hidden></div>
-
-                <section class="glass-panel fin-sub" id="fin-dre" hidden>
-                    <div class="painel-titulo">
-                        <h2>DRE gerencial</h2>
-                        <div class="painel-acoes">
-                            <div class="segmentado" id="fin-dre-visao">
-                                <label><input type="radio" name="fin-dre-visao" value="mes" checked><span>Mês</span></label>
-                                <label><input type="radio" name="fin-dre-visao" value="ano"><span>Ano</span></label>
-                            </div>
-                            <input type="month" id="fin-dre-mes" aria-label="Mês">
-                            <button class="btn-icon" id="fin-dre-imprimir">🖨️ Imprimir</button>
+            <!-- ABA: RELATÓRIOS (mês e ano) -->
+            <div id="tab-relatorios" class="tab-content" style="display: none;">
+                <nav class="subtabs" data-grupo="relatorios" aria-label="Relatórios">
+                    <button class="subtab ativo" data-sub="resumo">Resumo do mês</button>
+                    <button class="subtab" data-sub="dre">DRE</button>
+                    <button class="subtab" data-sub="fluxo">Fluxo de caixa</button>
+                    <button class="subtab" data-sub="formas">Formas de pagamento</button>
+                    <button class="subtab" data-sub="orcamentos">Orçamentos</button>
+                </nav>
+                <div class="rel-barra">
+                    <div class="form-group"><label for="rel-mes">Mês</label><input type="month" id="rel-mes"></div>
+                    <div class="form-group" id="rel-visao-grupo" hidden><label>Visão</label>
+                        <div class="segmentado" id="rel-visao">
+                            <label><input type="radio" name="rel-visao" value="mes" checked><span>Mês</span></label>
+                            <label><input type="radio" name="rel-visao" value="ano"><span>Ano</span></label>
                         </div>
                     </div>
-                    <h3 class="so-impressao" id="fin-dre-titulo-impressao"></h3>
+                    <button class="btn-icon" id="rel-imprimir">🖨️ Imprimir A4</button>
+                </div>
+                <h3 class="so-impressao" id="rel-titulo-impressao"></h3>
+
+                <section class="glass-panel fin-sub rel-secao" id="rel-resumo" data-sub-de="relatorios">
+                    <div class="painel-titulo"><h2>Resumo do mês</h2>
+                        <div class="painel-acoes"><label for="rel-dia" class="texto-suave">Dia de referência</label><input type="date" id="rel-dia"></div></div>
+                    <p class="texto-suave so-tela-rel">A antiga tabela "Monitoramento detalhado para declaração": o que foi lançado no dia, o acumulado do mês até o dia anterior e o total do mês até o dia.</p>
+                    <div class="table-container" id="rel-resumo-conteudo"></div>
+                </section>
+
+                <section class="glass-panel fin-sub rel-secao" id="fin-dre" data-sub-de="relatorios" hidden>
+                    <div class="painel-titulo">
+                        <h2>DRE gerencial</h2>
+                    </div>
+                    
                     <div id="fin-dre-conteudo"></div>
                     <p class="nota-gerencial">Relatório gerencial de controle interno. Não substitui a contabilidade oficial do escritório.</p>
                 </section>
 
-                <section class="glass-panel fin-sub" id="fin-config" hidden>
-                    <div class="painel-titulo"><h2>Configuração financeira</h2></div>
-                    <form id="fin-config-form"></form>
+                <div class="fin-sub rel-secao" id="rel-fluxo" data-sub-de="relatorios" hidden></div>
+
+                <section class="glass-panel fin-sub rel-secao" id="rel-formas" data-sub-de="relatorios" hidden>
+                    <div class="painel-titulo"><h2>Vendas por forma de pagamento</h2></div>
+                    <div id="rel-formas-conteudo"></div>
+                </section>
+
+                <section class="glass-panel fin-sub rel-secao" id="rel-orcamentos" data-sub-de="relatorios" hidden>
+                    <div class="painel-titulo"><h2>Orçamentos</h2></div>
+                    <div id="rel-orcamentos-conteudo"></div>
                 </section>
             </div>
 
-            <!-- ABA: PREÇOS (ADMIN) -->
-            <div id="tab-prices" class="tab-content" style="display: none;">
+            <!-- ABA: AJUSTES -->
+            <div id="tab-ajustes" class="tab-content" style="display: none;">
+                <nav class="subtabs" data-grupo="ajustes" aria-label="Ajustes">
+                    <button class="subtab ativo" data-sub="precos">Preços</button>
+                    <button class="subtab" data-sub="financeiro">Financeiro</button>
+                    <button class="subtab" data-sub="orcamentos">Orçamentos</button>
+                    <button class="subtab" data-sub="saldos">Saldos</button>
+                    <button class="subtab" data-sub="dados">Dados</button>
+                </nav>
+
+                <div class="fin-sub" id="aj-precos" data-sub-de="ajustes">
                 <section class="glass-panel">
                     <div class="painel-titulo">
                         <h2>Ajustes da calculadora</h2>
@@ -358,211 +404,41 @@
                         </div>
                     </div>
                 </section>
-            </div>
-
-            <!-- ABA: GESTOR DE CAIXA -->
-            <div id="tab-finance" class="tab-content" style="display: none;">
-                <div class="print-only-header" style="display: none;">
-                    <h2 style="text-align: center; margin-bottom: 10px; font-size: 18px;">Relatório de Fechamento Financeiro - <span id="print-month-label"></span></h2>
                 </div>
-                <section class="dashboard-section glass-panel">
-                    <div class="dashboard-header">
-                        <h2>Resumo Financeiro</h2>
-                        <div class="dashboard-controls">
-                            <input type="date" id="filter-date" class="month-picker">
-                            <div class="backup-controls">
-                                <button onclick="openAcumuladoModal()" class="btn-icon text-success" title="Lançar Acumulado Anterior">➕ Saldos Passados</button>
-                                <button onclick="window.print()" class="btn-icon" title="Imprimir Relatório">🖨️ Imprimir</button>
-                                <button onclick="exportBackup()" class="btn-icon" title="Salvar Backup">💾 Exportar</button>
-                                <label class="btn-icon" title="Juntar lançamentos de um arquivo (não apaga nada)">
-                                    📂 Importar
-                                    <input type="file" id="import-file" accept=".json" style="display: none;" onchange="importBackup(event)">
-                                </label>
-                                <label class="btn-icon" title="Voltar os dados exatamente ao estado de um backup">
-                                    ♻️ Restaurar
-                                    <input type="file" id="restore-file" accept=".json" style="display: none;" onchange="restoreBackup(event)">
-                                </label>
-                                <label class="btn-icon" title="Comparar um arquivo de backup com o que está no banco">
-                                    🔍 Conferir com arquivo
-                                    <input type="file" id="conferir-file" accept=".json" style="display: none;" onchange="Conferencia.abrir(event)">
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                    
+
+                <section class="glass-panel fin-sub" id="aj-financeiro" data-sub-de="ajustes" hidden>
+                    <div class="painel-titulo"><h2>Financeiro</h2></div>
+                    <form id="fin-config-form"></form>
+                </section>
+
+                <section class="glass-panel fin-sub" id="aj-orcamentos" data-sub-de="ajustes" hidden>
+                    <div class="painel-titulo"><h2>Orçamentos</h2></div>
+                    <form id="orc-config-form"></form>
+                </section>
+
+                <div class="fin-sub" id="aj-saldos" data-sub-de="ajustes" hidden>
+                    <div id="aj-abertura"></div>
+                    <section class="glass-panel">
+                        <div class="painel-titulo"><h2>Saldos passados</h2>
+                            <button onclick="openAcumuladoModal()" class="btn-icon text-success">➕ Lançar saldos passados</button></div>
+                        <p class="texto-suave">O acumulado de antes de começar a usar o sistema (01 a 23/08/2026): gaveta, vendas por forma, custos, despesas e funcionários. Entra no Resumo do mês de agosto, em Relatórios.</p>
+                    </section>
+                </div>
+
+                <section class="glass-panel fin-sub" id="aj-dados" data-sub-de="ajustes" hidden>
+                    <div class="painel-titulo"><h2>Dados</h2></div>
                     <p class="status-banco" id="status-banco"></p>
-                    <div class="cards-grid">
-                        <div class="card cash">
-                            <h3>💵 Dinheiro Físico (Gaveta)</h3>
-                            <p id="dash-cash">R$ 0,00</p>
-                            <small>Saldo Físico Atual</small>
-                        </div>
-                        <div class="card total">
-                            <h3>📊 Saldo do Mês (Bruto)</h3>
-                            <p id="dash-total">R$ 0,00</p>
-                            <small>Entradas - Custos - Despesas</small>
-                        </div>
-                    </div>
-
-                    <div class="methods-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2rem;">
-                        <div class="card" style="padding: 15px; text-align: center;">
-                            <h4 style="margin:0; font-size: 0.9rem; color: var(--text-muted);">📱 Total Mês (Pix)</h4>
-                            <p id="dash-tot-pix" style="margin: 5px 0 0; font-size: 1.4rem; font-weight: bold; color: var(--text-main);">R$ 0,00</p>
-                        </div>
-                        <div class="card" style="padding: 15px; text-align: center;">
-                            <h4 style="margin:0; font-size: 0.9rem; color: var(--text-muted);">💳 Total Mês (Crédito)</h4>
-                            <p id="dash-tot-cred" style="margin: 5px 0 0; font-size: 1.4rem; font-weight: bold; color: var(--text-main);">R$ 0,00</p>
-                        </div>
-                        <div class="card" style="padding: 15px; text-align: center;">
-                            <h4 style="margin:0; font-size: 0.9rem; color: var(--text-muted);">💳 Total Mês (Débito)</h4>
-                            <p id="dash-tot-deb" style="margin: 5px 0 0; font-size: 1.4rem; font-weight: bold; color: var(--text-main);">R$ 0,00</p>
-                        </div>
-                    </div>
-
-                    <div class="monthly-summary">
-                        <h3>Monitoramento Detalhado para Declaração (Visão do Mês)</h3>
-                        <table class="summary-table">
-                            <thead>
-                                <tr>
-                                    <th>Indicador</th>
-                                    <th>Lançado no Dia (<span id="current-date-label"></span>)</th>
-                                    <th>Acumulado (Mês + Passado)</th>
-                                    <th>Total Geral do Mês</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr class="font-bold">
-                                    <td>Vendas no Geral (Bruto)</td>
-                                    <td id="sys-vendas">R$ 0,00</td>
-                                    <td id="acc-vendas">R$ 0,00</td>
-                                    <td id="tot-vendas">R$ 0,00</td>
-                                </tr>
-                                <tr class="sub-row">
-                                    <td>↳ em PIX / Bradesco</td>
-                                    <td id="sys-pix">R$ 0,00</td>
-                                    <td id="acc-pix">R$ 0,00</td>
-                                    <td id="tot-pix">R$ 0,00</td>
-                                </tr>
-                                <tr class="sub-row">
-                                    <td>↳ em Crédito</td>
-                                    <td id="sys-cred">R$ 0,00</td>
-                                    <td id="acc-cred">R$ 0,00</td>
-                                    <td id="tot-cred">R$ 0,00</td>
-                                </tr>
-                                <tr class="sub-row">
-                                    <td>↳ em Débito</td>
-                                    <td id="sys-deb">R$ 0,00</td>
-                                    <td id="acc-deb">R$ 0,00</td>
-                                    <td id="tot-deb">R$ 0,00</td>
-                                </tr>
-                                <tr class="text-danger">
-                                    <td>Custo de Material</td>
-                                    <td id="sys-custos">R$ 0,00</td>
-                                    <td id="acc-custos">R$ 0,00</td>
-                                    <td id="tot-custos">R$ 0,00</td>
-                                </tr>
-                                <tr class="text-danger">
-                                    <td>Despesas Gerais</td>
-                                    <td id="sys-despesas">R$ 0,00</td>
-                                    <td id="acc-despesas">R$ 0,00</td>
-                                    <td id="tot-despesas">R$ 0,00</td>
-                                </tr>
-                                <tr class="text-danger">
-                                    <td>Funcionários</td>
-                                    <td id="sys-funcionarios">R$ 0,00</td>
-                                    <td id="acc-funcionarios">R$ 0,00</td>
-                                    <td id="tot-funcionarios">R$ 0,00</td>
-                                </tr>
-                                <tr class="result-row">
-                                    <td id="sum-resultado-label">Resultado do Mês</td>
-                                    <td id="sys-res">R$ 0,00</td>
-                                    <td id="acc-res">R$ 0,00</td>
-                                    <td id="tot-res">R$ 0,00</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-
-                <section class="finance-form-section glass-panel">
-                    <h2>Novo Lançamento</h2>
-                    <form id="finance-form">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Categoria do Lançamento</label>
-                                <select id="fin-category" required>
-                                    <option value="venda">Entrada - Vendas (Bruto)</option>
-                                    <option value="custo">Saída - Custo de Material</option>
-                                    <option value="funcionario">Saída - Pagamento de Funcionários</option>
-                                    <option value="despesa">Saída - Despesas Gerais</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Valor (R$)</label>
-                                <input type="number" id="fin-value" step="0.01" min="0.01" required placeholder="0.00">
-                            </div>
-                            <div class="form-group">
-                                <label>Data</label>
-                                <input type="date" id="fin-date" required>
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Descrição</label>
-                                <input type="text" id="fin-description" placeholder="Ex: Compra de Cedro, Salário, Venda #123">
-                            </div>
-                            <div class="form-group">
-                                <label>Método / Conta</label>
-                                <select id="fin-method" required onchange="toggleCheckFields()">
-                                    <option value="dinheiro">Dinheiro Físico</option>
-                                    <option value="pix">PIX</option>
-                                    <option value="bradesco">Bradesco (Transferência)</option>
-                                    <option value="debito">Cartão de Débito</option>
-                                    <option value="credito">Cartão de Crédito</option>
-                                    <option value="cheque">Cheque</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <!-- Campos exclusivos para CHEQUE -->
-                        <div class="form-row" id="check-fields" style="display: none;">
-                            <div class="form-group">
-                                <label>Número do Cheque</label>
-                                <input type="text" id="fin-check-number" placeholder="Ex: 000123">
-                            </div>
-                            <div class="form-group">
-                                <label>Emissor (Nome)</label>
-                                <input type="text" id="fin-check-issuer" placeholder="Nome no cheque">
-                            </div>
-                            <div class="form-group">
-                                <label>Data p/ Compensação</label>
-                                <input type="date" id="fin-check-date">
-                            </div>
-                        </div>
-
-                        <button type="submit" class="btn-primary" style="margin-top: 1rem;">Registrar Lançamento</button>
-                    </form>
-                </section>
-
-                <section class="finance-history-section glass-panel">
-                    <h2>Histórico de Movimentações</h2>
-                    <div class="table-container">
-                        <table id="finance-table">
-                            <thead>
-                                <tr>
-                                    <th>Data</th>
-                                    <th>Descrição</th>
-                                    <th>Categoria</th>
-                                    <th>Método</th>
-                                    <th>Valor</th>
-                                    <th>Ação</th>
-                                </tr>
-                            </thead>
-                            <tbody id="finance-body">
-                                <!-- Finance items here -->
-                            </tbody>
-                        </table>
+                    <div class="dados-acoes">
+                        <div class="dados-acao"><button onclick="exportBackup()" class="btn-icon">💾 Exportar</button><small class="texto-suave">Baixa o backup completo (tudo o que está no banco).</small></div>
+                        <div class="dados-acao"><label class="btn-icon">📂 Importar
+                            <input type="file" id="import-file" accept=".json" style="display: none;" onchange="importBackup(event)"></label>
+                            <small class="texto-suave">Junta os lançamentos de um arquivo. Não apaga nada e não duplica.</small></div>
+                        <div class="dados-acao"><label class="btn-icon">♻️ Restaurar
+                            <input type="file" id="restore-file" accept=".json" style="display: none;" onchange="restoreBackup(event)"></label>
+                            <small class="texto-suave">Volta os dados exatamente ao estado de um backup (guarda uma cópia antes).</small></div>
+                        <div class="dados-acao"><label class="btn-icon">🔍 Conferir com arquivo
+                            <input type="file" id="conferir-file" accept=".json" style="display: none;" onchange="Conferencia.abrir(event)"></label>
+                            <small class="texto-suave">Compara um arquivo de backup com o que está no banco, mês a mês.</small></div>
                     </div>
                 </section>
             </div>

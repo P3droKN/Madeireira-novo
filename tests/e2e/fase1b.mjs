@@ -34,7 +34,7 @@ await muda(linha(0).locator(".preco-input"), 5);
 ok((await linha(0).textContent()).includes("31,2%"), "R$ 5/m → R$ 90 → margem 31,2%");
 
 // Preços de tabela e % padrão
-await page.click("#btn-tab-prices"); await page.waitForSelector("#precos-body tr");
+await page.click("#btn-tab-ajustes"); await page.waitForSelector("#precos-body tr");
 await page.fill("#cfg-selecionada", "10"); await page.fill("#cfg-ultimas", "20");
 await page.click("text=Salvar ajustes"); await page.waitForTimeout(200);
 await page.selectOption("#precos-filtro-material", "");
@@ -42,7 +42,7 @@ for (const [k, v] of [["CAMBARA|1x2|BRUTO", 5.5], ["PINUS|2x4x3.00|BRUTO", 25]])
   const i = page.locator(`input[data-chave="${k}"]`); await i.fill(String(v)); await i.dispatchEvent("change");
 }
 await page.click("text=Salvar preços"); await page.waitForTimeout(300);
-await page.click("#btn-tab-calculator");
+await page.click("#btn-tab-vender");
 ok(nb(await ajuste(0).textContent()).includes("Tabela R$ 5,50/m"), "linha mostra o preço de tabela");
 ok(nb(await ajuste(0).locator(".variacao").textContent()).includes("−R$ 9,00 (−9,1%)"), "preço digitado 5,00 vs tabela 5,50 → −9,1% (laranja)");
 
@@ -90,6 +90,20 @@ await page.waitForTimeout(200);
 ok((await page.textContent("#whatsapp-copiado")).includes("Copiado"), "copiar texto");
 ok((await page.evaluate(() => navigator.clipboard.readText())) === zap, "texto foi para a área de transferência");
 await page.click("#modal-whatsapp >> text=Fechar");
+
+// Modo balcão: esconde custo e margem, e a escolha fica guardada no aparelho
+const vis = (sel) => page.locator(sel).first().isVisible();
+ok(await vis("#items-table th.sigilo") && await vis("#total-custo"), "sem modo balcão: custo e margem aparecem");
+await page.click("#btn-balcao");
+ok(!(await vis("#items-table th.sigilo")) && !(await vis("#items-body td.sigilo")) && !(await vis("#total-custo")) && !(await vis("#total-margem")), "modo balcão esconde as colunas Custo e Margem e os quadros de custo e margem");
+await page.selectOption("#material", "PINUS");
+ok(!(await page.locator("#dimension option").allTextContents()).some((t) => /custo/i.test(t)), "modo balcão: as medidas não mostram o custo");
+ok((await page.getAttribute("#btn-balcao", "aria-pressed")) === "true", "botão indica o modo balcão ligado");
+await page.reload();
+await page.waitForFunction(() => document.querySelectorAll("#items-body tr.linha-item").length === 3);
+ok(await page.evaluate(() => document.body.classList.contains("modo-balcao")) && !(await vis("#total-custo")), "modo balcão continua ligado depois de recarregar (guardado no aparelho)");
+await page.click("#btn-balcao");
+ok(await vis("#items-table th.sigilo") && await vis("#total-custo"), "desligar o modo balcão mostra custo e margem de novo");
 
 // Registrar (depois da migração)
 await fetch(URL + "/api/migrar", { method: "POST", headers: H });
