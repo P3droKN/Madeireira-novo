@@ -49,7 +49,7 @@ Testes feitos aqui (dados sintéticos): `npm test` (122 passando) e `bash tests/
 
 ## Como voltar atrás
 - **Vercel**: Instant Rollback para o deploy anterior.
-- **Código**: `git revert` do commit da Fase 2C.
+- **Código**: `git revert b4dc12e`.
 - **Dados**: as vendas fiado gravadas continuam válidas na versão anterior (ela só não mostra o A receber: a forma "Fiado" aparece como uma forma sem conta, fora do caixa, como já acontecia com "forma não informada"). Recebimentos (`conta: "recebimento"`) ficam guardados, mas a versão anterior não os reconhece no caixa. Antes de reverter, prefira **Exportar** o backup.
 
 ## Decisões tomadas sem perguntar (dá para mudar)

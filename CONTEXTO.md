@@ -119,7 +119,7 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 | API num roteador único (mesmo comportamento) | `8e329be` | não precisa (testes iguais) |
 | Reorganização: 5 abas, formulário único, modo balcão, orçamentos com 3 situações, 🔔, lixeira, Relatórios e Ajustes | `e8900fb` | sim |
 | Frete à parte e % sobre o preço digitado | `9c9bb37` | sim |
-| **Fase 2C**: fiado, A receber, recebimento parcial/cheque, cheque devolvido reabre, clientes, cobrança, relatório | ver `git log` | **ainda não**: aguardando teste (`FASE2C.md`) |
+| **Fase 2C**: fiado, A receber, recebimento parcial/cheque, cheque devolvido reabre, clientes, cobrança, relatório | `b4dc12e` | **ainda não**: aguardando teste (`FASE2C.md`) |
 
 **Guias de cada etapa:**
 - `FASE0.md`: inclui restauração, projeto separado, importação e trava;
