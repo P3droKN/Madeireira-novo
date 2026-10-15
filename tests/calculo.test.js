@@ -211,5 +211,14 @@ test("WhatsApp: desconto no total e item a combinar", () => {
 });
 
 test("motivos rápidos e opcionais", () => {
-  assert.deepEqual(MOTIVOS_AJUSTE, ["Selecionada", "Últimas peças", "Cliente antigo", "Frete/entrega", "Urgência", "Outro"]);
+  assert.deepEqual(MOTIVOS_AJUSTE, ["Selecionada", "Últimas peças", "Cliente antigo", "Urgência", "Outro"]); // frete virou campo próprio
+});
+
+test("WhatsApp com frete: linha própria e soma no total", () => {
+  const t = textoWhatsApp({ itens: [{ descricao: "Pinus", quantidade: "10 peças", precoUnitario: 25, unidade: "peça", vendaTotal: 250 }], totalItens: 250, frete: 50 });
+  assert.ok(t.includes("Itens: R$ 250,00"));
+  assert.ok(t.includes("Frete/entrega: R$ 50,00"));
+  assert.ok(t.includes("*Total: R$ 300,00*"));
+  const sem = textoWhatsApp({ itens: [{ descricao: "Pinus", quantidade: "10 peças", precoUnitario: 25, unidade: "peça", vendaTotal: 250 }], totalItens: 250, frete: 0 });
+  assert.ok(!/frete/i.test(sem) && sem.includes("*Total: R$ 250,00*"), "sem frete, nada muda");
 });

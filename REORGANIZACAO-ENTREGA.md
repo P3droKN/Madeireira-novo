@@ -72,3 +72,14 @@ Testes automáticos (feitos aqui, com dados sintéticos): `npm test` (105 passan
   - a reorganização das telas (`e8900fb`): `git revert e8900fb` volta as telas antigas;
   - a API em roteador único (`8e329be`): `git revert 8e329be` volta os 12 arquivos em `api/`. Dá para voltar só as telas e manter a API nova, porque os endereços são os mesmos.
 - **Dados:** nada precisa ser desfeito. Os orçamentos "aguardando" continuam gravados como estavam; um orçamento excluído só tem a marca `excluidoEm`, que a versão antiga ignora (ele simplesmente aparece de novo na lista antiga).
+
+## Ajuste depois da entrega: % geral e frete
+- **% geral não fazia nada nos itens sem preço de tabela** (quase todos hoje, porque os preços começam vazios): o campo voltava vazio, sem aviso. Agora o % (geral, da linha e dos botões Selecionada/Últimas peças) vale **sobre o preço digitado** quando o item não tem tabela. Aplicar de novo não acumula, e "↺ Voltar" volta ao preço digitado. Itens com tabela continuam sobre a tabela.
+- **🚚 Frete / entrega (opcional)**, logo abaixo do % geral. Quando preenchido:
+  - o pedido mostra a linha "Frete / entrega" e "Total (itens + frete)"; o total a cobrar e as formas de pagamento já incluem o frete;
+  - o texto do WhatsApp mostra "Itens", "Frete/entrega" e o total; a impressão também;
+  - o orçamento guarda o frete (a lista mostra "com frete") e ele volta junto ao converter em venda; "Atualizar preços" mantém o frete;
+  - a venda grava o valor total e o frete separado; em Caixa › Lançamentos aparece "inclui frete"; no DRE fica na receita, com a linha "Frete cobrado dos clientes", e **não entra na margem nem no CMV estimado dos produtos**.
+- O botão "Frete/entrega" saiu da lista de motivos do %, para não confundir com o frete de verdade.
+- **Como testar:** em Vender, adicione um item sem preço de tabela, digite o preço, ponha 10 no "% geral" e aperte Enter ou clique fora: o total sobe 10%. Preencha o frete com 50: aparece a linha do frete e o total a cobrar soma os R$ 50. Salve como orçamento, converta em venda e confira em Caixa › Lançamentos e no DRE.
+- **Voltar atrás:** `git revert` do commit "Frete à parte no pedido e % sobre o preço digitado" (vendas e orçamentos já gravados com frete continuam válidos; a versão anterior só não mostra o frete separado).

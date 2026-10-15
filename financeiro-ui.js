@@ -289,7 +289,7 @@ function renderLista() {
     return `<tr class="${estado.selecionados.has(String(l.id)) ? "selecionado" : ""}">
       <td><input type="checkbox" class="fin-sel" value="${esc(l.id)}" ${estado.selecionados.has(String(l.id)) ? "checked" : ""} aria-label="Selecionar"></td>
       <td>${dataBR(l.competencia)}</td>
-      <td>${esc(l.description || "")}${l.fornecedor ? `<small>${esc(l.fornecedor)}</small>` : ""}${l.nfe ? `<small>NF-e ${esc(l.nfe)}</small>` : ""}</td>
+      <td>${esc(l.description || "")}${l.fornecedor ? `<small>${esc(l.fornecedor)}</small>` : ""}${l.nfe ? `<small>NF-e ${esc(l.nfe)}</small>` : ""}${l.frete ? `<small>inclui frete ${moeda(l.frete)}</small>` : ""}</td>
       <td>${esc(c?.nome || (l.conta === "transferencia" ? "Transferência" : l.conta))} ${tags}${sug}</td>
       <td>${esc(descreverForma(l))}</td>
       <td class="num ${l.conta === "transferencia" ? "" : entrada ? "type-income" : "type-expense"}">${moeda(l.value)}</td>
@@ -386,6 +386,7 @@ function renderDRE() {
     <div class="dre-info">
       <div><span>Retiradas do dono (abaixo da linha)</span><strong>${moeda(d.info.retiradas)}</strong></div>
       <div><span>Lucro retido</span><strong>${moeda(d.info.lucroRetido)}</strong></div>
+      ${d.info.freteCobrado ? `<div><span>Frete cobrado dos clientes (já na receita)</span><strong>${moeda(d.info.freteCobrado)}</strong></div>` : ""}
       <div><span>Compras do mês (viram estoque)</span><strong>${moeda(d.info.compras)}</strong></div>
       <div><span>Estoque estimado em R$ (compras − CMV)</span><strong>${moeda(estoque)}</strong></div>
       <div><span>Ponto de equilíbrio</span><strong>${moeda(d.info.pontoEquilibrio)}</strong></div>

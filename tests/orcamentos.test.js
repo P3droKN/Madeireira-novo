@@ -104,3 +104,13 @@ test("indicadores e ordem padrão", () => {
   assert.equal(j.qtdAberto, 2);
   assert.equal(j.taxaConversaoMes, 0.25);
 });
+
+test("frete no orçamento: atualizar preços mantém o frete; texto mostra o frete à parte", () => {
+  const o = orc({ total: 1700, frete: 50 });
+  const r = atualizarPrecos(o, (id) => cat.itens.get(id), () => 1600);
+  assert.equal(r.frete, 50);
+  assert.equal(r.totalNovo, 1810); // 1.760 dos itens + 50 de frete
+  assert.equal(r.diferenca, 110);
+  const t = textoParaCliente(o);
+  assert.ok(t.includes("Itens: R$ 1.650,00") && t.includes("Frete/entrega: R$ 50,00") && t.includes("*Total: R$ 1.700,00*"));
+});

@@ -269,12 +269,14 @@ async function registerDirectSale() {
     }
     if (!podeGravar()) return;
 
-    // Venda no formato novo (v2): conta, competência e formas de pagamento
+    // Venda no formato novo (v2): conta, competência e formas de pagamento.
+    // O frete (opcional) soma no valor e fica separado no campo "frete".
+    const frete = pedido.frete || 0;
     const vendaItem = {
         id: novoId('V'),
         v: 2,
         conta: 'venda_produtos',
-        value: pedido.venda,
+        value: Math.round((pedido.venda + frete) * 100) / 100,
         competencia: document.getElementById('direct-sale-date').value || getLocalDateString(),
         description: `Venda: ${pedido.descricao}`,
         pagamentos,
@@ -286,6 +288,7 @@ async function registerDirectSale() {
         motivo: pedido.motivoGeral,
         itens: pedido.itens,
     };
+    if (frete) vendaItem.frete = frete;
     const vinculo = window.Calculadora.vinculo();
     if (vinculo && vinculo.modo === 'converter') vendaItem.orcamento = vinculo.id;
     if (!(await gravarLancamentos([vendaItem]))) return;
@@ -300,7 +303,7 @@ async function registerDirectSale() {
         }
         if (window.Orcamentos) window.Orcamentos.recarregar();
     }
-    alert(`Venda registrada${vendaItem.orcamento ? ` (orçamento ${vendaItem.orcamento} fechado)` : ''}: ${formatCurrency(pedido.venda)}\nCusto dos itens (CMV): ${formatCurrency(pedido.custo)}\nMargem: ${margem}%`);
+    alert(`Venda registrada${vendaItem.orcamento ? ` (orçamento ${vendaItem.orcamento} fechado)` : ''}: ${formatCurrency(vendaItem.value)}${frete ? `\n(itens ${formatCurrency(pedido.venda)} + frete ${formatCurrency(frete)})` : ''}\nCusto dos itens (CMV): ${formatCurrency(pedido.custo)}\nMargem dos produtos: ${margem}%`);
     window.Calculadora.limpar(false);
 }
 

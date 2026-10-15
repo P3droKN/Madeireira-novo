@@ -127,7 +127,7 @@ function renderLista() {
       <td>${esc(o.cliente?.nome)}<small>${esc(o.cliente?.telefone)} · ${ORIGENS[o.origem] || esc(o.origem)}</small>${o.obs ? `<small class="texto-suave">${esc(o.obs)}</small>` : ""}${selo}</td>
       <td>${dataBR(o.data)}${s.vencido && s.emAberto ? '<small class="selo-vencido">vencido – preços podem ter mudado</small>' : `<small>vale até ${dataBR(o.validoAte)}</small>`}</td>
       <td class="num">${s.emAberto ? s.diasAberto : "—"}</td>
-      <td class="num"><strong>${moeda(o.total)}</strong></td>
+      <td class="num"><strong>${moeda(o.total)}</strong>${o.frete ? `<small>com frete ${moeda(o.frete)}</small>` : ""}</td>
       <td>${dataHora(o.ultimoContato)}${s.emAberto && o.ultimoContato ? `<small>${s.diasSemContato} dia(s)</small>` : ""}</td>
       <td class="orc-acoes">${s.vencido && s.emAberto ? `<button class="btn-icon mini destaque-vermelho" data-acao="precos" data-id="${o.id}">Atualizar preços</button>` : ""}${acoes.join("")}</td>
     </tr>`;
@@ -255,7 +255,7 @@ function abrirPrecos(o) {
 async function aplicarPrecos() {
   const { orc, novo } = estado.atual;
   try {
-    await patch({ id: orc.id, acao: "precos", hoje: hoje(), itens: novo.itens, total: novo.totalNovo, custo: novo.custo, margem: novo.margem,
+    await patch({ id: orc.id, acao: "precos", hoje: hoje(), itens: novo.itens, total: novo.totalNovo, frete: novo.frete, custo: novo.custo, margem: novo.margem,
       tabelaTotal: novo.itens.reduce((s, i) => s + (i.tabelaTotal || 0), 0), variacao: null, motivoGeral: orc.motivoGeral });
     fecharModais();
   } catch (e) {
@@ -279,7 +279,8 @@ function imprimir(o) {
     <table><thead><tr><th>Item</th><th>Quantidade</th><th class="num">Preço</th><th class="num">Total</th></tr></thead>
     <tbody>${o.itens.map((i) => `<tr><td>${esc(i.descricao)}</td><td>${esc(i.quantidadeTexto || "")}</td>
       <td class="num">${i.unidade && i.unidade !== "un" && i.precoUnitario != null ? `${moeda(i.precoUnitario)}/${esc(i.unidade)}` : ""}</td><td class="num">${moeda(i.vendaTotal)}</td></tr>`).join("")}</tbody>
-    <tfoot><tr><td colspan="3"><strong>Total</strong></td><td class="num"><strong>${moeda(o.total)}</strong></td></tr></tfoot></table>
+    <tfoot>${o.frete ? `<tr><td colspan="3">Frete / entrega</td><td class="num">${moeda(o.frete)}</td></tr>` : ""}
+      <tr><td colspan="3"><strong>Total</strong></td><td class="num"><strong>${moeda(o.total)}</strong></td></tr></tfoot></table>
     ${o.obs ? `<p>Obs.: ${esc(o.obs)}</p>` : ""}
     <p class="rodape-orc">Preços válidos até ${dataBR(o.validoAte)}. Depois dessa data, consulte novamente.</p>`;
   document.body.classList.add("imprimindo-orc");

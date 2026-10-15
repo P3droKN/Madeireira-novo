@@ -966,7 +966,7 @@ a.btn-icon { text-decoration: none; }
 }
 
 @media print {
-    .so-tela, .calculator-section, .finalizar, .pendencias, .linha-ajuste, .ajuste-geral, .painel-acoes, #catalogo-status, .vazio { display: none !important; }
+    .so-tela, .calculator-section, .finalizar, .pendencias, .linha-ajuste, .ajuste-geral, .frete-linha, .painel-acoes, #catalogo-status, .vazio { display: none !important; }
     .total-input { border: none !important; background: none !important; color: black !important; }
     .totais { display: flex !important; justify-content: flex-end; }
     .total-bloco { border: none !important; background: none !important; padding: 0 !important; }
@@ -1010,3 +1010,13 @@ body.modo-balcao .sigilo { display: none !important; }
     .orc-abas { min-width: 0; width: 100%; }
     .orc-busca { max-width: none; width: 100%; }
 }
+
+/* Frete à parte no pedido */
+.frete-linha { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0.75rem 0; padding: 0.75rem 1rem; border: 1px dashed var(--input-border); border-radius: 0.6rem; }
+.frete-linha label { font-weight: 600; color: var(--text-main); }
+.frete-campo { display: flex; align-items: center; gap: 0.35rem; color: var(--text-muted); }
+.frete-input { width: 120px !important; }
+.frete-linha small { flex-basis: 100%; }
+.tabela-pedido tfoot td { border-top: 1px solid var(--panel-border); padding-top: 0.6rem; }
+.tabela-pedido .linha-total-frete td { color: var(--text-muted); font-size: 0.9rem; border-top: none; }
+.total-cobrar small { display: block; text-align: right; }

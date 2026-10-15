@@ -18,8 +18,11 @@ const estado = {
   catalogo: null,   // montarCatalogo(...)
   pedido: [],       // linhas do pedido
   motivoGeral: "",
+  frete: null,      // frete cobrado à parte (opcional), fora dos itens
   vinculo: null,    // { id: "ORC-0001", modo: "editar" | "converter" | "duplicar", orcamento }
 };
+
+const valorFrete = () => (estado.frete > 0 ? arred(estado.frete) : 0);
 
 // ---------- Catálogo ----------
 
@@ -161,7 +164,29 @@ function lerFormulario() {
 
 function calcularLinha(l) {
   const item = estado.catalogo.itens.get(l.itemId);
-  return calcularItem({ ...l, item, precoTabela: precoTabela(l.itemId, l.acabamento) });
+  const tabela = precoTabela(l.itemId, l.acabamento);
+  // Sem preço de tabela: o % (da linha ou geral) vale sobre o preço digitado (precoBase)
+  if (tabela == null && item.unidade !== "valor_livre" && l.precoBase != null && l.variacaoPct != null && l.totalManual == null) {
+    const base = calcularItem({ ...l, item, precoTabela: null, precoManual: l.precoBase, totalManual: null, variacaoPct: null });
+    const total = arred(base.vendaTotal * (1 + l.variacaoPct / 100));
+    const r = calcularItem({ ...l, item, precoTabela: null, precoManual: null, totalManual: total, variacaoPct: null });
+    return { ...r, base: { precoUnitario: l.precoBase, vendaTotal: base.vendaTotal, pct: l.variacaoPct, valor: arred(total - base.vendaTotal) } };
+  }
+  return calcularItem({ ...l, item, precoTabela: tabela });
+}
+
+// Linha sem tabela com preço digitado: guarda esse preço como base do % (precoBase)
+function prepararBase(l) {
+  const item = estado.catalogo.itens.get(l.itemId);
+  if (item.unidade === "valor_livre" || precoTabela(l.itemId, l.acabamento) != null) return false;
+  if (l.precoBase == null) {
+    const r = calcularItem({ ...l, item, precoTabela: null });
+    if (r.precoUnitario == null) return false;
+    l.precoBase = arred(r.precoUnitario);
+  }
+  l.precoManual = l.precoBase;
+  l.totalManual = null;
+  return true;
 }
 
 function atualizarPrevia() {
@@ -206,7 +231,7 @@ function adicionar(e) {
 
 function salvarPedidoLocal() {
   try {
-    localStorage.setItem(PEDIDO_KEY, JSON.stringify({ linhas: estado.pedido, motivoGeral: estado.motivoGeral, vinculo: estado.vinculo }));
+    localStorage.setItem(PEDIDO_KEY, JSON.stringify({ linhas: estado.pedido, motivoGeral: estado.motivoGeral, frete: estado.frete, vinculo: estado.vinculo }));
   } catch { /* sem armazenamento local */ }
 }
 
@@ -218,6 +243,7 @@ function restaurarPedido() {
       .filter((l) => estado.catalogo.itens.has(l.itemId))
       .map((l) => ({ precoManual: null, variacaoPct: null, motivo: "", ...l }));
     estado.motivoGeral = Array.isArray(salvo) ? "" : salvo.motivoGeral || "";
+    estado.frete = Array.isArray(salvo) ? null : Number(salvo.frete) > 0 ? Number(salvo.frete) : null;
     estado.vinculo = Array.isArray(salvo) ? null : salvo.vinculo || null;
   } catch {
     estado.pedido = [];
@@ -261,9 +287,24 @@ function chipsMotivo(ativo, acao) {
 
 function linhaAjuste(l, r, item) {
   if (item.unidade === "valor_livre") return "";
-  if (r.precoTabela == null) {
+  if (r.precoTabela == null && r.vendaTotal == null) {
     return `<tr class="linha-ajuste"><td colspan="7"><div class="ajuste">
-      <span class="texto-alerta">Sem preço de tabela: digite o preço acima${r.vendaTotal != null ? "" : " para fechar o pedido"}.</span>
+      <span class="texto-alerta">Sem preço de tabela: digite o preço acima para fechar o pedido.</span>
+    </div></td></tr>`;
+  }
+  if (r.precoTabela == null) {
+    // Sem tabela, com preço digitado: o % vale sobre esse preço
+    const b = r.base;
+    const ref = b ? b.precoUnitario : (l.precoBase ?? arred(r.precoUnitario));
+    return `<tr class="linha-ajuste"><td colspan="7"><div class="ajuste">
+      <span class="tabela-ref">Sem tabela · preço digitado ${moeda(ref)}/${r.unidadeCobranca}</span>
+      <label class="pct-campo" title="% sobre o preço digitado (negativo = desconto)">
+        <input type="number" step="0.1" inputmode="decimal" class="pct-input" value="${b ? pctCampo(b.pct) : ""}"
+          aria-label="Variação em % sobre o preço digitado" onchange="Calculadora.pct('${l.uid}', this.value)">%
+      </label>
+      ${b ? variacaoHtml(b.valor, b.pct).replace("sobre a tabela", "sobre o preço digitado") : ""}
+      ${chipsMotivo(l.motivo || "", `Calculadora.motivo.bind(null, '${l.uid}')`)}
+      ${b ? `<button type="button" class="link-suave" onclick="Calculadora.voltarTabela('${l.uid}')">↺ Voltar ao preço digitado</button>` : ""}
     </div></td></tr>`;
   }
   return `<tr class="linha-ajuste"><td colspan="7"><div class="ajuste">
@@ -325,11 +366,11 @@ function renderPedido() {
   $("total-margem").className = t.margem != null && t.margem < 0 ? "texto-ruim" : "";
   $("total-margem-nota").textContent = t.semPreco && t.margem != null ? "só dos itens com preço" : "";
   // % geral mostra o valor quando todos os itens com tabela têm o mesmo %
-  const pcts = resultados.filter((r) => r.precoTabela != null && r.variacaoPct != null).map((r) => Math.round(r.variacaoPct * 10) / 10);
+  const pcts = resultados.map((r) => (r.base ? r.base.pct : r.precoTabela != null ? r.variacaoPct : null)).filter((p) => p != null).map((p) => Math.round(p * 10) / 10);
   const comum = pcts.length && pcts.every((p) => p === pcts[0]) && pcts[0] !== 0 ? pcts[0] : null;
   if (document.activeElement !== $("pct-geral")) $("pct-geral").value = comum == null ? "" : comum.toFixed(1);
   $("motivos-geral").innerHTML = chipsMotivo(estado.motivoGeral || "", "Calculadora.motivoGeral");
-  $("voltar-tabela-geral").hidden = !resultados.some((r) => r.ajustado);
+  $("voltar-tabela-geral").hidden = !resultados.some((r) => r.ajustado || r.base);
 
   const pend = [];
   if (t.semPreco) pend.push(`${t.semPreco} ${t.semPreco > 1 ? "itens sem" : "item sem"} preço: digite o preço na linha do item.`);
@@ -338,9 +379,20 @@ function renderPedido() {
 
   $("ajuste-geral").hidden = vazio;
   $("finalizar").hidden = vazio;
-  $("total-cobrar").textContent = moeda(t.venda);
+
+  // Frete (opcional): campo próprio e linhas "Frete" e "Total com frete" no pedido
+  const frete = valorFrete();
+  const totalGeral = arred(t.venda + frete);
+  $("frete-linha").hidden = vazio;
+  if (document.activeElement !== $("frete-valor")) $("frete-valor").value = frete ? frete.toFixed(2) : "";
+  const pe = $("items-frete");
+  pe.hidden = vazio || !frete;
+  pe.innerHTML = frete ? `<tr class="linha-frete"><td colspan="4">🚚 <strong>Frete / entrega</strong></td><td class="num"><strong>${moeda(frete)}</strong></td><td class="so-tela sigilo"></td><td><button class="delete-btn" title="Tirar o frete" aria-label="Tirar o frete" onclick="Calculadora.frete('')">✕</button></td></tr>
+    <tr class="linha-total-frete"><td colspan="4">Total (itens ${moeda(t.venda)} + frete ${moeda(frete)})</td><td class="num"><strong>${moeda(totalGeral)}</strong></td><td class="so-tela sigilo"></td><td></td></tr>` : "";
+  $("total-cobrar").textContent = moeda(totalGeral);
+  $("total-cobrar-detalhe").textContent = frete ? `itens ${moeda(t.venda)} + frete ${moeda(frete)}` : "";
   renderVinculo();
-  editorPagamentos.definirTotal(t.venda);
+  editorPagamentos.definirTotal(totalGeral);
   salvarPedidoLocal();
 }
 
@@ -406,7 +458,8 @@ function fotografiaPedido() {
       vendaTotal: r.vendaTotal, custoTotal: r.custoTotal, variacaoPct: r.variacaoPct, motivo: l.motivo || "",
     };
   });
-  return { itens, total: t.venda, custo: t.custo, margem: t.margem, tabelaTotal: t.tabela, variacao: t.variacao, motivoGeral: estado.motivoGeral || "", semPreco: t.semPreco };
+  const frete = valorFrete();
+  return { itens, total: arred(t.venda + frete), frete, totalItens: t.venda, custo: t.custo, margem: t.margem, tabelaTotal: t.tabela, variacao: t.variacao, motivoGeral: estado.motivoGeral || "", semPreco: t.semPreco };
 }
 
 window.Calculadora = {
@@ -428,6 +481,7 @@ window.Calculadora = {
     }
     limparAjuste(l);
     l.precoManual = v; // vazio = volta à tabela
+    l.precoBase = null; // preço digitado de novo: vira a nova base do %
     redesenhar();
   },
 
@@ -435,7 +489,7 @@ window.Calculadora = {
   pct(uid, valor) {
     const l = linha(uid);
     const v = lerNumero(valor);
-    limparAjuste(l);
+    if (!prepararBase(l)) limparAjuste(l); // sem tabela: o % vale sobre o preço digitado
     l.variacaoPct = v == null || v === 0 ? null : v;
     redesenhar();
   },
@@ -455,7 +509,7 @@ window.Calculadora = {
       l.motivo = escolhido;
       const p = pctPadrao(escolhido);
       if (p != null) {
-        limparAjuste(l);
+        if (!prepararBase(l)) limparAjuste(l);
         l.variacaoPct = p;
       }
     }
@@ -465,6 +519,7 @@ window.Calculadora = {
   voltarTabela(uid) {
     const l = linha(uid);
     limparAjuste(l);
+    if (l.precoBase != null && precoTabela(l.itemId, l.acabamento) == null) l.precoManual = l.precoBase; // sem tabela: volta ao preço digitado
     l.motivo = "";
     renderPedido();
   },
@@ -490,14 +545,28 @@ window.Calculadora = {
   },
 
   // % geral sobre a tabela, aplicado a todos os itens que têm preço de tabela
+  // Frete cobrado à parte (opcional). Vazio ou zero = sem frete.
+  frete(valor) {
+    const v = lerNumero(valor);
+    if (v != null && v < 0) { alert("O frete não pode ser negativo."); return redesenhar(); }
+    estado.frete = v > 0 ? arred(v) : null;
+    redesenhar();
+  },
+
+  // % geral: sobre a tabela nos itens que têm tabela; sobre o preço digitado nos que não têm
   pctGeral(valor) {
     const v = lerNumero(valor);
-    if (v == null) return;
+    if (v == null) return redesenhar();
+    let aplicados = 0;
     estado.pedido.forEach((l, i) => {
-      if (estado.ultimosResultados[i]?.precoTabela == null) return;
-      limparAjuste(l);
+      const item = estado.catalogo.itens.get(l.itemId);
+      if (item.unidade === "valor_livre") return;
+      if (estado.ultimosResultados[i]?.precoTabela != null) limparAjuste(l);
+      else if (!prepararBase(l)) return; // sem tabela e sem preço: não há sobre o que aplicar
       l.variacaoPct = v === 0 ? null : v;
+      aplicados++;
     });
+    if (!aplicados && v !== 0) alert("Nenhum item tem preço ainda. Digite o preço dos itens primeiro; o % é aplicado sobre ele.");
     redesenhar();
   },
 
@@ -523,6 +592,7 @@ window.Calculadora = {
       const item = estado.catalogo.itens.get(l.itemId);
       if (item.unidade === "valor_livre") return;
       limparAjuste(l);
+      if (l.precoBase != null && precoTabela(l.itemId, l.acabamento) == null) l.precoManual = l.precoBase;
       l.motivo = "";
     });
     estado.motivoGeral = "";
@@ -544,7 +614,7 @@ window.Calculadora = {
         vendaTotal: r.vendaTotal,
       };
     });
-    const texto = textoWhatsApp({ data: new Date().toLocaleDateString("pt-BR"), itens, totalItens: estado.ultimoTotal.venda });
+    const texto = textoWhatsApp({ data: new Date().toLocaleDateString("pt-BR"), itens, totalItens: estado.ultimoTotal.venda, frete: valorFrete() });
     $("whatsapp-texto").value = texto;
     $("whatsapp-abrir").href = "https://wa.me/?text=" + encodeURIComponent(texto);
     $("whatsapp-copiado").textContent = "";
@@ -570,6 +640,7 @@ window.Calculadora = {
     if (perguntar && estado.pedido.length && !confirm("Remover todos os itens do pedido?")) return;
     estado.pedido = [];
     estado.motivoGeral = "";
+    estado.frete = null;
     estado.vinculo = null;
     editorPagamentos.reiniciar(0);
     $("calc-nfe").value = "";
@@ -613,6 +684,7 @@ window.Calculadora = {
       return linha;
     });
     estado.motivoGeral = orc.motivoGeral || "";
+    estado.frete = orc.frete > 0 ? orc.frete : null;
     estado.vinculo = { id: orc.id, modo, cliente: orc.cliente, origem: orc.origem, obs: orc.obs, validadeDias: orc.validadeDias };
     editorPagamentos.reiniciar(0);
     renderPedido();
@@ -650,7 +722,8 @@ window.Calculadora = {
       variacaoPct: t.variacaoPct,
       motivoGeral: estado.motivoGeral || "",
       semPreco: t.semPreco,
-      descricao: itens.map((i) => i.descricao).join(", ").slice(0, 300),
+      frete: valorFrete(),
+      descricao: (itens.map((i) => i.descricao).join(", ") + (valorFrete() ? " + frete" : "")).slice(0, 300),
     };
   },
 };

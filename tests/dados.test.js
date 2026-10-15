@@ -552,3 +552,19 @@ test("cheque recebido: devolvido, desfazer e conta de depósito; cheque emitido:
   assert.equal(l.historicoCheque.length, 1);
   await assert.rejects(atualizarCheque(kv, K, { id: "s1", tipo: "recebido", pagamento: 0 }), /não é um cheque/);
 });
+
+test("frete: a venda guarda o frete (dentro do valor); orçamento guarda o frete e o mantém ao atualizar preços", async () => {
+  const v = validarLancamentoV2({ id: "1V", v: 2, conta: "venda_produtos", value: 300, competencia: "2026-10-21", pagamentos: [{ forma: "dinheiro", valor: 300 }], frete: 50 }, {});
+  assert.equal(v.frete, 50);
+  assert.equal(v.value, 300);
+  assert.throws(() => validarLancamentoV2({ id: "2V", v: 2, conta: "venda_produtos", value: 300, competencia: "2026-10-21", pagamentos: [{ forma: "dinheiro", valor: 300 }], frete: 300 }, {}), /Frete inválido/);
+  assert.equal(validarLancamentoV2({ id: "3V", v: 2, conta: "venda_produtos", value: 300, competencia: "2026-10-21", pagamentos: [{ forma: "dinheiro", valor: 300 }] }, {}).frete, undefined);
+  const kv = kvFalso({});
+  const o = await salvarOrcamento(kv, K, novoOrc({ total: 1700, frete: 50 }), {});
+  assert.equal(o.frete, 50);
+  assert.equal(o.total, 1700);
+  const p = await atualizarOrcamento(kv, K, { id: o.id, acao: "precos", ...novoOrc({ total: 1810, itens: [{ ...novoOrc().itens[0], vendaTotal: 1760 }] }), hoje: "2026-10-20" });
+  assert.equal(p.frete, 50, "frete mantido");
+  await assert.rejects(salvarOrcamento(kv, K, novoOrc({ total: 1650, frete: 1650 }), {}), /Frete/);
+  assert.equal((await salvarOrcamento(kv, K, novoOrc(), {})).frete, 0, "sem frete = 0");
+});

@@ -100,6 +100,7 @@
                                 </tr>
                             </thead>
                             <tbody id="items-body"></tbody>
+                            <tfoot id="items-frete" hidden></tfoot>
                         </table>
                         <p class="vazio" id="pedido-vazio">Nenhum item no pedido. Escolha o material acima.</p>
                     </div>
@@ -111,7 +112,7 @@
                             <small class="texto-suave" id="total-tabela-nota"></small>
                         </div>
                         <div class="total-bloco destaque">
-                            <label for="total-final">Total final (editável)</label>
+                            <label for="total-final">Total dos itens (editável)</label>
                             <input type="number" id="total-final" class="total-input" step="0.01" min="0" inputmode="decimal"
                                 placeholder="0,00" onchange="Calculadora.total(this.value)">
                             <small class="texto-suave">a diferença é distribuída entre os itens</small>
@@ -132,13 +133,19 @@
                     </div>
 
                     <div class="ajuste-geral" id="ajuste-geral" hidden>
-                        <label class="pct-campo" title="% sobre a tabela em todos os itens (negativo = desconto)">
-                            % geral sobre a tabela
+                        <label class="pct-campo" title="% em todos os itens: sobre a tabela, ou sobre o preço digitado quando o item não tem tabela (negativo = desconto)">
+                            % geral (sobre a tabela ou o preço digitado)
                             <input type="number" id="pct-geral" class="pct-input" step="0.1" inputmode="decimal" placeholder="0"
                                 onchange="Calculadora.pctGeral(this.value)">%
                         </label>
                         <div id="motivos-geral"></div>
                         <button type="button" class="link-suave" id="voltar-tabela-geral" onclick="Calculadora.voltarTudoTabela()" hidden>↺ Voltar tudo ao preço de tabela</button>
+                    </div>
+                    <div class="frete-linha" id="frete-linha" hidden>
+                        <label for="frete-valor">🚚 Frete / entrega <span class="texto-suave">(opcional)</span></label>
+                        <div class="frete-campo">R$ <input type="number" id="frete-valor" class="pct-input frete-input" step="0.01" min="0" inputmode="decimal"
+                            placeholder="sem frete" onchange="Calculadora.frete(this.value)"></div>
+                        <small class="texto-suave">Cobrado à parte: aparece como "Frete" no pedido, no orçamento e no WhatsApp, e soma no total. Não entra na margem dos produtos.</small>
                     </div>
                     <ul class="pendencias" id="pendencias"></ul>
 
@@ -146,7 +153,7 @@
                     <div class="finalizar" id="finalizar">
                         <div class="finalizar-topo">
                             <h3>Fechar o pedido</h3>
-                            <div class="total-cobrar"><span>Total</span><strong id="total-cobrar">R$ 0,00</strong></div>
+                            <div class="total-cobrar"><span>Total</span><strong id="total-cobrar">R$ 0,00</strong><small class="texto-suave" id="total-cobrar-detalhe"></small></div>
                         </div>
                         <div class="form-group">
                             <label>Formas de pagamento</label>

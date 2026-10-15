@@ -42,6 +42,7 @@ await page.locator('label:has(input[name="orc-origem"][value="whatsapp"])').clic
 await page.fill("#orc-obs", "entrega na obra");
 await page.click("#orc-salvar-botao");
 await page.waitForFunction(() => document.getElementById("modal-orc-salvar").style.display === "none");
+for (let i = 0; i < 50 && !dialogos.some((d) => d.includes("ORC-0001")); i++) await page.waitForTimeout(100); // o aviso vem depois de recarregar a lista
 ok(dialogos.at(-1).includes("ORC-0001") && nb(dialogos.at(-1)).includes("R$ 275,00"), "salvo como ORC-0001 de R$ 275,00");
 let o1 = await orc("ORC-0001");
 ok(o1.validoAte === "2026-10-22" && o1.custo === 183.6 && o1.itens[0].variacaoPct > 9.99 && o1.cliente.telefone === "(47) 99999-1234", "grava itens, % aplicado, custo, validade de 7 dias e cliente");

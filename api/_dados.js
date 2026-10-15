@@ -489,6 +489,12 @@ export function validarLancamentoV2(item, cfgSalva) {
     if (/^ORC-\d{4,}$/.test(String(item.orcamento || ""))) limpo.orcamento = item.orcamento;
     if (Array.isArray(item.itens)) limpo.itens = item.itens.slice(0, 100).map(validarItemPedido);
     if (num(item.tabelaTotal) != null) limpo.tabelaTotal = num(item.tabelaTotal);
+    // Frete cobrado junto com a venda (opcional): já está dentro do valor e das formas de pagamento
+    if (item.frete != null && item.frete !== "" && Number(item.frete) !== 0) {
+      const frete = Math.round(Number(item.frete) * 100) / 100;
+      if (!Number.isFinite(frete) || frete < 0 || frete >= limpo.value) throw erro(400, "Frete inválido: precisa ser maior que zero e menor que o total da venda.");
+      limpo.frete = frete;
+    }
     if (num(item.variacao) != null) limpo.variacao = num(item.variacao);
     if (item.motivo) limpo.motivo = texto(item.motivo, 200);
     return limpo;
@@ -690,9 +696,13 @@ function valoresOrcamento(d) {
   if (itens.some((i) => i.vendaTotal == null)) throw erro(400, "Há item sem preço no orçamento.");
   const total = Number(d.total);
   if (!Number.isFinite(total) || total <= 0) throw erro(400, "Total do orçamento inválido.");
+  // Frete opcional, à parte dos itens; o total já inclui o frete
+  const frete = d.frete == null || d.frete === "" ? 0 : Math.round(Number(d.frete) * 100) / 100;
+  if (!Number.isFinite(frete) || frete < 0 || frete >= total) throw erro(400, "Frete do orçamento inválido.");
   return {
     itens,
     total: Math.round(total * 100) / 100,
+    frete,
     custo: num(d.custo),
     margem: num(d.margem),
     tabelaTotal: num(d.tabelaTotal),
@@ -819,7 +829,7 @@ export async function atualizarOrcamento(kv, k, p) {
       break;
     case "precos": {
       if (orc.status === "fechado") throw erro(409, "Orçamento já virou venda.");
-      const valores = valoresOrcamento(p);
+      const valores = valoresOrcamento({ ...p, frete: p.frete ?? orc.frete }); // o frete continua o mesmo
       const hoje = dataDe(p.hoje);
       Object.assign(novo, valores, { validoAte: somarDias(hoje, orc.validadeDias), precosAtualizadosEm: agora });
       hist("preços atualizados", { de: orc.total, para: valores.total });

@@ -180,3 +180,13 @@ test("plano de contas: todas as contas têm grupo válido; categoria antiga equi
   assert.equal(categoriaLegada("energia"), "despesa");
   assert.equal(categoriaLegada("venda_produtos"), "venda");
 });
+
+test("frete cobrado na venda: fica na receita, fora da base do CMV estimado", () => {
+  const cfg = { cmv: { margemPadraoPct: 30 } };
+  const sem = montarDRE([venda(1000)], cfg, "2026-09");
+  const com = montarDRE([venda(1100, { frete: 100 })], cfg, "2026-09");
+  assert.equal(com.valores.receitaBruta, 1100);
+  assert.equal(com.valores.cmvEstimado, sem.valores.cmvEstimado, "CMV estimado só sobre os R$ 1.000 de produtos");
+  assert.equal(com.info.freteCobrado, 100);
+  assert.equal(sem.info.freteCobrado, 0);
+});

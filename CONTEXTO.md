@@ -95,10 +95,10 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
   - O backup e a restauração cobrem todas.
 
 ## 4. Como testar
-- **Automáticos:** `npm install && npm test`. São **105 testes** (`node --test`), em `tests/*.test.js`.
+- **Automáticos:** `npm install && npm test`. São **109 testes** (`node --test`), em `tests/*.test.js`.
 - **No navegador:** `bash tests/e2e/rodar.sh` (ou `… rodar.sh fase2b`).
-  - São 7 baterias contra um servidor local (`tests/e2e/servidor.mjs`, Redis falso no protocolo REST da Upstash, senha local `pinho123`), **só com dados sintéticos**.
-  - Resultado atual: fluxo 31, fase1b 28, lotes 5, trava 6, fase2a 31, orcamentos 57, fase2b 25, **tudo passando**.
+  - São 8 baterias contra um servidor local (`tests/e2e/servidor.mjs`, Redis falso no protocolo REST da Upstash, senha local `pinho123`), **só com dados sintéticos**.
+  - Resultado atual: fluxo 31, fase1b 28, lotes 5, trava 6, fase2a 31, orcamentos 57, fase2b 25, frete 23, **tudo passando** (8 baterias).
   - O servidor local imita a Vercel: `/api/x` usa `api/x.js` se existir, senão `api/[recurso].js`.
 - **Importante:** o servidor local precisa ser iniciado **de dentro da pasta do projeto**, porque lê `data/custos.json` pelo `process.cwd()`. O `rodar.sh` já faz isso.
 
@@ -131,7 +131,9 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
   - sempre parte da tabela;
   - o vendedor ajusta por **%** ou pelo **preço**, e os dois ficam sincronizados (por item e no total);
   - o total editado é distribuído proporcionalmente entre os itens, sem mudar o CMV;
-  - **motivo opcional** em botões (Selecionada, Últimas peças, Cliente antigo, Frete/entrega, Urgência, Outro);
+  - **motivo opcional** em botões (Selecionada, Últimas peças, Cliente antigo, Urgência, Outro). "Frete/entrega" saiu dos motivos porque o frete virou campo próprio;
+  - **item sem preço de tabela:** o % (da linha ou geral) vale **sobre o preço digitado** (`precoBase` na linha), sem acumular; "↺ Voltar" volta ao preço digitado. A venda continua sem "variação sobre tabela" para esses itens;
+  - **🚚 Frete (opcional):** valor à parte dos itens. Aparece como linha "Frete / entrega" no pedido, no WhatsApp, na impressão e no orçamento; soma no total e nas formas de pagamento. A venda grava `value` = itens + frete e `frete` separado; o orçamento grava `frete` e `total` com frete (atualizar preços mantém o frete). No DRE fica na receita bruta (info "Frete cobrado dos clientes") e **fica fora da base do CMV estimado e da margem dos produtos**;
   - "Selecionada" e "Últimas peças" aplicam o % padrão da aba Preços;
   - "Voltar ao preço de tabela" por item e no total.
 - Texto para WhatsApp **sem custo, margem nem tabela**. Impressão do pedido sem custo e margem.
