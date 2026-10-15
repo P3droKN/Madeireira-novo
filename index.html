@@ -14,6 +14,7 @@
             <nav class="tabs">
                 <button class="tab-btn active" id="btn-tab-calculator" onclick="switchTab('calculator')">Calculadora</button>
                 <button class="tab-btn" id="btn-tab-finance" onclick="switchTab('finance')">Gestor de Caixa</button>
+                <button class="tab-btn" id="btn-tab-financeiro" onclick="switchTab('financeiro')">Financeiro</button>
                 <button class="tab-btn" id="btn-tab-prices" onclick="switchTab('prices')">Preços</button>
             </nav>
         </header>
@@ -142,25 +143,103 @@
                             <h3>Registrar venda no caixa</h3>
                             <div class="total-cobrar"><span>Total</span><strong id="total-cobrar">R$ 0,00</strong></div>
                         </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="direct-sale-method">Forma de pagamento</label>
-                                <select id="direct-sale-method">
-                                    <option value="dinheiro">Dinheiro</option>
-                                    <option value="pix">PIX</option>
-                                    <option value="bradesco">Bradesco (transferência)</option>
-                                    <option value="debito">Cartão de débito</option>
-                                    <option value="credito">Cartão de crédito</option>
-                                </select>
-                            </div>
+                        <div class="form-group">
+                            <label>Formas de pagamento</label>
+                            <div id="calc-pagamentos"></div>
+                        </div>
+                        <div class="form-row" style="margin-top: 1rem;">
                             <div class="form-group">
                                 <label for="direct-sale-date">Data</label>
                                 <input type="date" id="direct-sale-date" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="calc-nfe">Nº da NF-e (opcional)</label>
+                                <input type="text" id="calc-nfe" maxlength="20" inputmode="numeric" placeholder="Ex: 1234">
                             </div>
                         </div>
                         <button class="btn-success btn-largo" id="btn-registrar-venda" onclick="registerDirectSale()">Registrar venda</button>
                         <p class="texto-suave nota">A venda grava, por item e no total: preço de tabela, preço final, variação e motivo. O custo dos itens fica guardado junto (CMV), sem lançar uma saída separada.</p>
                     </div>
+                </section>
+            </div>
+
+            <!-- ABA: FINANCEIRO (Fase 2A) -->
+            <div id="tab-financeiro" class="tab-content" style="display: none;">
+                <nav class="subtabs" aria-label="Financeiro">
+                    <button class="subtab ativo" data-sub="lancar">Lançar</button>
+                    <button class="subtab" data-sub="lista">Lançamentos</button>
+                    <button class="subtab" data-sub="dre">DRE</button>
+                    <button class="subtab" data-sub="config">Configuração</button>
+                </nav>
+                <div id="fin-aviso-v2" class="aviso aviso-alerta" hidden></div>
+
+                <section class="glass-panel fin-sub" id="fin-lancar">
+                    <div class="painel-titulo"><h2>Novo lançamento</h2></div>
+                    <div class="segmentado fin-tipos" id="fin-tipo" role="radiogroup" aria-label="Tipo de lançamento">
+                        <label><input type="radio" name="fin-tipo" value="venda" checked><span>Venda</span></label>
+                        <label><input type="radio" name="fin-tipo" value="saida"><span>Saída</span></label>
+                        <label><input type="radio" name="fin-tipo" value="entrada"><span>Outra entrada</span></label>
+                        <label><input type="radio" name="fin-tipo" value="transferencia"><span>Transferência</span></label>
+                    </div>
+                    <form id="fin-form" class="fin-form"></form>
+                </section>
+
+                <section class="glass-panel fin-sub" id="fin-lista" hidden>
+                    <div class="painel-titulo"><h2>Lançamentos</h2><span class="texto-suave" id="fin-lista-contagem"></span></div>
+                    <div class="fin-filtros">
+                        <div class="form-group"><label for="fin-f-mes">Mês</label><input type="month" id="fin-f-mes"></div>
+                        <div class="form-group"><label for="fin-f-tipo">Mostrar</label>
+                            <select id="fin-f-tipo">
+                                <option value="todos">Todos</option>
+                                <option value="classificar">A classificar</option>
+                                <option value="sugestao">Com sugestão</option>
+                                <option value="entradas">Entradas</option>
+                                <option value="saidas">Saídas</option>
+                                <option value="migrados">Migrados (antigos)</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label for="fin-f-conta">Conta</label><select id="fin-f-conta"></select></div>
+                        <div class="form-group"><label for="fin-f-busca">Buscar</label><input type="search" id="fin-f-busca" placeholder="descrição, fornecedor, NF-e"></div>
+                    </div>
+                    <div class="fin-lote" id="fin-lote" hidden>
+                        <strong id="fin-lote-n"></strong>
+                        <select id="fin-lote-conta" aria-label="Nova conta"></select>
+                        <button class="btn-icon" id="fin-lote-aplicar">Aplicar conta</button>
+                        <button class="btn-icon" id="fin-lote-sugestao">Aceitar sugestões</button>
+                        <select id="fin-lote-forma" aria-label="Nova forma (vendas)"></select>
+                        <button class="btn-icon" id="fin-lote-forma-aplicar">Trocar forma</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="tabela-fin">
+                            <thead><tr>
+                                <th><input type="checkbox" id="fin-sel-todos" aria-label="Selecionar todos"></th>
+                                <th>Data</th><th>Descrição</th><th>Conta</th><th>Forma / pago com</th><th class="num">Valor</th>
+                            </tr></thead>
+                            <tbody id="fin-lista-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="glass-panel fin-sub" id="fin-dre" hidden>
+                    <div class="painel-titulo">
+                        <h2>DRE gerencial</h2>
+                        <div class="painel-acoes">
+                            <div class="segmentado" id="fin-dre-visao">
+                                <label><input type="radio" name="fin-dre-visao" value="mes" checked><span>Mês</span></label>
+                                <label><input type="radio" name="fin-dre-visao" value="ano"><span>Ano</span></label>
+                            </div>
+                            <input type="month" id="fin-dre-mes" aria-label="Mês">
+                            <button class="btn-icon" id="fin-dre-imprimir">🖨️ Imprimir</button>
+                        </div>
+                    </div>
+                    <h3 class="so-impressao" id="fin-dre-titulo-impressao"></h3>
+                    <div id="fin-dre-conteudo"></div>
+                    <p class="nota-gerencial">Relatório gerencial de controle interno. Não substitui a contabilidade oficial do escritório.</p>
+                </section>
+
+                <section class="glass-panel fin-sub" id="fin-config" hidden>
+                    <div class="painel-titulo"><h2>Configuração financeira</h2></div>
+                    <form id="fin-config-form"></form>
                 </section>
             </div>
 
@@ -561,5 +640,6 @@
     <script src="script.js"></script>
     <script type="module" src="calculadora.js"></script>
     <script type="module" src="conferencia.js"></script>
+    <script type="module" src="financeiro-ui.js"></script>
 </body>
 </html>

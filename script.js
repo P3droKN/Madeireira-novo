@@ -82,6 +82,9 @@ function switchTab(tabId) {
     if(tabId === 'prices' && window.Precos) {
         window.Precos.abrir();
     }
+    if(tabId === 'financeiro' && window.Financeiro) {
+        window.Financeiro.abrir();
+    }
 }
 
 // --- CALCULADORA: ver calculadora.js (módulo) ---
@@ -98,6 +101,8 @@ let somenteLeitura = false;
 let migrado = true;
 let backupBaixado = false;
 let erroConexao = '';
+let configFinanceiro = {};
+let migradoV2 = false;
 let statusBanco = null;
 
 async function carregarDados() {
@@ -107,6 +112,8 @@ async function carregarDados() {
         acumulado = Object.assign({ ...ACUMULADO_VAZIO }, data.acumulado || {});
         migrado = data.migrado;
         statusBanco = data.status || null;
+        configFinanceiro = data.configFinanceiro || {};
+        migradoV2 = Boolean(data.migradoV2);
         somenteLeitura = false;
         erroConexao = '';
         // Cópia local só para leitura quando estiver sem conexão
@@ -122,7 +129,25 @@ async function carregarDados() {
     atualizarAviso();
     atualizarStatusBanco();
     renderFinance();
+    if (window.Financeiro) window.Financeiro.atualizar();
 }
+
+// Acesso da aba Financeiro (módulo) aos dados carregados aqui
+window.Caixa = {
+    get itens() { return financeItems; },
+    get acumulado() { return acumulado; },
+    get configFinanceiro() { return configFinanceiro; },
+    set configFinanceiro(c) { configFinanceiro = c; },
+    get migrado() { return migrado; },
+    get migradoV2() { return migradoV2; },
+    get somenteLeitura() { return somenteLeitura; },
+    podeGravar: () => podeGravar(),
+    gravar: (itens) => gravarLancamentos(itens),
+    recarregar: () => carregarDados(),
+    baixarBackup: () => baixarBackup(),
+    novoId: (s) => novoId(s),
+    hoje: () => getLocalDateString(),
+};
 
 function atualizarAviso() {
     const aviso = document.getElementById('aviso-sistema');
@@ -341,7 +366,7 @@ function renderFinance() {
     let pastCusto = 0, pastFunc = 0, pastDesp = 0;
 
     // Filtra histórico só para o mês selecionado até o dia atual
-    const filtered = financeItems.filter(item => item.date.startsWith(filterMonth) && item.date <= filterDate)
+    const filtered = financeItems.filter(item => !item.abertura && item.conta !== 'transferencia' && item.date.startsWith(filterMonth) && item.date <= filterDate)
                                  .sort((a, b) => new Date(b.date) - new Date(a.date));
 
     filtered.forEach(item => {
@@ -434,7 +459,7 @@ function renderFinance() {
     const dateLimit = filterDateEl.value;
     let allTimeCash = acumulado.dinheiroCaixa || 0;
     financeItems.forEach(item => {
-        if (item.date <= dateLimit) {
+        if (item.date <= dateLimit && !item.abertura && item.conta !== 'transferencia') {
             if (item.method === 'dinheiro') {
                 if (item.type === 'income') allTimeCash += item.value;
                 else if (item.type === 'expense') allTimeCash -= item.value;
@@ -517,16 +542,26 @@ async function registerDirectSale() {
         alert("O total do pedido precisa ser maior que zero.");
         return;
     }
+    let pagamentos;
+    try {
+        pagamentos = window.Calculadora.pagamentos();
+    } catch (e) {
+        alert(e.message);
+        return;
+    }
     if (!podeGravar()) return;
 
+    // Venda no formato novo (v2): conta, competência e formas de pagamento
     const vendaItem = {
         id: novoId('V'),
-        category: 'venda',
-        type: 'income',
+        v: 2,
+        conta: 'venda_produtos',
         value: pedido.venda,
-        date: document.getElementById('direct-sale-date').value || getLocalDateString(),
+        competencia: document.getElementById('direct-sale-date').value || getLocalDateString(),
         description: `Venda: ${pedido.descricao}`,
-        method: document.getElementById('direct-sale-method').value,
+        pagamentos,
+        nfe: document.getElementById('calc-nfe').value.trim(),
+        origem: 'calculadora',
         cmv: pedido.custo,
         tabelaTotal: pedido.tabela,
         variacao: pedido.variacao,

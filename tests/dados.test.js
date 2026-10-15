@@ -324,3 +324,91 @@ test("importar: id repetido dentro do lote conta uma vez; lote grande demais é 
   assert.equal((await kv.hget(K.lancamentos, "x")).value, 10);
   await assert.rejects(importar(kv, K, { financeItems: Array.from({ length: 501 }, (_, i) => lanc(`y${i}`)) }), /no máximo 500/);
 });
+
+import { validarLancamentoV2, migrarV2, reclassificar, salvarConfigFinanceiro } from "../api/_dados.js";
+
+const v2venda = (id, extra = {}) => ({ id, v: 2, conta: "venda_produtos", value: 100, competencia: "2026-10-01", pagamentos: [{ forma: "pix_bradesco", valor: 100 }], ...extra });
+const v2saida = (id, extra = {}) => ({ id, v: 2, conta: "energia", value: 50, competencia: "2026-10-01", pagoCom: "picpay", ...extra });
+
+test("v2: venda com várias formas precisa somar o total; tPag e conta vêm da config", () => {
+  const ok = validarLancamentoV2(v2venda("a", { value: 300, nfe: "123", pagamentos: [{ forma: "dinheiro", valor: 100 }, { forma: "pix_picpay", valor: 200 }] }), {});
+  assert.deepEqual(ok.pagamentos.map((p) => [p.forma, p.conta, p.tPag]), [["dinheiro", "gaveta", "01"], ["pix_picpay", "picpay", "17"]]);
+  assert.equal(ok.nfe, "123");
+  assert.equal(ok.category, "venda");
+  assert.equal(ok.method, "dinheiro");
+  assert.throws(() => validarLancamentoV2(v2venda("b", { value: 300, pagamentos: [{ forma: "dinheiro", valor: 100 }] }), {}), /soma das formas/);
+  assert.throws(() => validarLancamentoV2(v2venda("c", { pagamentos: [{ forma: "nao_informada", valor: 100 }] }), {}), /Forma de pagamento inválida/);
+  const parc = validarLancamentoV2(v2venda("d", { pagamentos: [{ forma: "credito_parcelado", valor: 100, parcelas: 3 }] }), {});
+  assert.equal(parc.pagamentos[0].parcelas, 3);
+  assert.throws(() => validarLancamentoV2(v2venda("e", { pagamentos: [{ forma: "credito_parcelado", valor: 100 }] }), {}), /parcelas/);
+  const ch = validarLancamentoV2(v2venda("f", { pagamentos: [{ forma: "cheque", valor: 100, cheque: { numero: "9", emissor: "Ana", banco: "BB", compensacao: "2026-11-01" } }] }), {});
+  assert.equal(ch.pagamentos[0].conta, "cheques_carteira");
+  assert.equal(ch.checkDate, "2026-11-01");
+});
+
+test("v2: saída exige 'Pago com'; cheque emitido com conta escolhida (padrão Bradesco)", () => {
+  assert.throws(() => validarLancamentoV2(v2saida("a", { pagoCom: undefined }), {}), /Pago com/);
+  const ch = validarLancamentoV2(v2saida("b", { conta: "compra_material", pagoCom: "cheque_emitido", chequeEmitido: { numero: "55", favorecido: "Serraria", compensacao: "2026-11-10" } }), {});
+  assert.equal(ch.chequeEmitido.conta, "bradesco");
+  assert.equal(ch.category, "custo");
+  const pic = validarLancamentoV2(v2saida("c", { pagoCom: "cheque_emitido", chequeEmitido: { conta: "picpay" } }), {});
+  assert.equal(pic.chequeEmitido.conta, "picpay");
+  assert.equal(validarLancamentoV2(v2saida("d"), {}).method, "bradesco");
+  const tr = validarLancamentoV2({ id: "t", v: 2, conta: "transferencia", de: "picpay", para: "bradesco", value: 500, competencia: "2026-10-02" }, {});
+  assert.equal(tr.type, "transfer");
+  assert.throws(() => validarLancamentoV2({ id: "t2", v: 2, conta: "transferencia", de: "picpay", para: "picpay", value: 5, competencia: "2026-10-02" }, {}), /duas contas/);
+  assert.throws(() => validarLancamentoV2(v2saida("x", { conta: "nao_existe" }), {}), /Conta inválida/);
+});
+
+test("migração v2: converte, cria abertura, é idempotente e a conferência continua batendo", async () => {
+  const kv = sistemaAntigo();
+  const arquivo = await montarBackup(kv, K);
+  await assert.rejects(migrarV2(kv, K), { status: 409 }); // precisa do salvamento seguro antes
+  await migrar(kv, K);
+  const r = await migrarV2(kv, K);
+  assert.equal(r.convertidos, 3);
+  assert.equal(r.abertura, 7);
+  assert.equal((await migrarV2(kv, K)).jaMigrado, true);
+  const banco = await lerTudo(kv, K);
+  assert.equal(banco.migradoV2, true);
+  assert.ok(banco.financeItems.every((i) => i.v === 2));
+  const a = lerArquivoBackup(arquivo);
+  const cmp = compararResumos(resumirLancamentos(a.lista, a.acumulado), resumirLancamentos(banco.financeItems, banco.acumulado));
+  assert.equal(cmp.diferencas, 0);
+  assert.ok(cmp.linhas.some((l) => l.grupo === "Abertura × acumulado" && l.rotulo === "Vendas" && l.banco === 48866));
+  assert.ok((await listarCopias(kv, K)).some((c) => c.includes("antes-da-migracao-v2")));
+});
+
+test("reclassificar em lote: conta, sugestão, forma; entrada e saída não se trocam", async () => {
+  const kv = kvFalso({ [K.finance]: [
+    { id: "7V", category: "venda", type: "income", value: 100, date: "2026-09-01", method: "pix" },
+    { id: "7C", category: "custo", type: "expense", value: 60, date: "2026-09-01", method: "cheque", description: "Custo Extraído: X" },
+    { id: "8", category: "despesa", type: "expense", value: 30, date: "2026-09-01", method: "bradesco" },
+  ] });
+  await migrar(kv, K);
+  await assert.rejects(reclassificar(kv, K, { ids: ["8"], conta: "energia" }), { status: 409 });
+  await migrarV2(kv, K);
+  assert.equal((await reclassificar(kv, K, { ids: ["7C"], aceitarSugestao: true })).alterados, 1);
+  const c = await kv.hget(K.lancamentos, "7C");
+  assert.equal(c.conta, "cmv");
+  assert.equal(c.contaOriginal, "classificar_custo");
+  assert.equal(c.classificar, undefined);
+  const r = await reclassificar(kv, K, { ids: ["8", "7V"], conta: "energia" });
+  assert.equal(r.alterados, 1);
+  assert.deepEqual(r.ignorados, [{ id: "7V", motivo: "entrada e saída não se trocam" }]);
+  await reclassificar(kv, K, { ids: ["7V"], forma: "pix_picpay" });
+  const v = await kv.hget(K.lancamentos, "7V");
+  assert.deepEqual([v.pagamentos[0].forma, v.pagamentos[0].conta, v.pagamentos[0].tPag, v.formaOriginal], ["pix_picpay", "picpay", "17", "pix_bradesco"]);
+});
+
+test("config financeira: valida taxas, prazos e tPag; guarda tudo", async () => {
+  const kv = kvFalso({});
+  const c = await salvarConfigFinanceiro(kv, K, { cartao: { debito: { taxaPct: 1.5 } }, formas: { pix_bradesco: { tPag: "17" } }, impostos: { estimarSimples: true, rbt12: 600000 } });
+  assert.equal(c.cartao.debito.taxaPct, 1.5);
+  assert.equal(c.cartao.credito.prazoDias, 30);
+  assert.equal(c.formas.pix_bradesco.tPag, "17");
+  assert.equal(c.impostos.rbt12, 600000);
+  await assert.rejects(salvarConfigFinanceiro(kv, K, { cartao: { debito: { taxaPct: 150 } } }), /Percentual/);
+  await assert.rejects(salvarConfigFinanceiro(kv, K, { formas: { dinheiro: { tPag: "1" } } }), /tPag/);
+  assert.equal((await lerTudo(kv, K)).configFinanceiro.cartao.debito.taxaPct, 1.5);
+});

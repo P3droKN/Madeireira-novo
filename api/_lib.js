@@ -67,6 +67,8 @@ export function chaves(ambiente = process.env.VERCEL_ENV, prefixoFixo = process.
     backups: p + "madeireira_backups",       // lista com os nomes das cópias automáticas
     precos: p + "madeireira_precos_venda",   // hash: "<item>|<acabamento>" -> preço
     config: p + "madeireira_config",
+    configFinanceiro: p + "madeireira_config_financeiro",
+    migradoV2: p + "madeireira_migrado_v2",
   };
 }
 

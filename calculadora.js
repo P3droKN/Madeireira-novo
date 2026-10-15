@@ -1,4 +1,5 @@
 // Calculadora (pedido) e aba Preços. Os cálculos ficam em lib/calculo.js (calcularItem).
+import { criarEditorPagamentos } from "./pagamentos.js";
 import { montarCatalogo, chavePreco, UNIDADES, ACABAMENTOS, CEPILHADO_PADRAO } from "./lib/catalogo.js";
 import { calcularItem, totalizarPedido, distribuirTotal, arred, MOTIVOS_AJUSTE, textoWhatsApp } from "./lib/calculo.js";
 
@@ -10,6 +11,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const lerNumero = (v) => (v === "" || v == null ? null : Number(String(v).replace(",", ".")));
 
 const PEDIDO_KEY = "madeireira_pedido";
+const editorPagamentos = criarEditorPagamentos(document.getElementById("calc-pagamentos"));
 
 const estado = {
   dados: null,      // { custos, precos, config, kvDisponivel }
@@ -305,6 +307,7 @@ function renderPedido() {
   $("ajuste-geral").hidden = vazio;
   $("finalizar").hidden = vazio;
   $("total-cobrar").textContent = moeda(t.venda);
+  editorPagamentos.definirTotal(t.venda);
   salvarPedidoLocal();
 }
 
@@ -495,7 +498,14 @@ window.Calculadora = {
     if (perguntar && estado.pedido.length && !confirm("Remover todos os itens do pedido?")) return;
     estado.pedido = [];
     estado.motivoGeral = "";
+    editorPagamentos.reiniciar(0);
+    $("calc-nfe").value = "";
     renderPedido();
+  },
+
+  // Formas de pagamento da venda (lança erro se a soma não fechar com o total)
+  pagamentos() {
+    return editorPagamentos.ler();
   },
 
   // Usado por registerDirectSale (script.js): tudo o que a venda grava

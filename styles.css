@@ -320,6 +320,80 @@ button {
 .aviso-acoes .btn-icon { margin-left: 0; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* ---------- FINANCEIRO (Fase 2A) ---------- */
+.subtabs { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.subtab {
+    background: var(--input-bg); border: 1px solid var(--input-border); color: var(--text-muted);
+    padding: 0.5rem 1rem; border-radius: 999px; cursor: pointer; font-weight: 500; font-size: 0.9rem;
+}
+.subtab.ativo { background: rgba(59, 130, 246, 0.25); color: var(--text-main); border-color: rgba(59, 130, 246, 0.6); }
+.fin-tipos { margin-bottom: 1.5rem; max-width: 640px; }
+.fin-form { display: flex; flex-direction: column; gap: 1.25rem; }
+.fin-cheque { padding: 1rem; border-radius: 0.75rem; border: 1px dashed var(--panel-border); }
+.campo-curto { width: 70px !important; padding: 0.35rem 0.5rem !important; display: inline-block; }
+
+.pagamentos { display: flex; flex-direction: column; gap: 0.6rem; }
+.pag-linha { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.pag-linha .pag-forma { flex: 2 1 200px; }
+.pag-linha .pag-valor { flex: 1 1 120px; text-align: right; font-variant-numeric: tabular-nums; }
+.pag-linha .pag-parcelas { flex: 0 0 90px; }
+.pag-cheque { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 0.5rem; padding-left: 0.5rem; border-left: 2px solid var(--panel-border); }
+.pag-cheque input { flex: 1 1 140px; padding: 0.5rem 0.75rem; }
+.pag-cheque label { display: inline-flex; align-items: center; gap: 0.4rem; }
+.pag-rodape { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.pag-status { font-size: 0.85rem; font-weight: 600; }
+.pag-status.ok { color: #34d399; }
+.pag-status.falta { color: #fbbf24; }
+
+.fin-filtros { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1rem; }
+.fin-lote {
+    position: sticky; top: 0.5rem; z-index: 5; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
+    padding: 0.75rem 1rem; margin-bottom: 1rem; border-radius: 0.75rem;
+    background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(59, 130, 246, 0.5);
+}
+.fin-lote select { width: auto; flex: 1 1 200px; padding: 0.45rem 0.75rem; }
+.tabela-fin td, .tabela-fin th { padding: 0.55rem 0.6rem; font-size: 0.875rem; vertical-align: top; }
+.tabela-fin input[type="checkbox"] { width: auto; accent-color: var(--primary); }
+.tabela-fin tr.selecionado td { background: rgba(59, 130, 246, 0.1); }
+.sugestao { color: #93c5fd !important; }
+
+.tabela-dre td, .tabela-dre th { padding: 0.45rem 0.6rem; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.tabela-dre tr.dre-sub td:first-child { padding-left: 1.5rem; color: var(--text-muted); }
+.tabela-dre tr.dre-total td { font-weight: 700; border-top: 1px solid var(--input-border); }
+.tabela-dre tr.dre-destaque td { font-size: 1.05rem; background: rgba(16, 185, 129, 0.08); }
+.tabela-dre tr.dre-alerta td { color: #fbbf24; }
+.tabela-dre.anual td, .tabela-dre.anual th { font-size: 0.78rem; padding: 0.35rem 0.4rem; }
+.dre-info { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-top: 1rem; }
+.dre-info div { background: rgba(15, 23, 42, 0.45); border: 1px solid var(--panel-border); border-radius: 0.75rem; padding: 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.2rem; }
+.dre-info span { color: var(--text-muted); font-size: 0.8rem; }
+.nota-gerencial { margin-top: 1.25rem; color: var(--text-muted); font-size: 0.8rem; font-style: italic; }
+.so-impressao { display: none; }
+.cfg-titulo { font-size: 1.05rem; font-weight: 600; margin: 1.5rem 0 0.75rem; }
+.cfg-titulo:first-child { margin-top: 0; }
+.tabela-cfg td, .tabela-cfg th { padding: 0.45rem 0.6rem; }
+.tabela-cfg select { padding: 0.4rem 0.6rem; }
+.parcelas-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.5rem; margin-top: 0.5rem; }
+.parcelas-grid label { display: flex; align-items: center; gap: 0.35rem; color: var(--text-main); }
+.parcelas-grid input { padding: 0.4rem 0.5rem; }
+@media (max-width: 760px) {
+    .fin-filtros, .dre-info { grid-template-columns: 1fr 1fr; }
+    .parcelas-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media print {
+    body.imprimindo-dre .tab-content { display: none !important; }
+    body.imprimindo-dre #tab-financeiro { display: block !important; }
+    body.imprimindo-dre #tab-financeiro > *:not(#fin-dre) { display: none !important; }
+    body.imprimindo-dre header, body.imprimindo-dre .aviso, body.imprimindo-dre .painel-titulo, body.imprimindo-dre .so-tela-dre, body.imprimindo-dre .pendencias { display: none !important; }
+    body.imprimindo-dre .so-impressao { display: block !important; text-align: center; font-size: 14px !important; }
+    body.imprimindo-dre .dre-info { display: flex !important; flex-wrap: wrap; gap: 4px; }
+    body.imprimindo-dre .dre-info div { border: 1px solid #ccc !important; background: none !important; padding: 3px 6px !important; }
+    body.imprimindo-dre .dre-info span, body.imprimindo-dre .dre-info strong, body.imprimindo-dre .nota-gerencial { color: black !important; font-size: 9px !important; }
+    body.imprimindo-dre .tabela-dre td, body.imprimindo-dre .tabela-dre th { font-size: 9px !important; padding: 1px 4px !important; }
+    body.imprimindo-dre.dre-anual .tabela-dre td, body.imprimindo-dre.dre-anual .tabela-dre th { font-size: 7px !important; padding: 1px 2px !important; }
+    body.imprimindo-dre .tag { border: none !important; font-size: 7px !important; }
+}
+@page { size: A4; margin: 10mm; }
+
 /* Progresso da importação */
 .barra-progresso { width: 100%; height: 14px; margin: 1rem 0 0.75rem; accent-color: var(--success); }
 #progresso-texto { color: var(--text-main); font-size: 0.95rem; }

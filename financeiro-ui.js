@@ -1,0 +1,496 @@
+// Aba Financeiro (Fase 2A): lançar, lançamentos (reclassificação em lote), DRE e configuração.
+import { CONTAS, GRUPOS, contaPorId, grupoPorId, naturezaDaConta, FORMAS_PADRAO, PAGO_COM, mesclarConfigFinanceiro } from "./lib/planoContas.js";
+import { montarDRE, montarDREAnual, normalizar, mesDe, estoqueEstimado } from "./lib/financeiro.js";
+import { criarEditorPagamentos } from "./pagamentos.js";
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const moeda = (v) => (v == null ? "—" : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v));
+const pct = (v) => (v == null || !Number.isFinite(v) ? "—" : `${(v * 100).toFixed(1).replace(".", ",")}%`);
+const num = (v) => (v === "" || v == null ? null : Number(String(v).replace(",", ".")));
+const dataBR = (d) => (d ? d.split("-").reverse().join("/") : "");
+const C = () => window.Caixa;
+
+const FORMAS = Object.fromEntries(FORMAS_PADRAO.map((f) => [f.id, f]));
+const NOME_PAGO = Object.fromEntries(PAGO_COM.map((p) => [p.id, p.nome]));
+const CONTAS_FIN = { gaveta: "Gaveta", bradesco: "Bradesco", picpay: "PicPay", cheques_carteira: "Cheques em carteira" };
+
+const estado = { sub: "lancar", selecionados: new Set(), editor: null, visivel: [] };
+
+function opcoesContas(filtro, selecionada) {
+  return GRUPOS.map((g) => {
+    const contas = CONTAS.filter((c) => c.grupo === g.id && filtro(c));
+    if (!contas.length) return "";
+    return `<optgroup label="${esc(g.nome)}">${contas.map((c) => `<option value="${c.id}" ${c.id === selecionada ? "selected" : ""}>${esc(c.nome)}</option>`).join("")}</optgroup>`;
+  }).join("");
+}
+
+const ehEntrada = (c) => naturezaDaConta(c.id) === "entrada";
+const ehReceitaVenda = (c) => ["venda_produtos", "frete_cobrado", "servicos"].includes(c.id);
+
+// ---------- Sub-abas ----------
+
+function mostrarSub(sub) {
+  estado.sub = sub;
+  document.querySelectorAll(".subtab").forEach((b) => b.classList.toggle("ativo", b.dataset.sub === sub));
+  for (const s of ["lancar", "lista", "dre", "config"]) $(`fin-${s}`).hidden = s !== sub;
+  renderSub();
+}
+
+function renderSub() {
+  avisoMigracao();
+  if (estado.sub === "lancar") renderFormulario();
+  if (estado.sub === "lista") renderLista();
+  if (estado.sub === "dre") renderDRE();
+  if (estado.sub === "config") renderConfig();
+}
+
+function avisoMigracao() {
+  const el = $("fin-aviso-v2");
+  if (!C() || C().somenteLeitura) { el.hidden = true; return; }
+  if (C().migradoV2) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `<strong>Migrar para o financeiro novo (uma vez só).</strong>
+    Converte os lançamentos antigos para o plano de contas (PIX antigo → PIX Bradesco, "bradesco" → Transferência, custos e despesas "a classificar")
+    e transforma o acumulado de agosto em lançamentos de abertura. Nada é apagado e uma cópia é guardada antes.
+    <div class="aviso-acoes">
+      <button class="btn-icon" id="fin-v2-backup">1. 💾 Baixar backup</button>
+      <button class="btn-success" id="fin-v2-migrar" ${estado.backupV2 ? "" : "disabled"}>2. Migrar</button>
+    </div>`;
+  $("fin-v2-backup").onclick = async () => { if (await C().baixarBackup()) { estado.backupV2 = true; avisoMigracao(); } };
+  $("fin-v2-migrar").onclick = async () => {
+    try {
+      const r = await window.api("/api/migrar?versao=2", { method: "POST", timeoutMs: 90000 });
+      alert(r.jaMigrado ? "A migração já tinha sido feita." : `Migração concluída.\n\nLançamentos convertidos: ${r.convertidos}\nLançamentos de abertura (agosto): ${r.abertura}\n\nConfira com "🔍 Conferir com arquivo" no Gestor de Caixa e classifique os custos em Lançamentos › A classificar.`);
+    } catch (e) {
+      alert(`A migração não foi feita: ${e.message}`);
+    }
+    await C().recarregar();
+  };
+}
+
+// ---------- Lançar ----------
+
+function tipoAtual() {
+  return document.querySelector('input[name="fin-tipo"]:checked').value;
+}
+
+// Sugestão de "Pago com": a última conta usada para o mesmo fornecedor ou, se não houver, para a mesma conta
+function sugerirPagoCom(conta, fornecedor) {
+  const itens = (C()?.itens || []).filter((l) => l.pagoCom && !l.abertura).sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id)));
+  const f = String(fornecedor || "").trim().toLowerCase();
+  if (f) {
+    const doFornecedor = itens.find((l) => String(l.fornecedor || "").trim().toLowerCase() === f);
+    if (doFornecedor) return doFornecedor.pagoCom;
+  }
+  return itens.find((l) => l.conta === conta)?.pagoCom || null;
+}
+
+function renderFormulario() {
+  const tipo = tipoAtual();
+  const hoje = C()?.hoje() || new Date().toISOString().slice(0, 10);
+  const form = $("fin-form");
+  const fornecedores = [...new Set((C()?.itens || []).map((l) => l.fornecedor).filter(Boolean))].sort();
+  let html = `<div class="form-row">
+      <div class="form-group"><label for="ff-data">Data (competência)</label><input type="date" id="ff-data" value="${hoje}" required></div>`;
+  if (tipo === "venda") {
+    html += `
+      <div class="form-group"><label for="ff-conta">Tipo de receita</label><select id="ff-conta">${opcoesContas(ehReceitaVenda, "venda_produtos")}</select></div>
+      <div class="form-group"><label for="ff-valor">Total (R$)</label><input type="number" id="ff-valor" step="0.01" min="0.01" inputmode="decimal" required></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label for="ff-desc">Descrição</label><input type="text" id="ff-desc" maxlength="200" placeholder="Ex: venda balcão"></div>
+      <div class="form-group"><label for="ff-cliente">Cliente (opcional)</label><input type="text" id="ff-cliente" maxlength="120"></div>
+      <div class="form-group"><label for="ff-nfe">Nº da NF-e (opcional)</label><input type="text" id="ff-nfe" maxlength="20" inputmode="numeric"></div>
+    </div>
+    <div class="form-group"><label>Formas de pagamento</label><div id="ff-pagamentos"></div></div>
+    <div class="form-group"><label for="ff-cmv">Custo dos produtos (CMV), se souber</label>
+      <input type="number" id="ff-cmv" step="0.01" min="0" inputmode="decimal" placeholder="vazio = estimado pela margem padrão">
+      <small class="texto-suave">Vendas pela Calculadora já gravam o custo exato. Aqui, sem custo, o DRE estima e marca como "estimado".</small></div>`;
+  } else if (tipo === "transferencia") {
+    const op = (sel) => Object.entries(CONTAS_FIN).map(([id, n]) => `<option value="${id}" ${id === sel ? "selected" : ""}>${n}</option>`).join("");
+    html += `
+      <div class="form-group"><label for="ff-de">De</label><select id="ff-de">${op("picpay")}</select></div>
+      <div class="form-group"><label for="ff-para">Para</label><select id="ff-para">${op("bradesco")}</select></div>
+      <div class="form-group"><label for="ff-valor">Valor (R$)</label><input type="number" id="ff-valor" step="0.01" min="0.01" inputmode="decimal" required></div>
+    </div>
+    <div class="form-group"><label for="ff-desc">Descrição</label><input type="text" id="ff-desc" maxlength="200" placeholder="Ex: repasse PicPay → Bradesco, depósito de cheque"></div>
+    <p class="texto-suave">Transferência não é receita nem despesa: só muda o dinheiro de lugar.</p>`;
+  } else {
+    const entrada = tipo === "entrada";
+    const filtro = entrada ? (c) => ehEntrada(c) && !ehReceitaVenda(c) : (c) => !ehEntrada(c) && c.grupo !== "classificar" && c.id !== "cmv";
+    html += `
+      <div class="form-group"><label for="ff-conta">Conta</label><select id="ff-conta" required><option value="" disabled selected>Escolha</option>${opcoesContas(filtro)}</select></div>
+      <div class="form-group"><label for="ff-valor">Valor (R$)</label><input type="number" id="ff-valor" step="0.01" min="0.01" inputmode="decimal" required></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label for="ff-desc">Descrição</label><input type="text" id="ff-desc" maxlength="200"></div>
+      ${entrada ? "" : `<div class="form-group"><label for="ff-fornecedor">Fornecedor / favorecido</label><input type="text" id="ff-fornecedor" maxlength="120" list="ff-fornecedores"><datalist id="ff-fornecedores">${fornecedores.map((f) => `<option value="${esc(f)}">`).join("")}</datalist></div>`}
+    </div>
+    <div class="form-group">
+      <label>${entrada ? "Recebido em" : "Pago com"} <span class="texto-suave" id="ff-sugestao"></span></label>
+      <div class="segmentado" id="ff-pagocom">${PAGO_COM.filter((p) => !entrada || p.id !== "cheque_emitido").map((p) => `<label><input type="radio" name="ff-pagocom" value="${p.id}"><span>${p.nome}</span></label>`).join("")}</div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label for="ff-datapag">Data do ${entrada ? "recebimento" : "pagamento"}</label><input type="date" id="ff-datapag" value="${hoje}"></div>
+      <div class="form-group" id="ff-vida-grupo" hidden><label for="ff-vida">Vida útil (meses), para depreciação</label><input type="number" id="ff-vida" min="1" max="600" step="1" placeholder="Ex: 120"></div>
+    </div>
+    <div id="ff-cheque" class="fin-cheque" hidden>
+      <div class="form-row">
+        <div class="form-group"><label for="ff-ch-numero">Nº do cheque</label><input type="text" id="ff-ch-numero" maxlength="40"></div>
+        <div class="form-group"><label for="ff-ch-favorecido">Favorecido</label><input type="text" id="ff-ch-favorecido" maxlength="120"></div>
+        <div class="form-group"><label for="ff-ch-comp">Data de compensação</label><input type="date" id="ff-ch-comp" value="${hoje}"></div>
+        <div class="form-group"><label for="ff-ch-conta">Sai da conta</label><select id="ff-ch-conta"><option value="bradesco">Bradesco</option><option value="picpay">PicPay</option></select></div>
+      </div>
+      <small class="texto-suave">O cheque sai do saldo da conta na data de compensação, não na emissão.</small>
+    </div>`;
+  }
+  html += `<button type="submit" class="btn-primary" style="margin-top: 1.25rem;">Registrar</button>`;
+  form.innerHTML = html;
+
+  if (tipo === "venda") estado.editor = criarEditorPagamentos($("ff-pagamentos"));
+  if (tipo === "venda") $("ff-valor").addEventListener("input", (e) => estado.editor.definirTotal(num(e.target.value) || 0));
+  if (tipo === "saida" || tipo === "entrada") {
+    const atualizarSugestao = () => {
+      const s = sugerirPagoCom($("ff-conta").value, $("ff-fornecedor")?.value);
+      const marcado = document.querySelector('input[name="ff-pagocom"]:checked');
+      $("ff-sugestao").textContent = s ? `(sugestão: ${NOME_PAGO[s]}, a última usada)` : "";
+      if (s && (!marcado || marcado.dataset.auto)) {
+        const r = document.querySelector(`input[name="ff-pagocom"][value="${s}"]`);
+        if (r) { r.checked = true; r.dataset.auto = "1"; }
+      }
+      mostrarCheque();
+    };
+    const mostrarCheque = () => {
+      const pc = document.querySelector('input[name="ff-pagocom"]:checked')?.value;
+      $("ff-cheque") && ($("ff-cheque").hidden = pc !== "cheque_emitido");
+      $("ff-vida-grupo").hidden = $("ff-conta").value !== "investimento";
+      if (pc === "cheque_emitido" && !$("ff-ch-favorecido").value && $("ff-fornecedor")) $("ff-ch-favorecido").value = $("ff-fornecedor").value;
+    };
+    $("ff-conta").addEventListener("change", atualizarSugestao);
+    $("ff-fornecedor")?.addEventListener("change", atualizarSugestao);
+    $("ff-pagocom").addEventListener("change", (e) => { delete e.target.dataset.auto; document.querySelectorAll('input[name="ff-pagocom"]').forEach((r) => delete r.dataset.auto); mostrarCheque(); });
+  }
+}
+
+async function enviarFormulario(e) {
+  e.preventDefault();
+  if (!C().podeGravar()) return;
+  const tipo = tipoAtual();
+  const valor = num($("ff-valor").value);
+  const data = $("ff-data").value;
+  if (!(valor > 0)) return alert("Informe o valor.");
+  const item = { id: C().novoId(tipo === "venda" ? "V" : tipo === "transferencia" ? "T" : "S"), v: 2, value: valor, competencia: data, description: $("ff-desc").value.trim() };
+  if (tipo === "venda") {
+    try { item.pagamentos = estado.editor.ler(); } catch (err) { return alert(err.message); }
+    item.conta = $("ff-conta").value;
+    item.nfe = $("ff-nfe").value.trim();
+    item.cliente = $("ff-cliente").value.trim();
+    const cmv = num($("ff-cmv").value);
+    if (cmv != null) item.cmv = cmv;
+  } else if (tipo === "transferencia") {
+    Object.assign(item, { conta: "transferencia", de: $("ff-de").value, para: $("ff-para").value });
+  } else {
+    item.conta = $("ff-conta").value;
+    if (!item.conta) return alert("Escolha a conta.");
+    const pc = document.querySelector('input[name="ff-pagocom"]:checked')?.value;
+    if (!pc) return alert(tipo === "entrada" ? 'Escolha onde foi recebido.' : 'Escolha "Pago com".');
+    item.pagoCom = pc;
+    item.dataPagamento = $("ff-datapag").value || data;
+    if ($("ff-fornecedor")) item.fornecedor = $("ff-fornecedor").value.trim();
+    if (pc === "cheque_emitido") {
+      item.chequeEmitido = { numero: $("ff-ch-numero").value.trim(), favorecido: $("ff-ch-favorecido").value.trim(), compensacao: $("ff-ch-comp").value, conta: $("ff-ch-conta").value };
+    }
+    if (item.conta === "investimento" && num($("ff-vida").value)) item.vidaUtilMeses = num($("ff-vida").value);
+  }
+  if (await C().gravar([item])) {
+    alert("Lançamento registrado.");
+    renderFormulario();
+  }
+}
+
+// ---------- Lançamentos (lista e reclassificação em lote) ----------
+
+function descreverForma(l) {
+  if (l.conta === "transferencia") return `${CONTAS_FIN[l.de] || l.de} → ${CONTAS_FIN[l.para] || l.para}`;
+  if (Array.isArray(l.pagamentos)) {
+    return l.pagamentos.map((p) => `${FORMAS[p.forma]?.nome || p.forma}${p.parcelas ? ` ${p.parcelas}x` : ""}`).join(" + ");
+  }
+  if (l.pagoCom) return NOME_PAGO[l.pagoCom] + (l.chequeEmitido?.numero ? ` nº ${l.chequeEmitido.numero}` : "");
+  return l.abertura ? "abertura" : "—";
+}
+
+function filtrarLista() {
+  const cfg = C().configFinanceiro;
+  const lista = normalizar(C().itens, cfg);
+  const mes = $("fin-f-mes").value;
+  const tipo = $("fin-f-tipo").value;
+  const conta = $("fin-f-conta").value;
+  const busca = $("fin-f-busca").value.trim().toLowerCase();
+  return lista.filter((l) => {
+    if (mes && mesDe(l) !== mes) return false;
+    if (conta && l.conta !== conta) return false;
+    if (tipo === "classificar" && !l.classificar) return false;
+    if (tipo === "sugestao" && !(l.classificar && l.sugestao)) return false;
+    if (tipo === "entradas" && naturezaDaConta(l.conta) !== "entrada") return false;
+    if (tipo === "saidas" && (l.conta === "transferencia" || naturezaDaConta(l.conta) !== "saida")) return false;
+    if (tipo === "migrados" && !l.migrado) return false;
+    if (busca && ![l.description, l.fornecedor, l.nfe, l.cliente].some((t) => String(t || "").toLowerCase().includes(busca))) return false;
+    return true;
+  }).sort((a, b) => String(b.competencia).localeCompare(String(a.competencia)) || String(b.id).localeCompare(String(a.id)));
+}
+
+function renderLista() {
+  if (!$("fin-f-conta").options.length) {
+    $("fin-f-conta").innerHTML = `<option value="">Todas</option>${opcoesContas(() => true)}<option value="transferencia">Transferência</option>`;
+    $("fin-lote-conta").innerHTML = `<option value="" disabled selected>Nova conta…</option>${opcoesContas((c) => c.id !== "classificar_custo")}`;
+    $("fin-lote-forma").innerHTML = `<option value="" disabled selected>Nova forma (vendas)…</option>${FORMAS_PADRAO.filter((f) => !f.soMigracao).map((f) => `<option value="${f.id}">${esc(f.nome)}</option>`).join("")}`;
+  }
+  if (!C()) return;
+  const lista = filtrarLista();
+  estado.visivel = lista;
+  const LIMITE = 400;
+  $("fin-lista-body").innerHTML = lista.slice(0, LIMITE).map((l) => {
+    const c = contaPorId[l.conta];
+    const entrada = naturezaDaConta(l.conta) === "entrada";
+    const sug = l.classificar && l.sugestao ? `<small class="sugestao">sugestão: ${esc(contaPorId[l.sugestao.conta]?.nome || l.sugestao.conta)} (${esc(l.sugestao.motivo)})</small>` : "";
+    const tags = [l.classificar ? '<span class="tag tag-menos">a classificar</span>' : "", l.abertura ? '<span class="tag">abertura</span>' : "", l.migrado && !l.abertura ? '<span class="tag">migrado</span>' : ""].join(" ");
+    return `<tr class="${estado.selecionados.has(String(l.id)) ? "selecionado" : ""}">
+      <td><input type="checkbox" class="fin-sel" value="${esc(l.id)}" ${estado.selecionados.has(String(l.id)) ? "checked" : ""} aria-label="Selecionar"></td>
+      <td>${dataBR(l.competencia)}</td>
+      <td>${esc(l.description || "")}${l.fornecedor ? `<small>${esc(l.fornecedor)}</small>` : ""}${l.nfe ? `<small>NF-e ${esc(l.nfe)}</small>` : ""}</td>
+      <td>${esc(c?.nome || (l.conta === "transferencia" ? "Transferência" : l.conta))} ${tags}${sug}</td>
+      <td>${esc(descreverForma(l))}</td>
+      <td class="num ${l.conta === "transferencia" ? "" : entrada ? "type-income" : "type-expense"}">${moeda(l.value)}</td>
+    </tr>`;
+  }).join("") || '<tr><td colspan="6" class="texto-suave">Nenhum lançamento com esse filtro.</td></tr>';
+  const total = lista.reduce((s, l) => s + (l.conta === "transferencia" ? 0 : (naturezaDaConta(l.conta) === "entrada" ? 1 : -1) * Math.round(l.value * 100)), 0) / 100;
+  $("fin-lista-contagem").textContent = `${lista.length} lançamentos${lista.length > LIMITE ? ` (mostrando ${LIMITE})` : ""} · saldo do filtro ${moeda(total)}`;
+  $("fin-sel-todos").checked = lista.length > 0 && lista.every((l) => estado.selecionados.has(String(l.id)));
+  atualizarLote();
+}
+
+function atualizarLote() {
+  const n = estado.selecionados.size;
+  $("fin-lote").hidden = n === 0 || !C()?.migradoV2;
+  $("fin-lote-n").textContent = `${n} selecionado${n > 1 ? "s" : ""}`;
+}
+
+async function aplicarLote(corpo) {
+  const ids = [...estado.selecionados];
+  try {
+    const r = await window.api("/api/lancamento", { method: "PATCH", body: { ids, ...corpo } });
+    const ign = r.ignorados.length ? `\n\nNão alterados: ${r.ignorados.length}\n` + [...new Set(r.ignorados.map((i) => i.motivo))].map((m) => `• ${m}`).join("\n") : "";
+    alert(`Alterados: ${r.alterados}${ign}`);
+  } catch (e) {
+    alert(`Não foi alterado: ${e.message}`);
+    return;
+  }
+  estado.selecionados.clear();
+  await C().recarregar();
+}
+
+// ---------- DRE ----------
+
+function mesAnterior(mes, n = 1) {
+  const [a, m] = mes.split("-").map(Number);
+  const d = new Date(Date.UTC(a, m - 1 - n, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+const variacao = (atual, antes) => (antes ? (atual - antes) / Math.abs(antes) : null);
+
+function renderDRE() {
+  if (!C()) return;
+  const cfg = C().configFinanceiro;
+  const mes = $("fin-dre-mes").value || (C().hoje() || "").slice(0, 7);
+  $("fin-dre-mes").value = mes;
+  const visao = document.querySelector('input[name="fin-dre-visao"]:checked').value;
+  const lista = normalizar(C().itens, cfg);
+  const alvo = $("fin-dre-conteudo");
+
+  if (visao === "ano") {
+    const ano = Number(mes.slice(0, 4));
+    const a = montarDREAnual(C().itens, cfg, ano);
+    $("fin-dre-titulo-impressao").textContent = `DRE gerencial ${ano}`;
+    const nomes = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+    alvo.innerHTML = `<div class="table-container"><table class="tabela-dre anual">
+      <thead><tr><th>${ano}</th>${nomes.map((n) => `<th class="num">${n}</th>`).join("")}<th class="num">Total</th><th class="num">%</th></tr></thead>
+      <tbody>${a.ids.map((id) => {
+        const m = a.modelo[id];
+        return `<tr class="dre-${m.tipo}${m.destaque ? " dre-destaque" : ""}">
+          <td>${esc(m.rotulo)}${m.estimado ? ' <span class="tag">est.</span>' : ""}</td>
+          ${a.meses.map((d) => `<td class="num">${fmtCurto(d.valores[id])}</td>`).join("")}
+          <td class="num"><strong>${fmtCurto(a.total[id])}</strong></td>
+          <td class="num">${a.total.receitaBruta ? pct(a.total[id] / a.total.receitaBruta) : "—"}</td></tr>`;
+      }).join("")}</tbody></table></div>`;
+    return;
+  }
+
+  const d = montarDRE(lista, cfg, mes, { jaNormalizado: true });
+  const ant = montarDRE(lista, cfg, mesAnterior(mes), { jaNormalizado: true });
+  const anoAnt = montarDRE(lista, cfg, mesAnterior(mes, 12), { jaNormalizado: true });
+  const rb = d.valores.receitaBruta;
+  $("fin-dre-titulo-impressao").textContent = `DRE gerencial · ${mes.split("-").reverse().join("/")}`;
+  const linha = (l) => {
+    const va = ant.valores[l.id] ?? 0, vb = anoAnt.valores[l.id] ?? 0;
+    const dv = variacao(l.valor, va), dy = variacao(l.valor, vb);
+    const seta = (x) => (x == null ? "—" : `${x > 0 ? "▲" : x < 0 ? "▼" : ""} ${pct(Math.abs(x))}`);
+    return `<tr class="dre-${l.tipo}${l.destaque ? " dre-destaque" : ""}${l.alerta ? " dre-alerta" : ""}">
+      <td>${esc(l.rotulo)}${l.estimado ? ' <span class="tag">estimado</span>' : ""}</td>
+      <td class="num">${moeda(l.valor)}</td>
+      <td class="num">${rb ? pct(l.valor / rb) : "—"}</td>
+      <td class="num so-tela-dre">${moeda(va)}</td><td class="num so-tela-dre">${seta(dv)}</td>
+      <td class="num so-tela-dre">${moeda(vb)}</td><td class="num so-tela-dre">${seta(dy)}</td>
+    </tr>`;
+  };
+  const estoque = estoqueEstimado(lista, cfg, mes);
+  alvo.innerHTML = `
+    ${d.avisos.length ? `<ul class="pendencias">${d.avisos.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}
+    <div class="table-container"><table class="tabela-dre">
+      <thead><tr><th></th><th class="num">${mes.split("-").reverse().join("/")}</th><th class="num">% receita</th>
+        <th class="num so-tela-dre">Mês anterior</th><th class="num so-tela-dre">Δ</th><th class="num so-tela-dre">Mesmo mês ${Number(mes.slice(0, 4)) - 1}</th><th class="num so-tela-dre">Δ</th></tr></thead>
+      <tbody>${d.linhas.map(linha).join("")}</tbody>
+    </table></div>
+    <div class="dre-info">
+      <div><span>Retiradas do dono (abaixo da linha)</span><strong>${moeda(d.info.retiradas)}</strong></div>
+      <div><span>Lucro retido</span><strong>${moeda(d.info.lucroRetido)}</strong></div>
+      <div><span>Compras do mês (viram estoque)</span><strong>${moeda(d.info.compras)}</strong></div>
+      <div><span>Estoque estimado em R$ (compras − CMV)</span><strong>${moeda(estoque)}</strong></div>
+      <div><span>Ponto de equilíbrio</span><strong>${moeda(d.info.pontoEquilibrio)}</strong></div>
+      ${d.info.aportes ? `<div><span>Aportes do dono</span><strong>${moeda(d.info.aportes)}</strong></div>` : ""}
+    </div>`;
+}
+
+const fmtCurto = (v) => (v ? v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : "–");
+
+// ---------- Configuração ----------
+
+function renderConfig() {
+  if (!C()) return;
+  const c = mesclarConfigFinanceiro(C().configFinanceiro);
+  const op = (sel) => Object.entries(CONTAS_FIN).map(([id, n]) => `<option value="${id}" ${id === sel ? "selected" : ""}>${n}</option>`).join("");
+  $("fin-config-form").innerHTML = `
+    <h3 class="cfg-titulo">Formas de pagamento</h3>
+    <div class="table-container"><table class="tabela-cfg">
+      <thead><tr><th>Forma</th><th>Conta de destino</th><th>Código tPag (NF-e)</th></tr></thead>
+      <tbody>${FORMAS_PADRAO.filter((f) => !f.soMigracao).map((f) => `<tr>
+        <td>${esc(f.nome)}</td>
+        <td><select data-forma-conta="${f.id}">${op(c.formas[f.id].conta)}</select></td>
+        <td><input type="text" data-forma-tpag="${f.id}" value="${esc(c.formas[f.id].tPag)}" maxlength="2" inputmode="numeric" class="campo-curto"></td>
+      </tr>`).join("")}</tbody></table></div>
+    <small class="texto-suave">Códigos a confirmar com o escritório. PIX Bradesco (chave pelo WhatsApp) = 20 estático; PIX PicPay (QR na maquininha) = 17 dinâmico.</small>
+
+    <h3 class="cfg-titulo">Cartão (PicPay)</h3>
+    <div class="form-row">
+      <div class="form-group"><label>Débito: taxa %</label><input type="number" step="0.01" min="0" max="100" id="cfg-deb-taxa" value="${c.cartao.debito.taxaPct}"></div>
+      <div class="form-group"><label>Débito: prazo (dias)</label><input type="number" step="1" min="0" id="cfg-deb-prazo" value="${c.cartao.debito.prazoDias}"></div>
+      <div class="form-group"><label>Crédito à vista: taxa %</label><input type="number" step="0.01" min="0" max="100" id="cfg-cred-taxa" value="${c.cartao.credito.taxaPct}"></div>
+      <div class="form-group"><label>Crédito à vista: prazo (dias)</label><input type="number" step="1" min="0" id="cfg-cred-prazo" value="${c.cartao.credito.prazoDias}"></div>
+    </div>
+    <label>Crédito parcelado: taxa % por número de parcelas (cada parcela cai a cada <input type="number" id="cfg-parc-prazo" class="campo-curto" min="1" step="1" value="${c.cartao.parcelado.prazoDias}"> dias)</label>
+    <div class="parcelas-grid">${Object.entries(c.cartao.parcelado.taxaPctPorParcelas).map(([n, t]) => `<label>${n}x <input type="number" step="0.01" min="0" max="100" data-parcela="${n}" value="${t}"></label>`).join("")}</div>
+
+    <h3 class="cfg-titulo">CMV, pessoal e impostos</h3>
+    <div class="form-row">
+      <div class="form-group"><label>Margem padrão para estimar o CMV (%)</label><input type="number" step="0.5" min="0" max="100" id="cfg-margem" value="${c.cmv.margemPadraoPct}">
+        <small class="texto-suave">Usada nas vendas sem itens até haver ${c.cmv.mesesMedia} meses de vendas pela calculadora; depois vale a média real.</small></div>
+      <div class="form-group"><label>FGTS (%)</label><input type="number" step="0.01" min="0" max="100" id="cfg-fgts" value="${c.pessoal.fgtsPct}">
+        <label class="check"><input type="checkbox" id="cfg-fgts-estimar" ${c.pessoal.estimarFgts ? "checked" : ""}> Estimar FGTS até a guia ser lançada</label></div>
+      <div class="form-group"><label>Provisão de 13º e férias (%)</label><input type="number" step="0.01" min="0" max="100" id="cfg-provisao" value="${c.pessoal.provisaoPct}">
+        <label class="check"><input type="checkbox" id="cfg-provisao-ligada" ${c.pessoal.provisao13FeriasLigada ? "checked" : ""}> Ligada</label></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Regime</label><select id="cfg-regime">
+        ${[["simples_nacional", "Simples Nacional"], ["lucro_presumido", "Lucro presumido"], ["outro", "Outro"]].map(([v, n]) => `<option value="${v}" ${v === c.impostos.regime ? "selected" : ""}>${n}</option>`).join("")}</select></div>
+      <div class="form-group"><label class="check"><input type="checkbox" id="cfg-simples" ${c.impostos.estimarSimples ? "checked" : ""}> Estimar DAS pelo Simples (desligado: vale a guia lançada em "Impostos (DAS)")</label>
+        <label>RBT12 (receita dos últimos 12 meses)</label><input type="number" step="0.01" min="0" id="cfg-rbt12" value="${c.impostos.rbt12 ?? ""}" placeholder="só se for estimar"></div>
+      <div class="form-group"><label class="check"><input type="checkbox" id="cfg-depreciacao" ${c.depreciacaoLigada ? "checked" : ""}> Depreciação mensal dos investimentos</label></div>
+    </div>
+
+    <h3 class="cfg-titulo">Estoque em R$</h3>
+    <div class="form-row">
+      <div class="form-group"><label>Estoque inicial (R$)</label><input type="number" step="0.01" min="0" id="cfg-estoque" value="${c.estoque.inicial}"></div>
+      <div class="form-group"><label>A partir de</label><input type="date" id="cfg-estoque-data" value="${c.estoque.dataInicial || ""}"></div>
+    </div>
+    <small class="texto-suave">Estoque estimado = inicial + compras − CMV. O controle por item fica para uma fase futura (as compras já aceitam itens).</small>
+
+    <div class="export-actions"><button type="submit" class="btn-primary">Salvar configuração</button></div>`;
+}
+
+async function salvarConfig(e) {
+  e.preventDefault();
+  const formas = {};
+  document.querySelectorAll("[data-forma-conta]").forEach((s) => { formas[s.dataset.formaConta] = { conta: s.value }; });
+  document.querySelectorAll("[data-forma-tpag]").forEach((i) => { formas[i.dataset.formaTpag].tPag = i.value.trim(); });
+  const taxaPctPorParcelas = {};
+  document.querySelectorAll("[data-parcela]").forEach((i) => { taxaPctPorParcelas[i.dataset.parcela] = num(i.value) || 0; });
+  const financeiro = {
+    formas,
+    cartao: {
+      debito: { taxaPct: num($("cfg-deb-taxa").value) || 0, prazoDias: num($("cfg-deb-prazo").value) || 0 },
+      credito: { taxaPct: num($("cfg-cred-taxa").value) || 0, prazoDias: num($("cfg-cred-prazo").value) || 0 },
+      parcelado: { taxaPctPorParcelas, prazoDias: num($("cfg-parc-prazo").value) || 30 },
+    },
+    cmv: { margemPadraoPct: num($("cfg-margem").value) ?? 30 },
+    pessoal: { fgtsPct: num($("cfg-fgts").value) ?? 8, estimarFgts: $("cfg-fgts-estimar").checked, provisaoPct: num($("cfg-provisao").value) ?? 19.44, provisao13FeriasLigada: $("cfg-provisao-ligada").checked },
+    impostos: { regime: $("cfg-regime").value, estimarSimples: $("cfg-simples").checked, rbt12: num($("cfg-rbt12").value) },
+    depreciacaoLigada: $("cfg-depreciacao").checked,
+    estoque: { inicial: num($("cfg-estoque").value) || 0, dataInicial: $("cfg-estoque-data").value || null },
+  };
+  try {
+    const r = await window.api("/api/config", { method: "POST", body: { financeiro } });
+    C().configFinanceiro = r.financeiro;
+    alert("Configuração salva.");
+  } catch (err) {
+    alert(`A configuração não foi salva: ${err.message}`);
+  }
+}
+
+// ---------- Eventos ----------
+
+document.querySelectorAll(".subtab").forEach((b) => b.addEventListener("click", () => mostrarSub(b.dataset.sub)));
+$("fin-tipo").addEventListener("change", renderFormulario);
+$("fin-form").addEventListener("submit", enviarFormulario);
+$("fin-config-form").addEventListener("submit", salvarConfig);
+for (const id of ["fin-f-mes", "fin-f-tipo", "fin-f-conta"]) $(id).addEventListener("change", () => { estado.selecionados.clear(); renderLista(); });
+$("fin-f-busca").addEventListener("input", () => renderLista());
+$("fin-lista-body").addEventListener("change", (e) => {
+  if (!e.target.classList.contains("fin-sel")) return;
+  if (e.target.checked) estado.selecionados.add(e.target.value); else estado.selecionados.delete(e.target.value);
+  e.target.closest("tr").classList.toggle("selecionado", e.target.checked);
+  atualizarLote();
+});
+$("fin-sel-todos").addEventListener("change", (e) => {
+  for (const l of estado.visivel) { if (e.target.checked) estado.selecionados.add(String(l.id)); else estado.selecionados.delete(String(l.id)); }
+  renderLista();
+});
+$("fin-lote-aplicar").addEventListener("click", () => {
+  const conta = $("fin-lote-conta").value;
+  if (!conta) return alert("Escolha a nova conta.");
+  if (confirm(`Aplicar "${contaPorId[conta].nome}" em ${estado.selecionados.size} lançamento(s)?`)) aplicarLote({ conta });
+});
+$("fin-lote-sugestao").addEventListener("click", () => {
+  if (confirm(`Aceitar a sugestão dos ${estado.selecionados.size} lançamento(s) selecionados? Os que não têm sugestão ficam como estão.`)) aplicarLote({ aceitarSugestao: true });
+});
+$("fin-lote-forma-aplicar").addEventListener("click", () => {
+  const forma = $("fin-lote-forma").value;
+  if (!forma) return alert("Escolha a nova forma.");
+  if (confirm(`Trocar a forma de pagamento para "${FORMAS[forma].nome}" nas vendas selecionadas?`)) aplicarLote({ forma });
+});
+$("fin-dre-mes").addEventListener("change", renderDRE);
+$("fin-dre-visao").addEventListener("change", renderDRE);
+$("fin-dre-imprimir").addEventListener("click", () => {
+  document.body.classList.add("imprimindo-dre");
+  document.body.classList.toggle("dre-anual", document.querySelector('input[name="fin-dre-visao"]:checked').value === "ano");
+  window.print();
+  document.body.classList.remove("imprimindo-dre", "dre-anual");
+});
+
+window.Financeiro = {
+  abrir() { renderSub(); },
+  atualizar() {
+    if (!$("tab-financeiro") || $("tab-financeiro").style.display === "none") return;
+    renderSub();
+  },
+};

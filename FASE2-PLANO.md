@@ -73,7 +73,19 @@ O saldo de cada conta e a projeção são **calculados** a partir dos lançament
     - **Provisão** de 13º e férias e **FGTS** estimado: aparecem até o valor real ser lançado.
     - **Retiradas:** ficam abaixo da linha, só como informação.
 
+### Orçamentos (entre a 2A e a 2B, pedido em 14/10)
+- Na Calculadora, ao lado de "Registrar venda", fica o botão **"Salvar como orçamento"**.
+  - Pede: cliente, WhatsApp com DDD (com validação), origem (Balcão / WhatsApp / Telefone) e observação opcional.
+  - Recebe um número sequencial: **ORC-0001**, ORC-0002…
+  - Grava os itens com os preços do dia, o % aplicado, o total, o custo e a margem (custo e margem só para uso interno).
+- **Validade configurável** (padrão 7 dias).
+  - Depois de vencido, o orçamento mostra "preços podem ter mudado" e o botão **"Atualizar preços"**, que recalcula pela tabela atual e mostra a diferença.
+- **Cadastro de clientes** compartilhado com o fiado (Fase 2C). *A mensagem chegou cortada neste ponto; falta o resto.*
+
 ### 2B: contas, cartão e cheques
+- **Tela "Abertura de saldos"** (resposta 3):
+  - saldos de Bradesco e PicPay conferidos com os extratos;
+  - Gaveta pela contagem, no dia da troca para o sistema novo.
 - **Saldo por conta:** saldo inicial com data, mais o botão **"Conferir saldo"**. Você digita o saldo do extrato e o sistema mostra a diferença em relação ao calculado.
 - **Fechamento da gaveta:** valor contado × valor calculado.
 - **Transferência entre contas** (PicPay → Bradesco, depósito de cheque): não conta como receita nem despesa.
@@ -118,7 +130,13 @@ O saldo de cada conta e a projeção são **calculados** a partir dos lançament
   - soma das formas = total de vendas.
 - **Ensaio no navegador** com o banco simulado e o arquivo real (como foi feito agora). Depois, no v2, com **🔍 Conferir com arquivo** antes e depois de cada migração.
 
-## Preciso confirmar antes de começar
+## Respostas (15/10)
+1. Estoque **só em R$** (compras − CMV), pronto para ligar por item no futuro: as compras já aceitam itens e a config tem `estoque.porItem`.
+2. Cheques emitidos: padrão **Bradesco**, com a conta escolhida em cada cheque.
+3. Saldo inicial **no dia da troca**, conferido com os extratos e a contagem da gaveta, na tela "Abertura de saldos" (2B).
+4. Cheque de venda à vista: a receita entra na data da venda e o cheque fica **em carteira até compensar**.
+
+## Perguntas originais
 1. **Estoque em R$ ou em quantidade?** Proponho só em R$: compras − CMV = "estoque estimado". Controle por peça seria outra fase.
 2. **Cheques que a madeireira emite** (os "custo" antigos em cheque): sempre saem do **Bradesco**?
 3. **Data do saldo inicial das contas:** proponho começar no dia da troca para o sistema novo, usando o "Conferir saldo" com o extrato daquele dia. Antes disso, o caixa fica só como histórico, e o DRE continua completo desde agosto.
