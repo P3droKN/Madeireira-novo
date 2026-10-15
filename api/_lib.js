@@ -72,6 +72,7 @@ export function chaves(ambiente = process.env.VERCEL_ENV, prefixoFixo = process.
     orcamentos: p + "madeireira_orcamentos", // hash: ORC-0001 -> orçamento
     orcSeq: p + "madeireira_orc_seq",        // contador do número sequencial
     clientes: p + "madeireira_clientes",     // hash: telefone (DDD+número) -> cliente
+    saldos: p + "madeireira_saldos",         // abertura de saldos e conferências
   };
 }
 

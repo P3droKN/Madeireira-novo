@@ -105,6 +105,7 @@ let migrado = true;
 let backupBaixado = false;
 let erroConexao = '';
 let configFinanceiro = {};
+let saldosCaixa = { abertura: null, conferencias: [] };
 let migradoV2 = false;
 let statusBanco = null;
 
@@ -116,6 +117,7 @@ async function carregarDados() {
         migrado = data.migrado;
         statusBanco = data.status || null;
         configFinanceiro = data.configFinanceiro || {};
+        saldosCaixa = data.saldos || { abertura: null, conferencias: [] };
         migradoV2 = Boolean(data.migradoV2);
         somenteLeitura = false;
         erroConexao = '';
@@ -143,6 +145,7 @@ window.Caixa = {
     set configFinanceiro(c) { configFinanceiro = c; },
     get migrado() { return migrado; },
     get migradoV2() { return migradoV2; },
+    get saldos() { return saldosCaixa; },
     get somenteLeitura() { return somenteLeitura; },
     podeGravar: () => podeGravar(),
     gravar: (itens) => gravarLancamentos(itens),

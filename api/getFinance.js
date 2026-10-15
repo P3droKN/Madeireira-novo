@@ -4,11 +4,12 @@ import { lerTudo } from "./_dados.js";
 export default async function handler(request, response) {
   if (!autorizar(request, response)) return;
   try {
-    const { migrado, migradoV2, financeItems, acumulado, configFinanceiro } = await lerTudo(kv(), chaves());
+    const { migrado, migradoV2, financeItems, acumulado, configFinanceiro, saldos } = await lerTudo(kv(), chaves());
     response.status(200).json({
       migrado,
       migradoV2,
       configFinanceiro,
+      saldos,
       ambiente: chaves().ambiente,
       status: statusBanco(),
       financeItems,

@@ -33,7 +33,7 @@ const ehReceitaVenda = (c) => ["venda_produtos", "frete_cobrado", "servicos"].in
 function mostrarSub(sub) {
   estado.sub = sub;
   document.querySelectorAll(".subtab").forEach((b) => b.classList.toggle("ativo", b.dataset.sub === sub));
-  for (const s of ["lancar", "lista", "dre", "config"]) $(`fin-${s}`).hidden = s !== sub;
+  for (const s of ["lancar", "lista", "caixa", "cheques", "dre", "config"]) $(`fin-${s}`).hidden = s !== sub;
   renderSub();
 }
 
@@ -41,6 +41,7 @@ function renderSub() {
   avisoMigracao();
   if (estado.sub === "lancar") renderFormulario();
   if (estado.sub === "lista") renderLista();
+  if (estado.sub === "caixa" || estado.sub === "cheques") window.CaixaUI?.render(estado.sub);
   if (estado.sub === "dre") renderDRE();
   if (estado.sub === "config") renderConfig();
 }
@@ -415,6 +416,11 @@ function renderConfig() {
     </div>
     <small class="texto-suave">Estoque estimado = inicial + compras − CMV. O controle por item fica para uma fase futura (as compras já aceitam itens).</small>
 
+    <h3 class="cfg-titulo">Cheques recebidos</h3>
+    <div class="form-row"><div class="form-group"><label>Conta de depósito padrão (na compensação)</label>
+      <select id="cfg-cheque-deposito">${["bradesco", "picpay"].map((x) => `<option value="${x}" ${c.cheques.contaDeposito === x ? "selected" : ""}>${CONTAS_FIN[x]}</option>`).join("")}</select>
+      <small class="texto-suave">Pode ser trocada em cada cheque, na seção Cheques.</small></div></div>
+
     <h3 class="cfg-titulo">Orçamentos</h3>
     <div class="form-row">
       <div class="form-group"><label>Validade padrão (dias)</label><input type="number" min="1" max="90" step="1" id="cfg-orc-validade" value="${c.orcamentos.validadeDias}"></div>
@@ -446,6 +452,7 @@ async function salvarConfig(e) {
     impostos: { regime: $("cfg-regime").value, estimarSimples: $("cfg-simples").checked, rbt12: num($("cfg-rbt12").value) },
     depreciacaoLigada: $("cfg-depreciacao").checked,
     estoque: { inicial: num($("cfg-estoque").value) || 0, dataInicial: $("cfg-estoque-data").value || null },
+    cheques: { contaDeposito: $("cfg-cheque-deposito").value },
     orcamentos: {
       validadeDias: num($("cfg-orc-validade").value),
       diasParaCobrar: num($("cfg-orc-cobrar").value),

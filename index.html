@@ -211,6 +211,8 @@
                 <nav class="subtabs" aria-label="Financeiro">
                     <button class="subtab ativo" data-sub="lancar">Lançar</button>
                     <button class="subtab" data-sub="lista">Lançamentos</button>
+                    <button class="subtab" data-sub="caixa">Caixa e saldos</button>
+                    <button class="subtab" data-sub="cheques">Cheques</button>
                     <button class="subtab" data-sub="dre">DRE</button>
                     <button class="subtab" data-sub="config">Configuração</button>
                 </nav>
@@ -262,6 +264,9 @@
                         </table>
                     </div>
                 </section>
+
+                <div class="fin-sub" id="fin-caixa" hidden></div>
+                <div class="fin-sub" id="fin-cheques" hidden></div>
 
                 <section class="glass-panel fin-sub" id="fin-dre" hidden>
                     <div class="painel-titulo">
@@ -775,5 +780,6 @@
     <script type="module" src="conferencia.js"></script>
     <script type="module" src="financeiro-ui.js"></script>
     <script type="module" src="orcamentos-ui.js"></script>
+    <script type="module" src="caixa-ui.js"></script>
 </body>
 </html>

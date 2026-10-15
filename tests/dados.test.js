@@ -487,3 +487,34 @@ test("backup e restauração incluem orçamentos, clientes e o contador", async 
   const cli = await salvarCliente(kv, K, { nome: "Ana", telefone: "48 3222-1111", obs: "paga em cheque" });
   assert.equal(cli.obs, "paga em cheque");
 });
+
+import { salvarAbertura, registrarConferencia, atualizarCheque } from "../api/_dados.js";
+
+test("abertura de saldos guarda as anteriores; conferência registra a diferença", async () => {
+  const kv = kvFalso({});
+  await salvarAbertura(kv, K, { data: "2026-11-01", contas: { gaveta: 300, bradesco: 5000.5, picpay: 120, cheques_carteira: 800 } });
+  const s2 = await salvarAbertura(kv, K, { data: "2026-11-02", contas: { gaveta: 310 } });
+  assert.equal(s2.abertura.data, "2026-11-02");
+  assert.equal(s2.aberturasAnteriores[0].contas.bradesco, 5000.5);
+  await assert.rejects(salvarAbertura(kv, K, { data: "x" }), /data/);
+  const c = await registrarConferencia(kv, K, { data: "2026-11-05", conta: "gaveta", informado: 295.5, calculado: 310 });
+  assert.equal(c.diferenca, -14.5);
+  assert.equal((await lerTudo(kv, K)).saldos.conferencias.length, 1);
+  assert.ok((await montarBackup(kv, K)).chaves.madeireira_saldos.abertura);
+});
+
+test("cheque recebido: devolvido, desfazer e conta de depósito; cheque emitido: nova compensação", async () => {
+  const kv = kvFalso({ [K.migrado]: { em: "x" } });
+  await salvarLancamentos(kv, K, [
+    { id: "v1", v: 2, conta: "venda_produtos", value: 500, competencia: "2026-11-02", pagamentos: [{ forma: "cheque", valor: 500, cheque: { numero: "12", compensacao: "2026-11-20" } }] },
+    { id: "s1", v: 2, conta: "compra_material", value: 900, competencia: "2026-11-02", pagoCom: "cheque_emitido", chequeEmitido: { numero: "77", compensacao: "2026-11-25" } },
+  ]);
+  let l = await atualizarCheque(kv, K, { id: "v1", tipo: "recebido", pagamento: 0, devolvidoEm: "2026-11-21", contaDeposito: "picpay" });
+  assert.deepEqual([l.pagamentos[0].cheque.devolvidoEm, l.pagamentos[0].cheque.contaDeposito], ["2026-11-21", "picpay"]);
+  l = await atualizarCheque(kv, K, { id: "v1", tipo: "recebido", pagamento: 0, devolvidoEm: null });
+  assert.equal(l.pagamentos[0].cheque.devolvidoEm, undefined);
+  l = await atualizarCheque(kv, K, { id: "s1", tipo: "emitido", compensacao: "2026-12-01" });
+  assert.equal(l.chequeEmitido.compensacao, "2026-12-01");
+  assert.equal(l.historicoCheque.length, 1);
+  await assert.rejects(atualizarCheque(kv, K, { id: "s1", tipo: "recebido", pagamento: 0 }), /não é um cheque/);
+});

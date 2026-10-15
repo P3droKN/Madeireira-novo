@@ -1,5 +1,5 @@
 import { kv, chaves, autorizar, responderErro } from "./_lib.js";
-import { salvarLancamentos, excluirLancamento, reclassificar } from "./_dados.js";
+import { salvarLancamentos, excluirLancamento, reclassificar, atualizarCheque } from "./_dados.js";
 
 // POST { itens: [...] } cria/edita lançamentos. DELETE ?id= marca como excluído.
 // PATCH { ids, conta?, forma?, aceitarSugestao? } reclassifica em lote.
@@ -10,6 +10,7 @@ export default async function handler(request, response) {
       return response.status(200).json(await salvarLancamentos(kv(), chaves(), request.body?.itens));
     }
     if (request.method === "PATCH") {
+      if (request.body?.acao === "cheque") return response.status(200).json({ lancamento: await atualizarCheque(kv(), chaves(), request.body) });
       return response.status(200).json(await reclassificar(kv(), chaves(), request.body));
     }
     if (request.method === "DELETE") {

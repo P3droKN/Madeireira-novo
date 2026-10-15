@@ -105,6 +105,7 @@ export async function lerTudo(kv, k) {
   const migrado = await estaMigrado(kv, k);
   const migradoV2 = Boolean(await kv.get(k.migradoV2));
   const configFinanceiro = desembrulhar(await kv.get(k.configFinanceiro)) || {};
+  const saldos = desembrulhar(await kv.get(k.saldos)) || { abertura: null, conferencias: [] };
   let financeItems;
   if (migrado) {
     const hash = (await kv.hgetall(k.lancamentos)) || {};
@@ -113,7 +114,7 @@ export async function lerTudo(kv, k) {
     financeItems = desembrulhar(await kv.get(k.finance)) || [];
   }
   const acumulado = desembrulhar(await kv.get(k.acumulado)) || null;
-  return { migrado, migradoV2, financeItems, acumulado, configFinanceiro };
+  return { migrado, migradoV2, financeItems, acumulado, configFinanceiro, saldos };
 }
 
 // Cópia exata de todas as chaves do sistema, com nomes sem prefixo
@@ -136,6 +137,7 @@ export async function montarBackup(kv, k) {
       madeireira_orcamentos: (await kv.hgetall(k.orcamentos)) ?? null,
       madeireira_clientes: (await kv.hgetall(k.clientes)) ?? null,
       madeireira_orc_seq: (await kv.get(k.orcSeq)) ?? null,
+      madeireira_saldos: desembrulhar(await kv.get(k.saldos)) ?? null,
     },
   };
 }
@@ -334,6 +336,7 @@ export async function restaurar(kv, k, arquivo) {
     if (alvo[nome] && Object.keys(alvo[nome]).length) await kv.hset(chave, alvo[nome]);
   }
   if ("madeireira_orc_seq" in alvo) await gravar(k.orcSeq, alvo.madeireira_orc_seq);
+  if ("madeireira_saldos" in alvo) await gravar(k.saldos, alvo.madeireira_saldos);
 
   return {
     copia,
@@ -427,6 +430,8 @@ function validarPagamento(p, cfg, permitirMigracao) {
   if (forma === "cheque") {
     const c = p.cheque || {};
     limpo.cheque = { numero: texto(c.numero, 40), emissor: texto(c.emissor, 120), banco: texto(c.banco, 60), compensacao: dataOk(c.compensacao) ? c.compensacao : "" };
+    if (["bradesco", "picpay"].includes(c.contaDeposito)) limpo.cheque.contaDeposito = c.contaDeposito;
+    if (dataOk(c.devolvidoEm)) limpo.cheque.devolvidoEm = c.devolvidoEm;
   }
   return limpo;
 }
@@ -650,6 +655,7 @@ export async function salvarConfigFinanceiro(kv, k, config) {
     modelos: (Array.isArray(o.modelos) ? o.modelos : []).map((m) => texto(m, 600).trim()).filter(Boolean).slice(0, 5),
   };
   if (!limpa.orcamentos.modelos.length) throw erro(400, "Deixe pelo menos um modelo de mensagem de cobrança.");
+  limpa.cheques = { contaDeposito: ["bradesco", "picpay"].includes(c.cheques?.contaDeposito) ? c.cheques.contaDeposito : "bradesco" };
   await kv.set(k.configFinanceiro, limpa);
   return limpa;
 }
@@ -824,4 +830,97 @@ export async function salvarCliente(kv, k, c) {
   const cliente = { id: t.digitos, nome, telefone: t.formatado, obs: texto(c.obs ?? atual?.obs, 500), criadoEm: atual?.criadoEm || agora, atualizadoEm: agora };
   await kv.hset(k.clientes, { [t.digitos]: cliente });
   return cliente;
+}
+
+
+// --- Contas e saldos (Fase 2B) ---
+
+const CONTAS_SALDO = ["gaveta", "bradesco", "picpay", "cheques_carteira"];
+
+async function lerSaldos(kv, k) {
+  return desembrulhar(await kv.get(k.saldos)) || { abertura: null, conferencias: [], aberturasAnteriores: [] };
+}
+
+// Abertura de saldos: saldo de cada conta no início do dia da troca (extratos e contagem da gaveta)
+export async function salvarAbertura(kv, k, a) {
+  if (!a || !dataOk(a.data)) throw erro(400, "Informe a data da abertura.");
+  const contas = {};
+  for (const c of CONTAS_SALDO) {
+    const v = Number(a.contas?.[c] ?? 0);
+    if (!Number.isFinite(v) || Math.abs(v) > 1e9) throw erro(400, `Saldo inválido: ${c}.`);
+    contas[c] = Math.round(v * 100) / 100;
+  }
+  const atual = await lerSaldos(kv, k);
+  const nova = { data: a.data, contas, obs: texto(a.obs, 300), em: new Date().toISOString() };
+  const salvo = {
+    ...atual,
+    abertura: nova,
+    aberturasAnteriores: [...(atual.aberturasAnteriores || []), ...(atual.abertura ? [atual.abertura] : [])].slice(-20),
+  };
+  await kv.set(k.saldos, salvo);
+  return salvo;
+}
+
+// Conferência de saldo (extrato ou contagem da gaveta): guarda informado, calculado e a diferença
+export async function registrarConferencia(kv, k, c) {
+  if (!c || !CONTAS_SALDO.includes(c.conta)) throw erro(400, "Conta inválida.");
+  if (!dataOk(c.data)) throw erro(400, "Data inválida.");
+  const informado = Number(c.informado), calculado = Number(c.calculado);
+  if (!Number.isFinite(informado) || !Number.isFinite(calculado)) throw erro(400, "Informe o saldo real.");
+  const atual = await lerSaldos(kv, k);
+  const conf = {
+    id: `conf-${Date.now().toString(36)}`, data: c.data, conta: c.conta,
+    informado: Math.round(informado * 100) / 100, calculado: Math.round(calculado * 100) / 100,
+    diferenca: Math.round((informado - calculado) * 100) / 100, obs: texto(c.obs, 300), em: new Date().toISOString(),
+  };
+  const salvo = { ...atual, conferencias: [...(atual.conferencias || []), conf].slice(-500) };
+  await kv.set(k.saldos, salvo);
+  return conf;
+}
+
+// Cheques: devolvido (ou desfazer), data de compensação e conta de depósito/saída
+export async function atualizarCheque(kv, k, p) {
+  const l = desembrulhar(await kv.hget(k.lancamentos, String(p?.id || "")));
+  if (!l || l.excluido) throw erro(404, "Lançamento não encontrado.");
+  const novo = { ...l };
+  const agora = new Date().toISOString();
+  if (p.tipo === "recebido") {
+    const i = Number(p.pagamento);
+    const pag = Array.isArray(l.pagamentos) ? l.pagamentos[i] : null;
+    if (!pag || pag.forma !== "cheque") throw erro(400, "Esse pagamento não é um cheque.");
+    const ch = { ...(pag.cheque || {}) };
+    if ("devolvidoEm" in p) {
+      if (p.devolvidoEm === null) delete ch.devolvidoEm;
+      else if (dataOk(p.devolvidoEm)) ch.devolvidoEm = p.devolvidoEm;
+      else throw erro(400, "Data de devolução inválida.");
+    }
+    if (p.compensacao !== undefined) {
+      if (!dataOk(p.compensacao)) throw erro(400, "Data de compensação inválida.");
+      ch.compensacao = p.compensacao;
+    }
+    if (p.contaDeposito !== undefined) {
+      if (!["bradesco", "picpay"].includes(p.contaDeposito)) throw erro(400, "Conta de depósito inválida.");
+      ch.contaDeposito = p.contaDeposito;
+    }
+    novo.pagamentos = l.pagamentos.map((x, n) => (n === i ? { ...x, cheque: ch } : x));
+    if (i === 0) Object.assign(novo, { checkDate: ch.compensacao || novo.checkDate });
+  } else if (p.tipo === "emitido") {
+    if (l.pagoCom !== "cheque_emitido") throw erro(400, "Esse lançamento não é um cheque emitido.");
+    const ch = { ...(l.chequeEmitido || {}) };
+    if (p.compensacao !== undefined) {
+      if (!dataOk(p.compensacao)) throw erro(400, "Data de compensação inválida.");
+      ch.compensacao = p.compensacao;
+    }
+    if (p.conta !== undefined) {
+      if (!["bradesco", "picpay"].includes(p.conta)) throw erro(400, "Conta inválida.");
+      ch.conta = p.conta;
+    }
+    novo.chequeEmitido = ch;
+    novo.checkDate = ch.compensacao;
+  } else {
+    throw erro(400, "Tipo de cheque inválido.");
+  }
+  novo.historicoCheque = [...(l.historicoCheque || []), { em: agora, ...Object.fromEntries(Object.entries(p).filter(([key]) => !["id"].includes(key))) }].slice(-20);
+  await kv.hset(k.lancamentos, { [novo.id]: novo });
+  return novo;
 }
