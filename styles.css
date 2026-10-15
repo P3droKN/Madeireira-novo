@@ -1020,3 +1020,14 @@ body.modo-balcao .sigilo { display: none !important; }
 .tabela-pedido tfoot td { border-top: 1px solid var(--panel-border); padding-top: 0.6rem; }
 .tabela-pedido .linha-total-frete td { color: var(--text-muted); font-size: 0.9rem; border-top: none; }
 .total-cobrar small { display: block; text-align: right; }
+
+/* ---------- Fiado e contas a receber (Fase 2C) ---------- */
+.pag-fiado { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; flex-basis: 100%; margin-top: 0.4rem; padding: 0.5rem 0.75rem; border-left: 3px solid var(--warning); background: rgba(245, 158, 11, 0.06); border-radius: 0.4rem; }
+.pag-fiado .pag-fiado-cliente { flex: 1 1 220px; }
+.receber-cards { grid-template-columns: repeat(4, 1fr); margin-bottom: 1.25rem; }
+.receber-topo { gap: 0.75rem; flex-wrap: wrap; }
+.tabela-receber tr.linha-detalhe td { background: rgba(255, 255, 255, 0.02); padding: 0.75rem 1rem 1rem; }
+.receber-detalhe h4 { margin: 1rem 0 0.4rem; font-size: 0.9rem; color: var(--text-muted); }
+.mini-nota { font-size: 0.75rem; align-self: center; }
+.rc-cliente-form { margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--panel-border); }
+@media (max-width: 900px) { .receber-cards { grid-template-columns: 1fr 1fr; } }

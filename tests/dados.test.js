@@ -568,3 +568,51 @@ test("frete: a venda guarda o frete (dentro do valor); orçamento guarda o frete
   await assert.rejects(salvarOrcamento(kv, K, novoOrc({ total: 1650, frete: 1650 }), {}), /Frete/);
   assert.equal((await salvarOrcamento(kv, K, novoOrc(), {})).frete, 0, "sem frete = 0");
 });
+
+test("2C: venda fiado exige cliente; vencimento vazio vira data + prazo padrão", () => {
+  const base = { id: "F1V", v: 2, conta: "venda_produtos", value: 500, competencia: "2026-10-10", pagamentos: [{ forma: "fiado", valor: 400 }, { forma: "dinheiro", valor: 100 }] };
+  assert.throws(() => validarLancamentoV2(base, {}), /cliente/);
+  const v = validarLancamentoV2({ ...base, clienteId: "47999991234", cliente: "Carlos Souza" }, {});
+  assert.deepEqual(v.pagamentos[0], { forma: "fiado", conta: null, valor: 400, tPag: "05", fiado: { vencimento: "2026-11-09" } });
+  assert.equal(v.clienteId, "47999991234");
+  const v2 = validarLancamentoV2({ ...base, clienteId: "C1", cliente: "Zé", pagamentos: [{ forma: "fiado", valor: 500, fiado: { vencimento: "2026-10-20" } }] }, { fiado: { prazoDias: 15 } });
+  assert.equal(v2.pagamentos[0].fiado.vencimento, "2026-10-20");
+  assert.equal(validarLancamentoV2({ ...base, clienteId: "C1", cliente: "Zé", pagamentos: [{ forma: "fiado", valor: 500 }] }, { fiado: { prazoDias: 15 } }).pagamentos[0].fiado.vencimento, "2026-10-25");
+});
+
+test("2C: recebimento de fiado (cliente obrigatório, sem fiado, soma confere, fora do DRE)", () => {
+  const r = validarLancamentoV2({ id: "R1", v: 2, conta: "recebimento", value: 300, competencia: "2026-10-12", clienteId: "C1", cliente: "Zé",
+    pagamentos: [{ forma: "cheque", valor: 300, cheque: { numero: "9", compensacao: "2026-11-01" } }], vendaIds: ["F1V", "<x>"] }, {});
+  assert.equal(r.conta, "recebimento");
+  assert.equal(r.category, "recebimento");
+  assert.deepEqual(r.vendaIds, ["F1V"]);
+  assert.equal(r.pagamentos[0].conta, "cheques_carteira");
+  assert.throws(() => validarLancamentoV2({ id: "R2", v: 2, conta: "recebimento", value: 300, competencia: "2026-10-12", pagamentos: [{ forma: "dinheiro", valor: 300 }] }, {}), /cliente/);
+  assert.throws(() => validarLancamentoV2({ id: "R3", v: 2, conta: "recebimento", value: 300, competencia: "2026-10-12", clienteId: "C1", cliente: "Zé", pagamentos: [{ forma: "fiado", valor: 300 }] }, {}), /fiado/);
+  assert.throws(() => validarLancamentoV2({ id: "R4", v: 2, conta: "recebimento", value: 300, competencia: "2026-10-12", clienteId: "C1", cliente: "Zé", pagamentos: [{ forma: "dinheiro", valor: 200 }] }, {}), /soma/);
+});
+
+test("2C: cliente sem WhatsApp ganha código C1, C2…; editar mantém a chave; backup leva o contador", async () => {
+  const kv = kvFalso({});
+  const a = await salvarCliente(kv, K, { nome: "Zé da Obra" });
+  const b = await salvarCliente(kv, K, { nome: "Maria" });
+  assert.deepEqual([a.id, b.id, a.telefone], ["C1", "C2", ""]);
+  const e = await salvarCliente(kv, K, { id: "C1", nome: "José da Obra", telefone: "(47) 99999-0000", obs: "paga dia 10" });
+  assert.deepEqual([e.id, e.nome, e.telefone, e.obs], ["C1", "José da Obra", "(47) 99999-0000", "paga dia 10"]);
+  await assert.rejects(salvarCliente(kv, K, { id: "C9", nome: "X" }), /não encontrado/);
+  const c = await salvarCliente(kv, K, { nome: "Carlos", telefone: "47999991234" });
+  assert.equal(c.id, "47999991234");
+  const bk = await montarBackup(kv, K);
+  assert.equal(bk.chaves.madeireira_cli_seq, 2);
+  await salvarCliente(kv, K, { nome: "Depois" });
+  await restaurar(kv, K, bk);
+  assert.equal((await salvarCliente(kv, K, { nome: "Outro" })).id, "C3", "contador volta junto com o backup");
+});
+
+test("2C: configuração do fiado (ligado e prazo) é salva", async () => {
+  const kv = kvFalso({});
+  const c = await salvarConfigFinanceiro(kv, K, { fiado: { ligado: false, prazoDias: 45 } });
+  assert.deepEqual(c.fiado, { ligado: false, prazoDias: 45 });
+  assert.deepEqual((await salvarConfigFinanceiro(kv, K, {})).fiado, { ligado: true, prazoDias: 30 });
+  await assert.rejects(salvarConfigFinanceiro(kv, K, { fiado: { prazoDias: 0 } }), /prazo do fiado/);
+});

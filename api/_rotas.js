@@ -7,7 +7,7 @@ import {
   montarBackup, salvarCopia, listarCopias, lerCopia, lerPrecosEConfig, salvarPrecos,
   salvarConfig, salvarConfigFinanceiro, salvarAbertura, registrarConferencia,
   importar, migrar, migrarV2, restaurar,
-  listarOrcamentos, salvarOrcamento, atualizarOrcamento, salvarCliente,
+  listarOrcamentos, salvarOrcamento, atualizarOrcamento, salvarCliente, listarClientes,
 } from "./_dados.js";
 import { CEPILHADO_PADRAO, montarCatalogo, chavePrecoValida } from "../lib/catalogo.js";
 import { resumirLancamentos } from "../lib/resumo.js";
@@ -136,6 +136,14 @@ export const ROTAS = {
     }
     if (request.method === "PATCH") return response.status(200).json({ orcamento: await atualizarOrcamento(kv(), k, request.body) });
     naoPermitido(response);
+  }),
+
+  // Cadastro de clientes (orçamentos e fiado)
+  // GET               -> { clientes }
+  // POST { cliente }  -> cria (pelo WhatsApp, ou C1, C2… sem WhatsApp) ou edita (com id)
+  clientes: rota(["GET", "POST"], async (request, response) => {
+    if (request.method === "GET") return response.status(200).json(await listarClientes(kv(), chaves()));
+    response.status(200).json({ cliente: await salvarCliente(kv(), chaves(), request.body?.cliente) });
   }),
 
   // POST { alteracoes: { "<item>|<acabamento>": preço ou null } }

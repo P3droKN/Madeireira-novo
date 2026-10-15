@@ -11,8 +11,8 @@ function resposta() {
   return r;
 }
 
-test("roteador único: as 12 rotas de antes continuam com o mesmo nome", () => {
-  assert.deepEqual(Object.keys(ROTAS).sort(), ["acumulado", "backup", "catalogo", "config", "getFinance", "importar", "lancamento", "migrar", "orcamentos", "precos", "restaurar", "resumo"]);
+test("roteador único: as 12 rotas de antes continuam com o mesmo nome (+ clientes, da 2C)", () => {
+  assert.deepEqual(Object.keys(ROTAS).sort(), ["acumulado", "backup", "catalogo", "clientes", "config", "getFinance", "importar", "lancamento", "migrar", "orcamentos", "precos", "restaurar", "resumo"]);
 });
 
 test("roteador único: rota inexistente dá 404; nomes do protótipo não viram rota", async () => {

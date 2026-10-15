@@ -137,6 +137,7 @@ export async function montarBackup(kv, k) {
       madeireira_orcamentos: (await kv.hgetall(k.orcamentos)) ?? null,
       madeireira_clientes: (await kv.hgetall(k.clientes)) ?? null,
       madeireira_orc_seq: (await kv.get(k.orcSeq)) ?? null,
+      madeireira_cli_seq: (await kv.get(k.cliSeq)) ?? null,
       madeireira_saldos: desembrulhar(await kv.get(k.saldos)) ?? null,
     },
   };
@@ -336,6 +337,7 @@ export async function restaurar(kv, k, arquivo) {
     if (alvo[nome] && Object.keys(alvo[nome]).length) await kv.hset(chave, alvo[nome]);
   }
   if ("madeireira_orc_seq" in alvo) await gravar(k.orcSeq, alvo.madeireira_orc_seq);
+  if ("madeireira_cli_seq" in alvo) await gravar(k.cliSeq, alvo.madeireira_cli_seq);
   if ("madeireira_saldos" in alvo) await gravar(k.saldos, alvo.madeireira_saldos);
 
   return {
@@ -411,7 +413,7 @@ const centavosDe = (v) => Math.round(Number(v) * 100);
 // Campos antigos derivados, para a tela antiga do caixa continuar certa até a Fase 2D
 const METODO_LEGADO = {
   dinheiro: "dinheiro", pix_bradesco: "pix", pix_picpay: "pix", transferencia: "bradesco",
-  debito: "debito", credito: "credito", credito_parcelado: "credito", cheque: "cheque", nao_informada: "",
+  debito: "debito", credito: "credito", credito_parcelado: "credito", cheque: "cheque", nao_informada: "", fiado: "",
   gaveta: "dinheiro", bradesco: "bradesco", picpay: "bradesco", cheque_emitido: "cheque",
 };
 
@@ -433,7 +435,21 @@ function validarPagamento(p, cfg, permitirMigracao) {
     if (["bradesco", "picpay"].includes(c.contaDeposito)) limpo.cheque.contaDeposito = c.contaDeposito;
     if (dataOk(c.devolvidoEm)) limpo.cheque.devolvidoEm = c.devolvidoEm;
   }
+  // Fiado: vira conta a receber; o vencimento combinado fica no pagamento (vazio = prazo padrão)
+  if (forma === "fiado") limpo.fiado = { vencimento: dataOk(p.fiado?.vencimento) ? p.fiado.vencimento : "" };
   return limpo;
+}
+
+const CLIENTE_ID = /^[A-Za-z0-9_-]{1,40}$/;
+
+// Cliente da venda ou do recebimento (id do cadastro + nome do momento).
+// Venda fiado exige o cadastro (id); recebimento exige pelo menos o nome (cheque devolvido de quem não tem cadastro).
+function clienteDoLancamento(item, { exigeId = false, exigeNome = false } = {}) {
+  const id = item.clienteId == null || item.clienteId === "" ? null : String(item.clienteId);
+  const nome = texto(item.cliente, 120).trim();
+  if (id && !CLIENTE_ID.test(id)) throw erro(400, "Cliente inválido.");
+  if ((exigeId && (!id || !nome)) || (exigeNome && !nome)) throw erro(400, "Fiado e recebimento precisam do cliente (escolha ou cadastre o cliente).");
+  return { id, nome };
 }
 
 export function validarLancamentoV2(item, cfgSalva) {
@@ -455,6 +471,22 @@ export function validarLancamentoV2(item, cfgSalva) {
     const contas = ["gaveta", "bradesco", "picpay", "cheques_carteira"];
     if (!contas.includes(item.de) || !contas.includes(item.para) || item.de === item.para) throw erro(400, "Transferência: escolha duas contas diferentes.");
     return { ...base, conta: "transferencia", de: item.de, para: item.para, category: "transferencia", type: "transfer", method: "" };
+  }
+
+  // Recebimento de fiado: o cliente paga (total ou parte) o que deve. Não é receita (ela entrou na venda):
+  // só traz o dinheiro para a conta da forma usada (cheque vai para a carteira).
+  if (item.conta === "recebimento") {
+    const cli = clienteDoLancamento(item, { exigeNome: true });
+    const pags = Array.isArray(item.pagamentos) ? item.pagamentos : [];
+    if (pags.length < 1 || pags.length > 10) throw erro(400, "Informe de 1 a 10 formas de pagamento.");
+    const pagamentos = pags.map((p) => validarPagamento(p, cfg, false));
+    if (pagamentos.some((p) => p.forma === "fiado")) throw erro(400, "Recebimento não pode ser em fiado.");
+    const soma = pagamentos.reduce((s, p) => s + centavosDe(p.valor), 0);
+    if (soma !== centavosDe(base.value)) throw erro(400, `A soma das formas de pagamento (${(soma / 100).toFixed(2)}) é diferente do valor recebido (${base.value.toFixed(2)}).`);
+    const r = { ...base, conta: "recebimento", category: "recebimento", type: "transfer", method: "", clienteId: cli.id, cliente: cli.nome, pagamentos };
+    const ids = Array.isArray(item.vendaIds) ? item.vendaIds.filter((x) => typeof x === "string" && ID.test(x)).slice(0, 50) : [];
+    if (ids.length) r.vendaIds = ids;
+    return r;
   }
 
   const conta = contaPorId[item.conta];
@@ -479,7 +511,14 @@ export function validarLancamentoV2(item, cfgSalva) {
       Object.assign(limpo, { checkNumber: c.numero || "", checkIssuer: c.emissor || "", checkDate: c.compensacao || "" });
     }
     if (item.nfe) limpo.nfe = texto(item.nfe, 20);
-    if (item.cliente) limpo.cliente = texto(item.cliente, 120);
+    // Com fiado, o cliente é obrigatório e o vencimento vazio vira data + prazo padrão
+    const temFiado = limpo.pagamentos.some((p) => p.forma === "fiado");
+    const cli = clienteDoLancamento(item, { exigeId: temFiado });
+    if (cli.nome) limpo.cliente = cli.nome;
+    if (cli.id) limpo.clienteId = cli.id;
+    for (const p of limpo.pagamentos) {
+      if (p.forma === "fiado" && !p.fiado.vencimento) p.fiado.vencimento = somarDias(competencia, cfg.fiado.prazoDias);
+    }
     if (item.cmv != null && item.cmv !== "") {
       const cmv = Number(item.cmv);
       if (!Number.isFinite(cmv) || cmv < 0) throw erro(400, "CMV inválido.");
@@ -569,6 +608,8 @@ export async function reclassificar(kv, k, pedido) {
   for (const id of ids.map(String)) {
     const item = desembrulhar(atuais[id]);
     if (!item || item.excluido) { ignorados.push({ id, motivo: "não encontrado" }); continue; }
+    if (item.conta === "recebimento") { ignorados.push({ id, motivo: "recebimento de fiado" }); continue; }
+    if (forma === "fiado" || (forma && (item.pagamentos || []).some((p) => p.forma === "fiado"))) { ignorados.push({ id, motivo: "fiado não se troca em lote" }); continue; }
     const novo = { ...item };
     const destino = aceitarSugestao ? item.sugestao?.conta : conta;
     if (destino) {
@@ -662,6 +703,7 @@ export async function salvarConfigFinanceiro(kv, k, config) {
   };
   if (!limpa.orcamentos.modelos.length) throw erro(400, "Deixe pelo menos um modelo de mensagem de cobrança.");
   limpa.cheques = { contaDeposito: ["bradesco", "picpay"].includes(c.cheques?.contaDeposito) ? c.cheques.contaDeposito : "bradesco" };
+  limpa.fiado = { ligado: c.fiado?.ligado !== false, prazoDias: inteiro(c.fiado?.prazoDias ?? 30, 1, 365, "prazo do fiado (1 a 365 dias)") };
   await kv.set(k.configFinanceiro, limpa);
   return limpa;
 }
@@ -842,16 +884,35 @@ export async function atualizarOrcamento(kv, k, p) {
   return novo;
 }
 
+// Cadastro de clientes (orçamentos e fiado). A chave é o WhatsApp (DDD + número);
+// cliente sem WhatsApp (comum no fiado) ganha um código C1, C2… Editar mantém a chave.
 export async function salvarCliente(kv, k, c) {
   const nome = texto(c?.nome, 120).trim();
   if (!nome) throw erro(400, "Informe o nome do cliente.");
-  const t = normalizarTelefone(c?.telefone);
-  if (!t.ok) throw erro(400, t.erro);
-  const atual = desembrulhar(await kv.hget(k.clientes, t.digitos));
+  const telTexto = String(c?.telefone || "").trim();
+  const t = telTexto ? normalizarTelefone(telTexto) : null;
+  if (t && !t.ok) throw erro(400, t.erro);
   const agora = new Date().toISOString();
-  const cliente = { id: t.digitos, nome, telefone: t.formatado, obs: texto(c.obs ?? atual?.obs, 500), criadoEm: atual?.criadoEm || agora, atualizadoEm: agora };
-  await kv.hset(k.clientes, { [t.digitos]: cliente });
+  let id;
+  if (c?.id) {
+    id = String(c.id);
+    if (!(await kv.hget(k.clientes, id))) throw erro(404, "Cliente não encontrado.");
+  } else if (t) {
+    id = t.digitos;
+  } else {
+    id = `C${Number(await kv.incr(k.cliSeq))}`;
+  }
+  const atual = desembrulhar(await kv.hget(k.clientes, id));
+  const cliente = {
+    id, nome, telefone: t ? t.formatado : "", obs: texto(c.obs ?? atual?.obs, 500),
+    criadoEm: atual?.criadoEm || agora, atualizadoEm: agora,
+  };
+  await kv.hset(k.clientes, { [id]: cliente });
   return cliente;
+}
+
+export async function listarClientes(kv, k) {
+  return { clientes: Object.values((await kv.hgetall(k.clientes)) || {}).map(desembrulhar).filter(Boolean).sort((a, b) => a.nome.localeCompare(b.nome)) };
 }
 
 

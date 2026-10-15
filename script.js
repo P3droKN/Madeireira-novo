@@ -291,9 +291,20 @@ async function registerDirectSale() {
     if (frete) vendaItem.frete = frete;
     const vinculo = window.Calculadora.vinculo();
     if (vinculo && vinculo.modo === 'converter') vendaItem.orcamento = vinculo.id;
+    // Cliente: obrigatório (e cadastrado) no fiado; numa venda de orçamento, vem do orçamento
+    if (pagamentos.some((p) => p.forma === 'fiado')) {
+        const cli = await window.Clientes.garantir(window.Calculadora.clienteFiado());
+        if (!cli) return;
+        vendaItem.clienteId = cli.id;
+        vendaItem.cliente = cli.nome;
+    } else if (vinculo && vinculo.modo === 'converter' && vinculo.cliente?.nome) {
+        vendaItem.cliente = vinculo.cliente.nome;
+        if (vinculo.cliente.id) vendaItem.clienteId = vinculo.cliente.id;
+    }
     if (!(await gravarLancamentos([vendaItem]))) return;
 
     const margem = ((pedido.venda - pedido.custo) / pedido.venda * 100).toFixed(1).replace('.', ',');
+    const fiadoTotal = pagamentos.filter((p) => p.forma === 'fiado').reduce((s, p) => s + p.valor, 0);
     // Venda veio de um orçamento: marca como Fechado, com vínculo para a venda
     if (vendaItem.orcamento) {
         try {
@@ -303,7 +314,7 @@ async function registerDirectSale() {
         }
         if (window.Orcamentos) window.Orcamentos.recarregar();
     }
-    alert(`Venda registrada${vendaItem.orcamento ? ` (orçamento ${vendaItem.orcamento} fechado)` : ''}: ${formatCurrency(vendaItem.value)}${frete ? `\n(itens ${formatCurrency(pedido.venda)} + frete ${formatCurrency(frete)})` : ''}\nCusto dos itens (CMV): ${formatCurrency(pedido.custo)}\nMargem dos produtos: ${margem}%`);
+    alert(`Venda registrada${vendaItem.orcamento ? ` (orçamento ${vendaItem.orcamento} fechado)` : ''}: ${formatCurrency(vendaItem.value)}${frete ? `\n(itens ${formatCurrency(pedido.venda)} + frete ${formatCurrency(frete)})` : ''}\nCusto dos itens (CMV): ${formatCurrency(pedido.custo)}\nMargem dos produtos: ${margem}%${fiadoTotal ? `\n\nFiado: ${formatCurrency(fiadoTotal)} a receber de ${vendaItem.cliente} (Caixa › A receber).` : ''}`);
     window.Calculadora.limpar(false);
 }
 

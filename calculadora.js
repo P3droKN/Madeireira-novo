@@ -11,7 +11,12 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const lerNumero = (v) => (v === "" || v == null ? null : Number(String(v).replace(",", ".")));
 
 const PEDIDO_KEY = "madeireira_pedido";
-const editorPagamentos = criarEditorPagamentos(document.getElementById("calc-pagamentos"));
+// Fiado (ligado na configuração): pede cliente e vencimento (data da venda + prazo padrão)
+const configFiado = () => {
+  const f = window.Caixa?.configFinanceiro?.fiado || {};
+  return { ligado: f.ligado !== false, prazoDias: Number(f.prazoDias) || 30, data: document.getElementById("direct-sale-date")?.value || "" };
+};
+const editorPagamentos = criarEditorPagamentos(document.getElementById("calc-pagamentos"), { fiado: configFiado });
 
 const estado = {
   dados: null,      // { custos, precos, config, kvDisponivel }
@@ -651,6 +656,8 @@ window.Calculadora = {
   pagamentos() {
     return editorPagamentos.ler();
   },
+  // Nome digitado no fiado (o cadastro é conferido em registerDirectSale)
+  clienteFiado: () => editorPagamentos.clienteDigitado(),
 
   fotografia: fotografiaPedido,
   vinculo: () => estado.vinculo,
@@ -685,6 +692,7 @@ window.Calculadora = {
     });
     estado.motivoGeral = orc.motivoGeral || "";
     estado.frete = orc.frete > 0 ? orc.frete : null;
+    if (modo === "converter") setTimeout(() => editorPagamentos.definirCliente(orc.cliente?.nome || ""), 0); // se a venda for fiado, o cliente já vem
     estado.vinculo = { id: orc.id, modo, cliente: orc.cliente, origem: orc.origem, obs: orc.obs, validadeDias: orc.validadeDias };
     editorPagamentos.reiniciar(0);
     renderPedido();

@@ -28,4 +28,5 @@ ALVO="${1:-todos}"
 [ "$ALVO" = todos -o "$ALVO" = orcamentos ] && rodar orcamentos X=1
 [ "$ALVO" = todos -o "$ALVO" = fase2b ] && rodar fase2b SEED="$E/seed2a.json"
 [ "$ALVO" = todos -o "$ALVO" = frete ] && rodar frete X=1
+[ "$ALVO" = todos -o "$ALVO" = fiado ] && rodar fiado X=1
 parar; rm -rf "$TMP"
