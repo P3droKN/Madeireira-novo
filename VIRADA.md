@@ -43,4 +43,4 @@ Seguir o checklist (13 passos). Pontos de atenção:
 
 ## Como voltar atrás
 - **Primeira semana:** ver o quadro "Se der problema" no checklist (corrigir no v2 primeiro; voltar ao antigo só se impedir de vender: exportar o v2, devolver o token normal no antigo, relançar à mão o que foi feito desde a virada).
-- **Código desta etapa:** `git revert` do commit "Virada: Zerar banco…". O Zerar some; cheques e fiado já lançados na abertura continuam no banco (a versão anterior só não sabe mostrá-los).
+- **Código desta etapa:** `git revert 5cbc305`. O Zerar some; cheques e fiado já lançados na abertura continuam no banco (a versão anterior só não sabe mostrá-los).
