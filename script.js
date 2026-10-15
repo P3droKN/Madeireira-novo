@@ -176,9 +176,42 @@ function atualizarStatusBanco() {
     partes.push(migrado ? 'salvamento seguro: ativo' : 'salvamento seguro: não ativado');
     if (statusBanco.gravacaoBloqueada) partes.push('⛔ GRAVAÇÃO BLOQUEADA (banco de produção)');
     else if (statusBanco.travaConfigurada) partes.push('trava de produção: ativa');
+    if (statusBanco.zerarPermitido) partes.push('⚠️ ZERAR LIGADO (desligar depois da virada)');
     el.textContent = partes.join(' · ');
-    el.classList.toggle('texto-ruim', Boolean(statusBanco.gravacaoBloqueada));
+    el.classList.toggle('texto-ruim', Boolean(statusBanco.gravacaoBloqueada || statusBanco.zerarPermitido));
+    document.getElementById('zerar-bloco').hidden = !statusBanco.zerarPermitido;
 }
+
+// --- ZERAR BANCO (dia da virada): backup baixado + digitar ZERAR ---
+let zerarBackupOk = false;
+function atualizarBotaoZerar() {
+    document.getElementById('zerar-botao').disabled = !(zerarBackupOk && document.getElementById('zerar-texto').value.trim() === 'ZERAR');
+}
+document.getElementById('zerar-backup').addEventListener('click', async () => {
+    if (await baixarBackup()) {
+        zerarBackupOk = true;
+        document.getElementById('zerar-backup-ok').textContent = '✓ backup baixado';
+        atualizarBotaoZerar();
+    }
+});
+document.getElementById('zerar-texto').addEventListener('input', atualizarBotaoZerar);
+document.getElementById('zerar-botao').addEventListener('click', async () => {
+    if (!zerarBackupOk || document.getElementById('zerar-texto').value.trim() !== 'ZERAR') return;
+    try {
+        const r = await api('/api/zerar', { method: 'POST', body: { confirmacao: 'ZERAR' } });
+        alert(`Banco zerado.\n\nApagados: lançamentos, acumulado, abertura, clientes e orçamentos.\nMantidos: preços, ajustes da calculadora e configuração financeira.\nCópia do estado anterior: ${r.copia}\n\nPróximo passo: Importar o arquivo do sistema antigo.`);
+    } catch (e) {
+        alert(`O banco não foi zerado: ${e.message}`);
+        return;
+    }
+    zerarBackupOk = false;
+    document.getElementById('zerar-texto').value = '';
+    document.getElementById('zerar-backup-ok').textContent = '';
+    atualizarBotaoZerar();
+    await carregarDados();
+    if (window.Orcamentos) window.Orcamentos.recarregar();
+    if (window.Clientes) window.Clientes.carregar();
+});
 
 function podeGravar() {
     if (somenteLeitura) {

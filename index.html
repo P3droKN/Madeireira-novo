@@ -453,6 +453,18 @@
                             <input type="file" id="conferir-file" accept=".json" style="display: none;" onchange="Conferencia.abrir(event)"></label>
                             <small class="texto-suave">Compara um arquivo de backup com o que está no banco, mês a mês.</small></div>
                     </div>
+                    <div class="zerar-bloco" id="zerar-bloco" hidden>
+                        <h3>⚠️ Zerar banco (só no dia da virada)</h3>
+                        <p><strong>Apaga:</strong> lançamentos, acumulado, abertura de saldos, clientes e orçamentos.
+                            <strong>Mantém:</strong> preços de venda, ajustes da calculadora e configuração financeira.
+                            Antes de apagar, uma cópia do estado atual fica guardada no próprio banco.</p>
+                        <ol class="zerar-passos">
+                            <li><button type="button" class="btn-icon" id="zerar-backup">💾 Baixar o backup agora</button> <span class="texto-suave" id="zerar-backup-ok"></span></li>
+                            <li><label for="zerar-texto">Digite <code>ZERAR</code> para confirmar</label> <input type="text" id="zerar-texto" autocomplete="off" spellcheck="false" maxlength="10"></li>
+                            <li><button type="button" class="btn-danger" id="zerar-botao" disabled>Zerar banco</button></li>
+                        </ol>
+                        <small class="texto-suave">Este botão só aparece com <code>PERMITIR_ZERAR=sim</code> na Vercel e a trava de produção ativa. Depois da virada, apague a variável e faça o redeploy.</small>
+                    </div>
                 </section>
             </div>
         </main>

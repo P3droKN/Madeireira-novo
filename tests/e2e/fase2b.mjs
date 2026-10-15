@@ -34,7 +34,7 @@ await abrirCaixa();
 ok(nb(await page.textContent("#fin-saldos")).includes("Faça a abertura de saldos"), "sem abertura: Caixa › Saldos pede a abertura de saldos");
 await page.click("#fin-saldos [data-ir-abertura]");
 ok(await page.isVisible("#aj-abertura #cx-abertura"), "o aviso leva para Ajustes › Saldos (formulário da abertura)");
-ok(await page.inputValue("#cx-ab-cheques") === "400", "sugere R$ 400 em cheques em carteira (recebido antes, compensa depois)");
+ok(nb(await page.textContent("#cx-ab-cheques")) === "R$ 400,00", "cheques em carteira: R$ 400 do sistema antigo (recebido antes, compensa depois), calculado da lista");
 await page.fill("#cx-ab-gaveta", "300"); await page.fill("#cx-ab-bradesco", "5000"); await page.fill("#cx-ab-picpay", "200");
 await page.click("#cx-abertura button[type=submit]");
 await page.waitForSelector("#cx-refazer");

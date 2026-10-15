@@ -82,6 +82,7 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
   - `precos`
   - `config`: `{config}` calculadora, `{financeiro}`, `{abertura}`, `{conferencia}`
   - `resumo`
+  - `zerar` (virada): POST `{confirmacao: "ZERAR"}`; só com `statusBanco().zerarPermitido`
   - `clientes` (2C): GET lista; POST `{cliente}` cadastra (pelo WhatsApp, ou C1, C2… sem WhatsApp) ou edita (com `id`, mantém a chave)
   - `orcamentos`: GET; POST `{orcamento}`/`{cliente}`; PATCH `{id, acao}` com `contato`, `perdido`, `fechar`, `reabrir` (perdido, ou fechado cuja venda foi excluída), `precos`, `excluir` (lixeira: marca `excluidoEm`; fechado não pode), `restaurar`
 - **`data/custos.json`:** fonte da verdade dos custos. É lido pela API (`vercel.json` › includeFiles) e o acesso direto a `/data/*` é redirecionado.
@@ -99,10 +100,10 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
   - O backup e a restauração cobrem todas.
 
 ## 4. Como testar
-- **Automáticos:** `npm install && npm test`. São **122 testes** (`node --test`), em `tests/*.test.js`.
+- **Automáticos:** `npm install && npm test`. São **126 testes** (`node --test`), em `tests/*.test.js`.
 - **No navegador:** `bash tests/e2e/rodar.sh` (ou `… rodar.sh fase2b`).
-  - São 9 baterias contra um servidor local (`tests/e2e/servidor.mjs`, Redis falso no protocolo REST da Upstash, senha local `pinho123`), **só com dados sintéticos**.
-  - Resultado atual: fluxo 31, fase1b 28, lotes 5, trava 6, fase2a 31, orcamentos 57, fase2b 25, frete 23, fiado 31, **tudo passando** (9 baterias).
+  - São 10 baterias contra um servidor local (`tests/e2e/servidor.mjs`, Redis falso no protocolo REST da Upstash, senha local `pinho123`), **só com dados sintéticos**.
+  - Resultado atual: fluxo 31, fase1b 28, lotes 5, trava 8, fase2a 31, orcamentos 57, fase2b 25, frete 23, fiado 31, virada 25, **tudo passando** (10 baterias).
   - O servidor local imita a Vercel: `/api/x` usa `api/x.js` se existir, senão `api/[recurso].js`.
 - **Importante:** o servidor local precisa ser iniciado **de dentro da pasta do projeto**, porque lê `data/custos.json` pelo `process.cwd()`. O `rodar.sh` já faz isso.
 
@@ -216,8 +217,14 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - **Relatórios:** A receber por cliente com atraso, cheques a compensar em 30 dias, **total na rua** (fiado + cheques em carteira). Cobrança pelo WhatsApp com a lista do que está em aberto.
 - Fiado a vencer **não entra na projeção de 30 dias** (pode entrar como "previsto" na 2D, se o usuário quiser).
 
+**Virada (decidida: caminho B, antes da 2D)** — guia em `VIRADA.md`
+- O v2 vira o oficial reaproveitando o banco `liked-drum`: **Zerar** (Ajustes › Dados; só com `PERMITIR_ZERAR=sim` + trava ativa + banco ≠ produção; baixa backup; digitar ZERAR; mantém preços, ajustes e config financeira) → importar o export final do antigo → "Tudo confere" → migrar → "Tudo confere" → **abertura** com cheques em carteira **um por um** (`cheque_anterior`, já dentro do saldo da abertura) e **fiado do caderno** (`fiado_anterior`, a receber sem receita) → trocar o link nos aparelhos.
+- `BANCO_PRODUCAO_HOST` **fica** no v2 (aponta para o banco antigo). `PERMITIR_ZERAR` só no dia; apagar depois.
+- O antigo fica 2 semanas só para consulta, travado com o token só leitura da Upstash; script de volta: o usuário não quis.
+- Ensaio: no preview (branch `ensaio`, prefixo `preview:`), com `PERMITIR_ZERAR` só em Preview.
+
 ## 7. Próximos passos
-1. **O usuário testa a 2C no v2** (`FASE2C.md`). Reorganização, frete, % sobre o preço digitado, orçamentos e 2B já foram testados e aprovados.
+1. **Virada** (antes da 2D): ensaio no preview e depois o dia, conforme `VIRADA.md` e o checklist. Pendentes do usuário: resultado do teste da 2C, prazo do fiado, se existe caderno, nome do endereço e as datas.
 2. ~~Fase 2C~~ (entregue).
 3. **Fase 2D: relatórios, painel e limpeza**
    - "Vendas por forma de pagamento": a versão simples do mês já existe em Relatórios; falta dia/ano, por conta e o **CSV** com data, Nº NF-e, forma, tPag e valor para o escritório;

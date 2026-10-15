@@ -103,3 +103,28 @@ test("texto de cobrança no WhatsApp", () => {
   const t = textoCobrancaFiado(c, "2026-10-10");
   assert.ok(t.startsWith("Olá Carlos") && t.includes("Consta em aberto R$ 500,00") && t.includes("01/09/2026 – R$ 500,00 (venceu 30/09/2026)"));
 });
+
+test("abertura: fiado do caderno vira conta a receber; cheque lançado na abertura não entra duas vezes na carteira", async () => {
+  const { chequesNaAbertura } = await import("../lib/caixa.js");
+  const ab = { data: "2026-11-02", contas: { gaveta: 100, bradesco: 1000, picpay: 0, cheques_carteira: 700 } };
+  const l = [
+    { id: "FA1", v: 2, conta: "fiado_anterior", value: 480, competencia: "2026-11-02", clienteId: "C1", cliente: "Zé", vencimento: "2026-11-10", description: "Fiado anterior (caderno)" },
+    { id: "CA1", v: 2, conta: "cheque_anterior", value: 300, competencia: "2026-11-02", cliente: "Ana", pagamentos: [{ forma: "cheque", conta: "cheques_carteira", valor: 300, tPag: "02", cheque: { numero: "55", emissor: "Ana", compensacao: "2026-11-05" } }] },
+    // do sistema antigo: recebido antes, compensa depois
+    { id: "V0", v: 2, conta: "venda_produtos", value: 400, competencia: "2026-10-20", pagamentos: [{ forma: "cheque", conta: "cheques_carteira", valor: 400, tPag: "02", cheque: { numero: "44", compensacao: "2026-11-08" } }] },
+  ];
+  const ca = chequesNaAbertura(l, {}, "2026-11-02");
+  assert.deepEqual([ca.doSistema.length, ca.naAbertura.length, ca.total], [1, 1, 700]);
+  const movs = movimentos(l, {});
+  const s = (d) => saldos(movs, ab, d).porConta;
+  assert.equal(s("2026-11-02").cheques_carteira, 700, "carteira = abertura (sem somar o cheque de novo)");
+  assert.deepEqual([s("2026-11-05").cheques_carteira, s("2026-11-05").bradesco], [400, 1300], "cheque da abertura compensa no Bradesco");
+  assert.deepEqual([s("2026-11-08").cheques_carteira, s("2026-11-08").bradesco], [0, 1700]);
+  const r = contasAReceber(l, {}, "2026-11-12", clientes.concat([{ id: "C1", nome: "Zé" }]));
+  const ze = r.porCliente.find((c) => c.clienteId === "C1");
+  assert.deepEqual([ze.aberto, ze.atrasado, ze.dividas[0].tipo], [480, 480, "fiado_anterior"]);
+  assert.equal(montarDRE(l, {}, "2026-11").valores.receitaBruta, 0, "fiado anterior não é receita");
+  // cheque da abertura devolvido: a Ana passa a dever
+  const dev = [l[0], { ...l[1], pagamentos: [{ ...l[1].pagamentos[0], cheque: { ...l[1].pagamentos[0].cheque, devolvidoEm: "2026-11-06" } }] }];
+  assert.equal(contasAReceber(dev, {}, "2026-11-12").porCliente.find((c) => c.cliente === "Ana").aberto, 300);
+});

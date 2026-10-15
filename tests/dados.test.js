@@ -616,3 +616,35 @@ test("2C: configuração do fiado (ligado e prazo) é salva", async () => {
   assert.deepEqual((await salvarConfigFinanceiro(kv, K, {})).fiado, { ligado: true, prazoDias: 30 });
   await assert.rejects(salvarConfigFinanceiro(kv, K, { fiado: { prazoDias: 0 } }), /prazo do fiado/);
 });
+
+import { zerarMovimento, CHAVES_ZERAR } from "../api/_dados.js";
+
+test("abertura: valida fiado anterior (cadastro obrigatório, vencimento padrão) e cheque em carteira", () => {
+  assert.throws(() => validarLancamentoV2({ id: "FA1", v: 2, conta: "fiado_anterior", value: 480, competencia: "2026-11-02", cliente: "Zé" }, {}), /cliente/);
+  const f = validarLancamentoV2({ id: "FA1", v: 2, conta: "fiado_anterior", value: 480, competencia: "2026-11-02", clienteId: "C1", cliente: "Zé" }, {});
+  assert.deepEqual([f.conta, f.vencimento, f.description, f.type], ["fiado_anterior", "2026-12-02", "Fiado anterior (caderno)", "transfer"]);
+  const c = validarLancamentoV2({ id: "CA1", v: 2, conta: "cheque_anterior", value: 300, competencia: "2026-11-02", pagamentos: [{ valor: 300, cheque: { numero: "55", emissor: "Ana", compensacao: "2026-11-05" } }] }, {});
+  assert.deepEqual([c.pagamentos[0].forma, c.pagamentos[0].conta, c.description], ["cheque", "cheques_carteira", "Cheque em carteira na abertura nº 55"]);
+  assert.throws(() => validarLancamentoV2({ id: "CA2", v: 2, conta: "cheque_anterior", value: 300, competencia: "2026-11-02", pagamentos: [{ valor: 300, cheque: {} }] }, {}), /compensação/);
+  assert.throws(() => validarLancamentoV2({ id: "CA3", v: 2, conta: "cheque_anterior", value: 200, competencia: "2026-11-02", pagamentos: [{ valor: 300, cheque: { compensacao: "2026-11-05" } }] }, {}), /Valor do cheque/);
+});
+
+test("zerar: só com permissão e ZERAR; apaga o movimento, mantém preços e ajustes, guarda cópia antes", async () => {
+  const kv = kvFalso({});
+  await salvarOrcamento(kv, K, novoOrc(), {});
+  await kv.set(K.lancamentos, { x: { id: "x" } });
+  await kv.set(K.migrado, true);
+  await kv.set(K.acumulado, { venda: 10 });
+  await kv.set(K.saldos, { abertura: { data: "2026-10-01" } });
+  await kv.hset(K.precos, { "PINUS|2x4x3.00|BRUTO": 25 });
+  await kv.set(K.config, { modificadores: {} });
+  await kv.set(K.configFinanceiro, { fiado: { ligado: true, prazoDias: 30 } });
+  await assert.rejects(zerarMovimento(kv, K, { confirmacao: "ZERAR" }, false), /desligado/);
+  await assert.rejects(zerarMovimento(kv, K, { confirmacao: "zerar" }, true), /Digite ZERAR/);
+  const r = await zerarMovimento(kv, K, { confirmacao: "ZERAR" }, true);
+  for (const c of CHAVES_ZERAR) assert.equal(kv.dados.has(K[c]), false, c);
+  assert.ok(kv.dados.has(K.precos) && kv.dados.has(K.config) && kv.dados.has(K.configFinanceiro), "preços e ajustes ficam");
+  const copia = kv.dados.get(r.copia);
+  assert.ok(copia.chaves.madeireira_orcamentos["ORC-0001"] && copia.chaves.madeireira_migrado_v1, "cópia de antes guardada");
+  assert.equal((await salvarOrcamento(kv, K, novoOrc(), {})).id, "ORC-0001", "contador recomeça");
+});

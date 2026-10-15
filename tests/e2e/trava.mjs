@@ -20,4 +20,8 @@ await page.click("#btn-tab-ajustes"); await page.click('.subtabs[data-grupo="aju
 await page.waitForFunction(() => document.getElementById("status-banco").textContent.includes("Banco:"));
 const st = await page.textContent("#status-banco");
 ok(st.includes("GRAVAÇÃO BLOQUEADA"), "tela mostra: " + st);
+// Mesmo com PERMITIR_ZERAR=sim, o banco de produção nunca pode ser zerado
+ok(await page.isHidden("#zerar-bloco") && !st.includes("ZERAR"), "banco de produção: o botão Zerar não aparece");
+const z = await fetch(URL + "/api/zerar", { method: "POST", headers: H, body: JSON.stringify({ confirmacao: "ZERAR" }) });
+ok(z.status === 423 && Object.keys(await (await fetch(URL + "/__db")).json()).length > 0, "banco de produção: /api/zerar recusado (423) e nada apagado");
 await browser.close();

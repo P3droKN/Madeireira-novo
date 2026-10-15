@@ -42,6 +42,8 @@ export function statusBanco() {
     bancoHost: bancoHost(),
     travaConfigurada: Boolean(process.env.BANCO_PRODUCAO_HOST),
     gravacaoBloqueada: gravacaoBloqueada(),
+    // "Zerar banco" só aparece no dia da virada: PERMITIR_ZERAR=sim + trava configurada + este banco não é o de produção
+    zerarPermitido: process.env.PERMITIR_ZERAR === "sim" && Boolean(process.env.BANCO_PRODUCAO_HOST) && !gravacaoBloqueada(),
   };
 }
 

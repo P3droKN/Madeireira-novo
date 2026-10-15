@@ -7,7 +7,7 @@ import {
   montarBackup, salvarCopia, listarCopias, lerCopia, lerPrecosEConfig, salvarPrecos,
   salvarConfig, salvarConfigFinanceiro, salvarAbertura, registrarConferencia,
   importar, migrar, migrarV2, restaurar,
-  listarOrcamentos, salvarOrcamento, atualizarOrcamento, salvarCliente, listarClientes,
+  listarOrcamentos, salvarOrcamento, atualizarOrcamento, salvarCliente, listarClientes, zerarMovimento,
 } from "./_dados.js";
 import { CEPILHADO_PADRAO, montarCatalogo, chavePrecoValida } from "../lib/catalogo.js";
 import { resumirLancamentos } from "../lib/resumo.js";
@@ -166,6 +166,11 @@ export const ROTAS = {
       responderErro(response, error);
     }
   },
+
+  // POST { confirmacao: "ZERAR" } -> apaga o movimento e mantém preços e ajustes (só no dia da virada)
+  zerar: rota(["POST"], async (request, response) => {
+    response.status(200).json(await zerarMovimento(kv(), chaves(), request.body, statusBanco().zerarPermitido));
+  }),
 
   // Resumo do banco (quantidade e totais por mês, acumulado) para conferir com um arquivo de backup.
   resumo: rota(null, async (request, response) => {

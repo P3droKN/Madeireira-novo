@@ -1031,3 +1031,13 @@ body.modo-balcao .sigilo { display: none !important; }
 .mini-nota { font-size: 0.75rem; align-self: center; }
 .rc-cliente-form { margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--panel-border); }
 @media (max-width: 900px) { .receber-cards { grid-template-columns: 1fr 1fr; } }
+
+/* Virada: zerar banco e abertura com cheques e fiado anterior */
+.zerar-bloco { margin-top: 1.5rem; padding: 1rem 1.25rem; border: 2px solid var(--danger); border-radius: 0.6rem; background: rgba(239, 68, 68, 0.06); }
+.zerar-bloco h3 { margin: 0 0 0.5rem; color: #f87171; }
+.zerar-bloco p { margin: 0 0 0.75rem; }
+.zerar-passos { display: grid; gap: 0.6rem; margin: 0 0 0.75rem; padding-left: 1.25rem; }
+.zerar-passos input { width: 140px; display: inline-block; margin-left: 0.5rem; font-family: monospace; letter-spacing: 0.1em; }
+.valor-calculado { display: block; font-size: 1.25rem; padding: 0.55rem 0; }
+.linha-adicionar { margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed var(--input-border); }
+.grupo-linha td { font-weight: 600; color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }

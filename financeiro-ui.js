@@ -258,13 +258,15 @@ async function enviarFormulario(e) {
 // ---------- Lançamentos (lista e reclassificação em lote) ----------
 
 // Transferências e recebimentos de fiado não são receita nem despesa: ficam fora do "saldo do filtro"
-const foraDoSaldo = (l) => l.conta === "transferencia" || l.conta === "recebimento";
+const foraDoSaldo = (l) => ["transferencia", "recebimento", "fiado_anterior", "cheque_anterior"].includes(l.conta);
+const NOMES_ESPECIAIS = { transferencia: "Transferência", recebimento: "Recebimento de fiado", fiado_anterior: "Fiado anterior (abertura)", cheque_anterior: "Cheque em carteira (abertura)" };
 
 function descreverForma(l) {
   if (l.conta === "transferencia") return `${CONTAS_FIN[l.de] || l.de} → ${CONTAS_FIN[l.para] || l.para}`;
   if (Array.isArray(l.pagamentos)) {
     return l.pagamentos.map((p) => `${FORMAS[p.forma]?.nome || p.forma}${p.parcelas ? ` ${p.parcelas}x` : ""}${p.forma === "fiado" && p.fiado?.vencimento ? ` (vence ${dataBR(p.fiado.vencimento)})` : ""}`).join(" + ");
   }
+  if (l.conta === "fiado_anterior") return `a receber, vence ${dataBR(l.vencimento)}`;
   if (l.pagoCom) return NOME_PAGO[l.pagoCom] + (l.chequeEmitido?.numero ? ` nº ${l.chequeEmitido.numero}` : "");
   return l.abertura ? "abertura" : "—";
 }
@@ -284,7 +286,7 @@ function filtrarLista() {
     if (tipo === "entradas" && naturezaDaConta(l.conta) !== "entrada") return false;
     if (tipo === "saidas" && (l.conta === "transferencia" || naturezaDaConta(l.conta) !== "saida")) return false;
     if (tipo === "migrados" && !l.migrado) return false;
-    if (tipo === "fiado" && !(l.conta === "recebimento" || (l.pagamentos || []).some((p) => p.forma === "fiado"))) return false;
+    if (tipo === "fiado" && !(l.conta === "recebimento" || l.conta === "fiado_anterior" || (l.pagamentos || []).some((p) => p.forma === "fiado"))) return false;
     if (busca && ![l.description, l.fornecedor, l.nfe, l.cliente].some((t) => String(t || "").toLowerCase().includes(busca))) return false;
     return true;
   }).sort((a, b) => String(b.competencia).localeCompare(String(a.competencia)) || String(b.id).localeCompare(String(a.id)));
@@ -309,7 +311,7 @@ function renderLista() {
       <td><input type="checkbox" class="fin-sel" value="${esc(l.id)}" ${estado.selecionados.has(String(l.id)) ? "checked" : ""} aria-label="Selecionar"></td>
       <td>${dataBR(l.competencia)}</td>
       <td>${esc(l.description || "")}${l.cliente ? `<small>cliente: ${esc(l.cliente)}</small>` : ""}${l.fornecedor ? `<small>${esc(l.fornecedor)}</small>` : ""}${l.nfe ? `<small>NF-e ${esc(l.nfe)}</small>` : ""}${l.frete ? `<small>inclui frete ${moeda(l.frete)}</small>` : ""}</td>
-      <td>${esc(c?.nome || (l.conta === "transferencia" ? "Transferência" : l.conta === "recebimento" ? "Recebimento de fiado" : l.conta))} ${tags}${sug}</td>
+      <td>${esc(c?.nome || NOMES_ESPECIAIS[l.conta] || l.conta)} ${tags}${sug}</td>
       <td>${esc(descreverForma(l))}</td>
       <td class="num ${foraDoSaldo(l) ? "" : entrada ? "type-income" : "type-expense"}">${moeda(l.value)}</td>
       <td><button class="delete-btn" data-excluir="${esc(l.id)}" title="Excluir (estornar) este lançamento">Excluir</button></td>

@@ -158,6 +158,19 @@ export async function salvarCopia(kv, k, motivo) {
   return nome;
 }
 
+// Zerar banco (só para a virada): apaga o movimento e mantém os ajustes.
+// Só funciona com PERMITIR_ZERAR=sim e com a trava de produção configurada (statusBanco().zerarPermitido).
+export const CHAVES_ZERAR = ["finance", "acumulado", "lancamentos", "migrado", "trava", "migradoV2", "orcamentos", "orcSeq", "clientes", "cliSeq", "saldos"];
+export const CHAVES_MANTIDAS = ["precos", "config", "configFinanceiro", "backups"];
+
+export async function zerarMovimento(kv, k, pedido, permitido) {
+  if (!permitido) throw erro(403, "Zerar está desligado. Ele só funciona no dia da virada (PERMITIR_ZERAR=sim na Vercel, com a trava de produção ativa).");
+  if (pedido?.confirmacao !== "ZERAR") throw erro(400, 'Digite ZERAR para confirmar.');
+  const copia = await salvarCopia(kv, k, "antes-de-zerar");
+  await kv.del(...CHAVES_ZERAR.map((c) => k[c]));
+  return { copia, apagadas: CHAVES_ZERAR.map((c) => k[c]), mantidas: CHAVES_MANTIDAS.map((c) => k[c]) };
+}
+
 export async function listarCopias(kv, k) {
   return (await kv.lrange(k.backups, 0, -1)) || [];
 }
@@ -489,6 +502,29 @@ export function validarLancamentoV2(item, cfgSalva) {
     return r;
   }
 
+  // Abertura (virada): o que o cliente já devia no caderno. Vira conta a receber, sem receita nem CMV
+  // (a venda aconteceu antes do sistema) e sem mexer no caixa.
+  if (item.conta === "fiado_anterior") {
+    const cli = clienteDoLancamento(item, { exigeId: true });
+    const vencimento = dataOk(item.vencimento) ? item.vencimento : somarDias(competencia, cfg.fiado.prazoDias);
+    return { ...base, conta: "fiado_anterior", category: "fiado_anterior", type: "transfer", method: "", clienteId: cli.id, cliente: cli.nome, vencimento,
+      description: base.description || "Fiado anterior (caderno)" };
+  }
+
+  // Abertura (virada): cheque que já estava na gaveta e não veio do sistema antigo. Ele já está dentro do
+  // saldo "Cheques em carteira" da abertura; daqui para frente compensa (ou volta) como qualquer cheque.
+  if (item.conta === "cheque_anterior") {
+    const cli = clienteDoLancamento(item, {});
+    const p = validarPagamento({ ...(item.pagamentos?.[0] || {}), forma: "cheque" }, cfg, false);
+    if (centavosDe(p.valor) !== centavosDe(base.value)) throw erro(400, "Valor do cheque diferente do lançamento.");
+    if (!p.cheque.compensacao) throw erro(400, "Informe a data de compensação do cheque.");
+    const r = { ...base, conta: "cheque_anterior", category: "cheque_anterior", type: "transfer", method: "", pagamentos: [p],
+      description: base.description || `Cheque em carteira na abertura${p.cheque.numero ? ` nº ${p.cheque.numero}` : ""}` };
+    if (cli.nome) r.cliente = cli.nome;
+    if (cli.id) r.clienteId = cli.id;
+    return r;
+  }
+
   const conta = contaPorId[item.conta];
   if (!conta) throw erro(400, `Conta inválida: ${item.conta}`);
   const natureza = naturezaDaConta(conta.id);
@@ -608,7 +644,7 @@ export async function reclassificar(kv, k, pedido) {
   for (const id of ids.map(String)) {
     const item = desembrulhar(atuais[id]);
     if (!item || item.excluido) { ignorados.push({ id, motivo: "não encontrado" }); continue; }
-    if (item.conta === "recebimento") { ignorados.push({ id, motivo: "recebimento de fiado" }); continue; }
+    if (["recebimento", "fiado_anterior", "cheque_anterior"].includes(item.conta)) { ignorados.push({ id, motivo: "recebimento ou item da abertura" }); continue; }
     if (forma === "fiado" || (forma && (item.pagamentos || []).some((p) => p.forma === "fiado"))) { ignorados.push({ id, motivo: "fiado não se troca em lote" }); continue; }
     const novo = { ...item };
     const destino = aceitarSugestao ? item.sugestao?.conta : conta;
