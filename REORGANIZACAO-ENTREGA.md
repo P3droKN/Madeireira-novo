@@ -69,6 +69,6 @@ Testes automáticos (feitos aqui, com dados sintéticos): `npm test` (105 passan
 ## Como voltar atrás
 - **Rápido (Vercel):** no projeto `madeireira.v2` › Deployments, escolha o deploy anterior a esta entrega e use **Instant Rollback** (ou "Promote to Production").
 - **Pelo código:** são dois commits independentes:
-  - a reorganização das telas (o mais recente): `git revert <commit>` volta as telas antigas;
+  - a reorganização das telas (`e8900fb`): `git revert e8900fb` volta as telas antigas;
   - a API em roteador único (`8e329be`): `git revert 8e329be` volta os 12 arquivos em `api/`. Dá para voltar só as telas e manter a API nova, porque os endereços são os mesmos.
 - **Dados:** nada precisa ser desfeito. Os orçamentos "aguardando" continuam gravados como estavam; um orçamento excluído só tem a marca `excluidoEm`, que a versão antiga ignora (ele simplesmente aparece de novo na lista antiga).

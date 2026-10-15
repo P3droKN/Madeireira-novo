@@ -113,7 +113,7 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 | **Orçamentos** | `4f894df` | **ainda não**: entregue, aguardando teste |
 | **Fase 2B**: abertura de saldos, saldos, conferência, projeção de 30 dias, fluxo de caixa, cheques | `4e04bfe` | **ainda não**: entregue, aguardando teste |
 | API num roteador único (mesmo comportamento) | `8e329be` | não precisa (testes iguais) |
-| **Reorganização**: 5 abas, formulário único, modo balcão, orçamentos com 3 situações, 🔔, lixeira, Relatórios e Ajustes | ver `git log` | **ainda não**: aguardando teste (`REORGANIZACAO-ENTREGA.md`) |
+| **Reorganização**: 5 abas, formulário único, modo balcão, orçamentos com 3 situações, 🔔, lixeira, Relatórios e Ajustes | `e8900fb` | **ainda não**: aguardando teste (`REORGANIZACAO-ENTREGA.md`) |
 
 **Guias de cada etapa:**
 - `FASE0.md`: inclui restauração, projeto separado, importação e trava;
