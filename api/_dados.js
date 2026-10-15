@@ -3,6 +3,7 @@
 
 import { contaPorId, naturezaDaConta, PAGO_COM, mesclarConfigFinanceiro, CONFIG_FINANCEIRO_PADRAO } from "../lib/planoContas.js";
 import { converterLancamento, lancamentosDeAbertura, categoriaLegada } from "../lib/migracaoV2.js";
+import { numeroOrcamento, normalizarTelefone, somarDias, ORIGENS, MOTIVOS_PERDA } from "../lib/orcamentos.js";
 
 const CATEGORIAS = { venda: "income", custo: "expense", funcionario: "expense", despesa: "expense" };
 const METODOS = ["dinheiro", "pix", "bradesco", "debito", "credito", "cheque"];
@@ -132,6 +133,9 @@ export async function montarBackup(kv, k) {
       madeireira_config: desembrulhar(await kv.get(k.config)) ?? null,
       madeireira_config_financeiro: desembrulhar(await kv.get(k.configFinanceiro)) ?? null,
       madeireira_migrado_v2: (await kv.get(k.migradoV2)) ?? null,
+      madeireira_orcamentos: (await kv.hgetall(k.orcamentos)) ?? null,
+      madeireira_clientes: (await kv.hgetall(k.clientes)) ?? null,
+      madeireira_orc_seq: (await kv.get(k.orcSeq)) ?? null,
     },
   };
 }
@@ -324,6 +328,12 @@ export async function restaurar(kv, k, arquivo) {
   if ("madeireira_config" in alvo) await gravar(k.config, alvo.madeireira_config);
   if ("madeireira_config_financeiro" in alvo) await gravar(k.configFinanceiro, alvo.madeireira_config_financeiro);
   if ("madeireira_migrado_v2" in alvo) await gravar(k.migradoV2, alvo.madeireira_migrado_v2);
+  for (const [nome, chave] of [["madeireira_orcamentos", k.orcamentos], ["madeireira_clientes", k.clientes]]) {
+    if (!(nome in alvo)) continue;
+    await kv.del(chave);
+    if (alvo[nome] && Object.keys(alvo[nome]).length) await kv.hset(chave, alvo[nome]);
+  }
+  if ("madeireira_orc_seq" in alvo) await gravar(k.orcSeq, alvo.madeireira_orc_seq);
 
   return {
     copia,
@@ -471,6 +481,7 @@ export function validarLancamentoV2(item, cfgSalva) {
       limpo.cmv = Math.round(cmv * 100) / 100;
     }
     if (item.origem === "calculadora") limpo.origem = "calculadora";
+    if (/^ORC-\d{4,}$/.test(String(item.orcamento || ""))) limpo.orcamento = item.orcamento;
     if (Array.isArray(item.itens)) limpo.itens = item.itens.slice(0, 100).map(validarItemPedido);
     if (num(item.tabelaTotal) != null) limpo.tabelaTotal = num(item.tabelaTotal);
     if (num(item.variacao) != null) limpo.variacao = num(item.variacao);
@@ -626,6 +637,191 @@ export async function salvarConfigFinanceiro(kv, k, config) {
     dataInicial: dataOk(c.estoque.dataInicial) ? c.estoque.dataInicial : null,
     porItem: false, // reservado para o estoque por item (fase futura)
   };
+  const o = c.orcamentos;
+  const inteiro = (v, min, max, nome) => {
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < min || n > max) throw erro(400, `Valor inválido: ${nome}.`);
+    return n;
+  };
+  limpa.orcamentos = {
+    validadeDias: inteiro(o.validadeDias, 1, 90, "validade do orçamento"),
+    diasParaCobrar: inteiro(o.diasParaCobrar, 1, 60, "dias para cobrar"),
+    diasAmarelo: inteiro(o.diasAmarelo, 1, 60, "dias para ficar amarelo"),
+    modelos: (Array.isArray(o.modelos) ? o.modelos : []).map((m) => texto(m, 600).trim()).filter(Boolean).slice(0, 5),
+  };
+  if (!limpa.orcamentos.modelos.length) throw erro(400, "Deixe pelo menos um modelo de mensagem de cobrança.");
   await kv.set(k.configFinanceiro, limpa);
   return limpa;
+}
+
+
+// --- Orçamentos e clientes ---
+
+function itemOrcamento(i) {
+  if (!i || typeof i !== "object") throw erro(400, "Item do orçamento inválido.");
+  return {
+    itemId: texto(i.itemId, 120),
+    acabamento: texto(i.acabamento, 20),
+    quantidade: num(i.quantidade),
+    comprimento: num(i.comprimento),
+    descricao: texto(i.descricao, 200),
+    descricaoLivre: texto(i.descricaoLivre, 120),
+    quantidadeTexto: texto(i.quantidadeTexto, 80),
+    unidade: texto(i.unidade, 20),
+    precoTabela: num(i.precoTabela),
+    tabelaTotal: num(i.tabelaTotal),
+    precoUnitario: num(i.precoUnitario),
+    vendaTotal: num(i.vendaTotal),
+    custoTotal: num(i.custoTotal),
+    variacaoPct: num(i.variacaoPct),
+    motivo: texto(i.motivo, 200),
+  };
+}
+
+function valoresOrcamento(d) {
+  if (!Array.isArray(d.itens) || d.itens.length < 1 || d.itens.length > 100) throw erro(400, "O orçamento precisa ter de 1 a 100 itens.");
+  const itens = d.itens.map(itemOrcamento);
+  if (itens.some((i) => i.vendaTotal == null)) throw erro(400, "Há item sem preço no orçamento.");
+  const total = Number(d.total);
+  if (!Number.isFinite(total) || total <= 0) throw erro(400, "Total do orçamento inválido.");
+  return {
+    itens,
+    total: Math.round(total * 100) / 100,
+    custo: num(d.custo),
+    margem: num(d.margem),
+    tabelaTotal: num(d.tabelaTotal),
+    variacao: num(d.variacao),
+    motivoGeral: texto(d.motivoGeral, 200),
+  };
+}
+
+const dataDe = (d) => (dataOk(d) ? d : new Date().toISOString().slice(0, 10));
+
+async function salvarClienteDoOrcamento(kv, k, nome, telefone) {
+  const t = normalizarTelefone(telefone);
+  const atual = desembrulhar(await kv.hget(k.clientes, t.digitos));
+  const agora = new Date().toISOString();
+  const cliente = { id: t.digitos, nome, telefone: t.formatado, obs: atual?.obs || "", criadoEm: atual?.criadoEm || agora, atualizadoEm: agora };
+  await kv.hset(k.clientes, { [t.digitos]: cliente });
+  return cliente;
+}
+
+export async function listarOrcamentos(kv, k) {
+  const orcamentos = Object.values((await kv.hgetall(k.orcamentos)) || {}).map(desembrulhar).filter(Boolean);
+  const clientes = Object.values((await kv.hgetall(k.clientes)) || {}).map(desembrulhar).filter(Boolean);
+  return { orcamentos, clientes };
+}
+
+// Cria (número novo) ou edita (mesmo número) um orçamento
+export async function salvarOrcamento(kv, k, d, cfgSalva) {
+  if (!d || typeof d !== "object") throw erro(400, "Orçamento inválido.");
+  const cfg = mesclarConfigFinanceiro(cfgSalva);
+  const nome = texto(d.cliente?.nome, 120).trim();
+  if (!nome) throw erro(400, "Informe o nome do cliente.");
+  const tel = normalizarTelefone(d.cliente?.telefone);
+  if (!tel.ok) throw erro(400, tel.erro);
+  if (!(d.origem in ORIGENS)) throw erro(400, "Escolha a origem: Balcão, WhatsApp ou Telefone.");
+  const validadeDias = Number(d.validadeDias ?? cfg.orcamentos.validadeDias);
+  if (!Number.isInteger(validadeDias) || validadeDias < 1 || validadeDias > 90) throw erro(400, "Validade inválida (1 a 90 dias).");
+  const hoje = dataDe(d.hoje);
+  const valores = valoresOrcamento(d);
+  const cliente = await salvarClienteDoOrcamento(kv, k, nome, tel.formatado);
+  const agora = new Date().toISOString();
+
+  if (d.id) {
+    const atual = desembrulhar(await kv.hget(k.orcamentos, String(d.id)));
+    if (!atual) throw erro(404, "Orçamento não encontrado.");
+    if (atual.status === "fechado") throw erro(409, "Orçamento fechado (virou venda) não pode ser editado. Use Duplicar.");
+    const editado = {
+      ...atual, ...valores,
+      cliente: { id: cliente.id, nome: cliente.nome, telefone: cliente.telefone },
+      origem: d.origem, obs: texto(d.obs, 500), validadeDias, validoAte: somarDias(hoje, validadeDias),
+      editadoEm: agora,
+      historico: [...(atual.historico || []), { em: agora, evento: "editado", total: valores.total }].slice(-50),
+    };
+    await kv.hset(k.orcamentos, { [editado.id]: editado });
+    return editado;
+  }
+
+  const numero = Number(await kv.incr(k.orcSeq));
+  const orc = {
+    id: numeroOrcamento(numero), numero, data: hoje, criadoEm: agora, ...valores,
+    cliente: { id: cliente.id, nome: cliente.nome, telefone: cliente.telefone },
+    origem: d.origem, obs: texto(d.obs, 500), validadeDias, validoAte: somarDias(hoje, validadeDias),
+    status: "aberto", contatos: [], historico: [{ em: agora, evento: "criado", total: valores.total }],
+  };
+  if (d.duplicadoDe) orc.duplicadoDe = texto(d.duplicadoDe, 20);
+  await kv.hset(k.orcamentos, { [orc.id]: orc });
+  return orc;
+}
+
+// Ações: status, contato, perdido, fechar (virou venda), reabrir, precos (atualizar pela tabela)
+export async function atualizarOrcamento(kv, k, p) {
+  const orc = desembrulhar(await kv.hget(k.orcamentos, String(p?.id || "")));
+  if (!orc) throw erro(404, "Orçamento não encontrado.");
+  const agora = new Date().toISOString();
+  const novo = { ...orc, atualizadoEm: agora };
+  const hist = (evento, extra = {}) => { novo.historico = [...(orc.historico || []), { em: agora, evento, ...extra }].slice(-50); };
+  switch (p.acao) {
+    case "status":
+      if (!["aberto", "aguardando"].includes(p.status)) throw erro(400, "Status inválido.");
+      if (orc.status === "fechado") throw erro(409, "Orçamento já virou venda.");
+      novo.status = p.status;
+      hist(`status: ${p.status}`);
+      break;
+    case "contato": {
+      const tipo = p.tipo === "cobrar" ? "cobrar" : "enviar";
+      novo.contatos = [...(orc.contatos || []), { em: agora, tipo }].slice(-100);
+      novo.ultimoContato = agora;
+      if (novo.status === "aberto") novo.status = "aguardando";
+      break;
+    }
+    case "perdido":
+      if (orc.status === "fechado") throw erro(409, "Orçamento já virou venda.");
+      if (!MOTIVOS_PERDA.includes(p.motivo) && !String(p.motivo || "").startsWith("Outro")) throw erro(400, "Escolha o motivo da perda.");
+      novo.status = "perdido";
+      novo.motivoPerda = MOTIVOS_PERDA.includes(p.motivo) ? p.motivo : "Outro";
+      if (novo.motivoPerda === "Outro") novo.motivoPerdaTexto = texto(String(p.motivo).replace(/^Outro:?\s*/, ""), 200);
+      novo.perdidoEm = agora;
+      hist("perdido", { motivo: novo.motivoPerda });
+      break;
+    case "reabrir":
+      if (orc.status !== "perdido") throw erro(409, "Só orçamento perdido pode ser reaberto.");
+      novo.status = "aberto";
+      delete novo.motivoPerda;
+      delete novo.motivoPerdaTexto;
+      hist("reaberto");
+      break;
+    case "fechar":
+      if (!ID.test(String(p.vendaId || ""))) throw erro(400, "Venda inválida.");
+      novo.status = "fechado";
+      novo.vendaId = String(p.vendaId);
+      novo.fechadoEm = dataDe(p.hoje);
+      hist("fechado", { vendaId: novo.vendaId });
+      break;
+    case "precos": {
+      if (orc.status === "fechado") throw erro(409, "Orçamento já virou venda.");
+      const valores = valoresOrcamento(p);
+      const hoje = dataDe(p.hoje);
+      Object.assign(novo, valores, { validoAte: somarDias(hoje, orc.validadeDias), precosAtualizadosEm: agora });
+      hist("preços atualizados", { de: orc.total, para: valores.total });
+      break;
+    }
+    default:
+      throw erro(400, "Ação inválida.");
+  }
+  await kv.hset(k.orcamentos, { [novo.id]: novo });
+  return novo;
+}
+
+export async function salvarCliente(kv, k, c) {
+  const nome = texto(c?.nome, 120).trim();
+  if (!nome) throw erro(400, "Informe o nome do cliente.");
+  const t = normalizarTelefone(c?.telefone);
+  if (!t.ok) throw erro(400, t.erro);
+  const atual = desembrulhar(await kv.hget(k.clientes, t.digitos));
+  const agora = new Date().toISOString();
+  const cliente = { id: t.digitos, nome, telefone: t.formatado, obs: texto(c.obs ?? atual?.obs, 500), criadoEm: atual?.criadoEm || agora, atualizadoEm: agora };
+  await kv.hset(k.clientes, { [t.digitos]: cliente });
+  return cliente;
 }

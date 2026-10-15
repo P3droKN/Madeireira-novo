@@ -82,6 +82,9 @@ function switchTab(tabId) {
     if(tabId === 'prices' && window.Precos) {
         window.Precos.abrir();
     }
+    if(tabId === 'orcamentos' && window.Orcamentos) {
+        window.Orcamentos.abrir();
+    }
     if(tabId === 'financeiro' && window.Financeiro) {
         window.Financeiro.abrir();
     }
@@ -568,10 +571,21 @@ async function registerDirectSale() {
         motivo: pedido.motivoGeral,
         itens: pedido.itens,
     };
+    const vinculo = window.Calculadora.vinculo();
+    if (vinculo && vinculo.modo === 'converter') vendaItem.orcamento = vinculo.id;
     if (!(await gravarLancamentos([vendaItem]))) return;
 
     const margem = ((pedido.venda - pedido.custo) / pedido.venda * 100).toFixed(1).replace('.', ',');
-    alert(`Venda registrada: ${formatCurrency(pedido.venda)}\nCusto dos itens (CMV): ${formatCurrency(pedido.custo)}\nMargem: ${margem}%`);
+    // Venda veio de um orçamento: marca como Fechado, com vínculo para a venda
+    if (vendaItem.orcamento) {
+        try {
+            await api('/api/orcamentos', { method: 'PATCH', body: { id: vendaItem.orcamento, acao: 'fechar', vendaId: vendaItem.id, hoje: vendaItem.competencia } });
+        } catch (e) {
+            alert(`A venda foi registrada, mas o orçamento ${vendaItem.orcamento} não foi marcado como Fechado: ${e.message}. Marque na aba Orçamentos.`);
+        }
+        if (window.Orcamentos) window.Orcamentos.recarregar();
+    }
+    alert(`Venda registrada${vendaItem.orcamento ? ` (orçamento ${vendaItem.orcamento} fechado)` : ''}: ${formatCurrency(pedido.venda)}\nCusto dos itens (CMV): ${formatCurrency(pedido.custo)}\nMargem: ${margem}%`);
     window.Calculadora.limpar(false);
 }
 

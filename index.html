@@ -13,6 +13,7 @@
             <h1>Sistema Madeireira</h1>
             <nav class="tabs">
                 <button class="tab-btn active" id="btn-tab-calculator" onclick="switchTab('calculator')">Calculadora</button>
+                <button class="tab-btn" id="btn-tab-orcamentos" onclick="switchTab('orcamentos')">Orçamentos <span class="contador" id="orc-contador" hidden></span></button>
                 <button class="tab-btn" id="btn-tab-finance" onclick="switchTab('finance')">Gestor de Caixa</button>
                 <button class="tab-btn" id="btn-tab-financeiro" onclick="switchTab('financeiro')">Financeiro</button>
                 <button class="tab-btn" id="btn-tab-prices" onclick="switchTab('prices')">Preços</button>
@@ -138,6 +139,7 @@
                     </div>
                     <ul class="pendencias" id="pendencias"></ul>
 
+                    <div id="orc-vinculo" class="aviso aviso-alerta vinculo" hidden></div>
                     <div class="finalizar" id="finalizar">
                         <div class="finalizar-topo">
                             <h3>Registrar venda no caixa</h3>
@@ -157,9 +159,50 @@
                                 <input type="text" id="calc-nfe" maxlength="20" inputmode="numeric" placeholder="Ex: 1234">
                             </div>
                         </div>
-                        <button class="btn-success btn-largo" id="btn-registrar-venda" onclick="registerDirectSale()">Registrar venda</button>
+                        <div class="botoes-finalizar">
+                            <button class="btn-icon btn-orcamento" id="btn-salvar-orcamento" onclick="Orcamentos.abrirSalvar()">💾 Salvar como orçamento</button>
+                            <button class="btn-success" id="btn-registrar-venda" onclick="registerDirectSale()">Registrar venda</button>
+                        </div>
                         <p class="texto-suave nota">A venda grava, por item e no total: preço de tabela, preço final, variação e motivo. O custo dos itens fica guardado junto (CMV), sem lançar uma saída separada.</p>
                     </div>
+                </section>
+            </div>
+
+            <!-- ABA: ORÇAMENTOS -->
+            <div id="tab-orcamentos" class="tab-content" style="display: none;">
+                <div id="orc-lembrete" class="aviso aviso-alerta" hidden></div>
+                <div class="orc-indicadores" id="orc-indicadores"></div>
+                <section class="glass-panel">
+                    <div class="painel-titulo">
+                        <h2>Orçamentos</h2>
+                        <span class="texto-suave" id="orc-contagem"></span>
+                    </div>
+                    <div class="fin-filtros orc-filtros">
+                        <div class="form-group"><label for="orc-f-status">Status</label>
+                            <select id="orc-f-status">
+                                <option value="abertos">Em aberto (aberto + aguardando)</option>
+                                <option value="cobrar">Para cobrar hoje</option>
+                                <option value="todos">Todos</option>
+                                <option value="aberto">Aberto</option>
+                                <option value="aguardando">Aguardando cliente</option>
+                                <option value="fechado">Fechado</option>
+                                <option value="perdido">Perdido</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label for="orc-f-de">De</label><input type="date" id="orc-f-de"></div>
+                        <div class="form-group"><label for="orc-f-ate">Até</label><input type="date" id="orc-f-ate"></div>
+                        <div class="form-group"><label for="orc-f-busca">Cliente</label><input type="search" id="orc-f-busca" placeholder="nome ou telefone"></div>
+                        <div class="form-group"><label for="orc-f-ordem">Ordenar</label>
+                            <select id="orc-f-ordem"><option value="padrao">Mais antigos em aberto primeiro</option><option value="valor">Maior valor</option></select>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="tabela-orc">
+                            <thead><tr><th>Nº</th><th>Cliente</th><th>Data</th><th class="num">Dias</th><th class="num">Valor</th><th>Origem</th><th>Status</th><th>Último contato</th><th>Ações</th></tr></thead>
+                            <tbody id="orc-body"></tbody>
+                        </table>
+                    </div>
+                    <p class="texto-suave legenda-cores"><span class="bolinha amarelo"></span> 3 ou mais dias sem contato · <span class="bolinha vermelho"></span> vencido (preços podem ter mudado)</p>
                 </section>
             </div>
 
@@ -623,6 +666,96 @@
         </div>
     </div>
 
+    <!-- MODAL SALVAR ORÇAMENTO -->
+    <div id="modal-orc-salvar" class="modal-overlay" style="display: none;">
+        <div class="modal-content glass-panel">
+            <h2 id="orc-salvar-titulo">Salvar como orçamento</h2>
+            <p id="orc-salvar-resumo"></p>
+            <form id="orc-salvar-form" class="fin-form">
+                <div class="form-row">
+                    <div class="form-group"><label for="orc-nome">Nome do cliente</label>
+                        <input type="text" id="orc-nome" maxlength="120" list="orc-clientes" autocomplete="off" required>
+                        <datalist id="orc-clientes"></datalist></div>
+                    <div class="form-group"><label for="orc-tel">WhatsApp (com DDD)</label>
+                        <input type="tel" id="orc-tel" maxlength="20" placeholder="(47) 99999-1234" required>
+                        <small class="texto-suave" id="orc-tel-info"></small></div>
+                </div>
+                <div class="form-group"><label>Origem</label>
+                    <div class="segmentado" id="orc-origem">
+                        <label><input type="radio" name="orc-origem" value="balcao" checked><span>Balcão</span></label>
+                        <label><input type="radio" name="orc-origem" value="whatsapp"><span>WhatsApp</span></label>
+                        <label><input type="radio" name="orc-origem" value="telefone"><span>Telefone</span></label>
+                    </div></div>
+                <div class="form-row">
+                    <div class="form-group"><label for="orc-obs">Observação (opcional)</label><input type="text" id="orc-obs" maxlength="500"></div>
+                    <div class="form-group campo-validade"><label for="orc-validade">Validade (dias)</label><input type="number" id="orc-validade" min="1" max="90" step="1"></div>
+                </div>
+                <div class="export-actions">
+                    <button type="button" class="btn-icon" onclick="Orcamentos.fecharModais()">Cancelar</button>
+                    <button type="submit" class="btn-primary" id="orc-salvar-botao">Salvar orçamento</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL WHATSAPP DO ORÇAMENTO (enviar / cobrar) -->
+    <div id="modal-orc-whats" class="modal-overlay" style="display: none;">
+        <div class="modal-content glass-panel">
+            <h2 id="orc-whats-titulo">WhatsApp</h2>
+            <p id="orc-whats-para"></p>
+            <div class="form-group" id="orc-whats-modelo-grupo"><label for="orc-whats-modelo">Modelo de mensagem</label><select id="orc-whats-modelo"></select></div>
+            <textarea id="orc-whats-texto" class="texto-whatsapp" rows="10"></textarea>
+            <div class="export-actions">
+                <button class="btn-icon" onclick="Orcamentos.fecharModais()">Cancelar</button>
+                <a class="btn-success" id="orc-whats-abrir" target="_blank" rel="noopener">Abrir no WhatsApp</a>
+            </div>
+            <small class="texto-suave">Nada é enviado sozinho: o WhatsApp abre com a mensagem pronta e você decide enviar. O clique registra o último contato.</small>
+        </div>
+    </div>
+
+    <!-- MODAL PERDIDO -->
+    <div id="modal-orc-perdido" class="modal-overlay" style="display: none;">
+        <div class="modal-content glass-panel">
+            <h2>Marcar como perdido</h2>
+            <p id="orc-perdido-qual"></p>
+            <div class="motivos-perda" id="orc-perdido-motivos"></div>
+            <div class="export-actions"><button class="btn-icon" onclick="Orcamentos.fecharModais()">Cancelar</button></div>
+        </div>
+    </div>
+
+    <!-- MODAL ATUALIZAR PREÇOS -->
+    <div id="modal-orc-precos" class="modal-overlay" style="display: none;">
+        <div class="modal-content glass-panel modal-largo">
+            <h2 id="orc-precos-titulo">Atualizar preços</h2>
+            <p class="texto-suave">Recalculado pela tabela de hoje, mantendo o % aplicado em cada item. Itens sem preço de tabela mantêm o preço do orçamento.</p>
+            <div class="table-container"><table class="tabela-conferencia">
+                <thead><tr><th>Item</th><th class="num">No orçamento</th><th class="num">Hoje</th><th class="num">Diferença</th></tr></thead>
+                <tbody id="orc-precos-body"></tbody>
+            </table></div>
+            <div id="orc-precos-total" class="aviso"></div>
+            <div class="export-actions">
+                <button class="btn-icon" onclick="Orcamentos.fecharModais()">Cancelar</button>
+                <button class="btn-primary" id="orc-precos-aplicar">Aplicar novos preços (renova a validade)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CONVERTER EM VENDA -->
+    <div id="modal-orc-converter" class="modal-overlay" style="display: none;">
+        <div class="modal-content glass-panel">
+            <h2 id="orc-converter-titulo">Converter em venda</h2>
+            <p id="orc-converter-info"></p>
+            <div class="export-actions">
+                <button class="btn-icon" onclick="Orcamentos.fecharModais()">Cancelar</button>
+                <button class="btn-icon" id="orc-converter-atuais">Com os preços de hoje</button>
+                <button class="btn-primary" id="orc-converter-orcamento">Com os preços do orçamento</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ORÇAMENTO PARA IMPRESSÃO -->
+    <div id="impressao-orcamento" class="impressao-orcamento"></div>
+
     <!-- MODAL SENHA -->
     <div id="modal-senha" class="modal-overlay" style="display: none;">
         <div class="modal-content glass-panel">
@@ -641,5 +774,6 @@
     <script type="module" src="calculadora.js"></script>
     <script type="module" src="conferencia.js"></script>
     <script type="module" src="financeiro-ui.js"></script>
+    <script type="module" src="orcamentos-ui.js"></script>
 </body>
 </html>

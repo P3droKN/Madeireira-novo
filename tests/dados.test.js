@@ -27,6 +27,7 @@ function kvFalso(inicial = {}) {
     async hdel(k, ...fs) { const h = dados.get(k) || {}; let n = 0; for (const f of fs) if (f in h) { delete h[f]; n++; } return n; },
     async hsetnx(k, f, v) { const h = dados.get(k) || {}; if (f in h) return 0; h[f] = clone(v); dados.set(k, h); return 1; },
     async hmget(k, ...fs) { const h = dados.get(k) || {}; const r = {}; let algum = false; for (const f of fs) { r[f] = f in h ? clone(h[f]) : null; if (f in h) algum = true; } return algum ? r : null; },
+    async incr(k) { const v = Number(dados.get(k) || 0) + 1; dados.set(k, v); return v; },
     async hlen(k) { return Object.keys(dados.get(k) || {}).length; },
     async lpush(k, ...vs) { const l = dados.get(k) || []; l.unshift(...vs.reverse()); dados.set(k, l); return l.length; },
     async lrange(k, a, b) { const l = dados.get(k) || []; return l.slice(a, b === -1 ? undefined : b + 1); },
@@ -411,4 +412,78 @@ test("config financeira: valida taxas, prazos e tPag; guarda tudo", async () => 
   await assert.rejects(salvarConfigFinanceiro(kv, K, { cartao: { debito: { taxaPct: 150 } } }), /Percentual/);
   await assert.rejects(salvarConfigFinanceiro(kv, K, { formas: { dinheiro: { tPag: "1" } } }), /tPag/);
   assert.equal((await lerTudo(kv, K)).configFinanceiro.cartao.debito.taxaPct, 1.5);
+});
+
+import { salvarOrcamento, atualizarOrcamento, listarOrcamentos, salvarCliente } from "../api/_dados.js";
+
+const novoOrc = (extra = {}) => ({
+  cliente: { nome: "Carlos Souza", telefone: "(47) 99999-1234" }, origem: "whatsapp", obs: "", hoje: "2026-10-10",
+  itens: [{ itemId: "PINUS|1x2x2.50", acabamento: "BRUTO", quantidade: 1, descricao: "Pinus", unidade: "peça", precoTabela: 1500, tabelaTotal: 1500, precoUnitario: 1650, vendaTotal: 1650, custoTotal: 2.97, variacaoPct: 10 }],
+  total: 1650, custo: 2.97, margem: 0.998, tabelaTotal: 1500, variacao: 150, ...extra,
+});
+
+test("orçamento: número sequencial, validade, cliente cadastrado pelo telefone", async () => {
+  const kv = kvFalso({});
+  const a = await salvarOrcamento(kv, K, novoOrc(), {});
+  const b = await salvarOrcamento(kv, K, novoOrc({ cliente: { nome: "Carlos S.", telefone: "47999991234" } }), {});
+  assert.equal(a.id, "ORC-0001");
+  assert.equal(b.id, "ORC-0002");
+  assert.equal(a.validoAte, "2026-10-17");
+  assert.equal(a.status, "aberto");
+  const { clientes, orcamentos } = await listarOrcamentos(kv, K);
+  assert.equal(clientes.length, 1); // mesmo telefone = mesmo cliente
+  assert.equal(clientes[0].nome, "Carlos S.");
+  assert.equal(clientes[0].telefone, "(47) 99999-1234");
+  assert.equal(orcamentos.length, 2);
+  await assert.rejects(salvarOrcamento(kv, K, novoOrc({ cliente: { nome: "X", telefone: "9999-1234" } }), {}), /DDD/);
+  await assert.rejects(salvarOrcamento(kv, K, novoOrc({ origem: "email" }), {}), /origem/);
+  const c = await salvarOrcamento(kv, K, novoOrc({ validadeDias: 3 }), { orcamentos: { validadeDias: 7 } });
+  assert.equal(c.validoAte, "2026-10-13");
+});
+
+test("orçamento: contato vira 'aguardando'; perdido pede motivo; editar mantém o número", async () => {
+  const kv = kvFalso({});
+  const o = await salvarOrcamento(kv, K, novoOrc(), {});
+  const c = await atualizarOrcamento(kv, K, { id: o.id, acao: "contato", tipo: "cobrar" });
+  assert.equal(c.status, "aguardando");
+  assert.ok(c.ultimoContato);
+  assert.equal(c.contatos[0].tipo, "cobrar");
+  await assert.rejects(atualizarOrcamento(kv, K, { id: o.id, acao: "perdido", motivo: "qualquer" }), /motivo/);
+  const p = await atualizarOrcamento(kv, K, { id: o.id, acao: "perdido", motivo: "Preço" });
+  assert.equal(p.motivoPerda, "Preço");
+  const r = await atualizarOrcamento(kv, K, { id: o.id, acao: "reabrir" });
+  assert.equal(r.status, "aberto");
+  const e = await salvarOrcamento(kv, K, novoOrc({ id: o.id, total: 1700, itens: [{ ...novoOrc().itens[0], vendaTotal: 1700 }], hoje: "2026-10-12" }), {});
+  assert.equal(e.id, "ORC-0001");
+  assert.equal(e.total, 1700);
+  assert.equal(e.validoAte, "2026-10-19");
+});
+
+test("orçamento: converter em venda fecha com vínculo; fechado não edita; atualizar preços renova a validade", async () => {
+  const kv = kvFalso({});
+  const o = await salvarOrcamento(kv, K, novoOrc(), {});
+  const pr = await atualizarOrcamento(kv, K, { id: o.id, acao: "precos", ...novoOrc({ total: 1760, itens: [{ ...novoOrc().itens[0], vendaTotal: 1760 }] }), hoje: "2026-10-20" });
+  assert.equal(pr.total, 1760);
+  assert.equal(pr.validoAte, "2026-10-27");
+  const f = await atualizarOrcamento(kv, K, { id: o.id, acao: "fechar", vendaId: "1760V", hoje: "2026-10-21" });
+  assert.equal(f.status, "fechado");
+  assert.equal(f.vendaId, "1760V");
+  assert.equal(f.fechadoEm, "2026-10-21");
+  await assert.rejects(salvarOrcamento(kv, K, novoOrc({ id: o.id }), {}), /Duplicar/);
+  const venda = validarLancamentoV2({ id: "1760V", v: 2, conta: "venda_produtos", value: 1760, competencia: "2026-10-21", pagamentos: [{ forma: "dinheiro", valor: 1760 }], orcamento: "ORC-0001" }, {});
+  assert.equal(venda.orcamento, "ORC-0001");
+});
+
+test("backup e restauração incluem orçamentos, clientes e o contador", async () => {
+  const kv = kvFalso({});
+  await salvarOrcamento(kv, K, novoOrc(), {});
+  const b = await montarBackup(kv, K);
+  assert.ok(b.chaves.madeireira_orcamentos["ORC-0001"]);
+  await salvarOrcamento(kv, K, novoOrc(), {});
+  await restaurar(kv, K, b);
+  const { orcamentos } = await listarOrcamentos(kv, K);
+  assert.equal(orcamentos.length, 1);
+  assert.equal((await salvarOrcamento(kv, K, novoOrc(), {})).id, "ORC-0002"); // contador voltou junto
+  const cli = await salvarCliente(kv, K, { nome: "Ana", telefone: "48 3222-1111", obs: "paga em cheque" });
+  assert.equal(cli.obs, "paga em cheque");
 });

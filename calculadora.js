@@ -18,6 +18,7 @@ const estado = {
   catalogo: null,   // montarCatalogo(...)
   pedido: [],       // linhas do pedido
   motivoGeral: "",
+  vinculo: null,    // { id: "ORC-0001", modo: "editar" | "converter" | "duplicar", orcamento }
 };
 
 // ---------- Catálogo ----------
@@ -175,7 +176,7 @@ function adicionar(e) {
 
 function salvarPedidoLocal() {
   try {
-    localStorage.setItem(PEDIDO_KEY, JSON.stringify({ linhas: estado.pedido, motivoGeral: estado.motivoGeral }));
+    localStorage.setItem(PEDIDO_KEY, JSON.stringify({ linhas: estado.pedido, motivoGeral: estado.motivoGeral, vinculo: estado.vinculo }));
   } catch { /* sem armazenamento local */ }
 }
 
@@ -187,6 +188,7 @@ function restaurarPedido() {
       .filter((l) => estado.catalogo.itens.has(l.itemId))
       .map((l) => ({ precoManual: null, variacaoPct: null, motivo: "", ...l }));
     estado.motivoGeral = Array.isArray(salvo) ? "" : salvo.motivoGeral || "";
+    estado.vinculo = Array.isArray(salvo) ? null : salvo.vinculo || null;
   } catch {
     estado.pedido = [];
   }
@@ -307,6 +309,7 @@ function renderPedido() {
   $("ajuste-geral").hidden = vazio;
   $("finalizar").hidden = vazio;
   $("total-cobrar").textContent = moeda(t.venda);
+  renderVinculo();
   editorPagamentos.definirTotal(t.venda);
   salvarPedidoLocal();
 }
@@ -335,6 +338,45 @@ const pctPadrao = (motivo) => {
 function pedirOutro(atual) {
   const texto = prompt("Qual o motivo?", atual.startsWith("Outro: ") ? atual.slice(7) : "");
   return texto === null || !texto.trim() ? null : `Outro: ${texto.trim()}`;
+}
+
+// ---------- Orçamentos ----------
+
+function renderVinculo() {
+  const el = $("orc-vinculo");
+  const v = estado.vinculo;
+  $("btn-salvar-orcamento").textContent = v?.modo === "editar" ? `💾 Salvar alterações no ${v.id}` : "💾 Salvar como orçamento";
+  if (!v || !estado.pedido.length) { el.hidden = true; return; }
+  const textos = {
+    editar: `Editando o orçamento <strong>${esc(v.id)}</strong>. Ao salvar, o número continua o mesmo.`,
+    converter: `Venda do orçamento <strong>${esc(v.id)}</strong>: ao registrar a venda, o orçamento é marcado como Fechado.`,
+    duplicar: `Cópia do orçamento <strong>${esc(v.id)}</strong>: ao salvar, vira um orçamento novo.`,
+  };
+  el.innerHTML = `${textos[v.modo]} <button type="button" class="link-suave" onclick="Calculadora.desvincular()">desfazer vínculo</button>`;
+  el.hidden = false;
+}
+
+// Fotografia do pedido para gravar no orçamento (preços do dia)
+function fotografiaPedido() {
+  const resultados = estado.pedido.map(calcularLinha);
+  const t = totalizarPedido(resultados);
+  const itens = estado.pedido.map((l, i) => {
+    const item = estado.catalogo.itens.get(l.itemId);
+    const r = resultados[i];
+    const livre = item.unidade === "valor_livre";
+    const acab = l.acabamento !== "UNICO" ? ` (${ACABAMENTOS[l.acabamento].toLowerCase()})` : "";
+    return {
+      itemId: l.itemId, acabamento: l.acabamento, quantidade: l.quantidade, comprimento: l.comprimento,
+      descricao: livre ? `${item.material}${l.descricao ? " - " + l.descricao : ""}` : `${item.material} ${item.rotuloDimensao}${acab}`,
+      descricaoLivre: l.descricao || "",
+      quantidadeTexto: livre ? "" : descreverQtd(l, r).replace(/<small>/, " = ").replace(/<[^>]+>/g, ""),
+      unidade: livre ? "un" : r.unidadeCobranca,
+      precoTabela: r.precoTabela, tabelaTotal: r.tabelaTotal,
+      precoUnitario: r.precoUnitario == null ? null : arred(r.precoUnitario),
+      vendaTotal: r.vendaTotal, custoTotal: r.custoTotal, variacaoPct: r.variacaoPct, motivo: l.motivo || "",
+    };
+  });
+  return { itens, total: t.venda, custo: t.custo, margem: t.margem, tabelaTotal: t.tabela, variacao: t.variacao, motivoGeral: estado.motivoGeral || "", semPreco: t.semPreco };
 }
 
 window.Calculadora = {
@@ -498,6 +540,7 @@ window.Calculadora = {
     if (perguntar && estado.pedido.length && !confirm("Remover todos os itens do pedido?")) return;
     estado.pedido = [];
     estado.motivoGeral = "";
+    estado.vinculo = null;
     editorPagamentos.reiniciar(0);
     $("calc-nfe").value = "";
     renderPedido();
@@ -506,6 +549,44 @@ window.Calculadora = {
   // Formas de pagamento da venda (lança erro se a soma não fechar com o total)
   pagamentos() {
     return editorPagamentos.ler();
+  },
+
+  fotografia: fotografiaPedido,
+  vinculo: () => estado.vinculo,
+  desvincular() {
+    estado.vinculo = null;
+    renderPedido();
+  },
+
+  // Para a aba Orçamentos: catálogo e preço de tabela atuais
+  catalogoAtual: () => (estado.catalogo ? { item: (id) => estado.catalogo.itens.get(id), preco: (id, acab) => precoTabela(id, acab) } : null),
+
+  /**
+   * Carrega um orçamento no pedido.
+   * modo: "editar" | "converter" | "duplicar"; precos: "orcamento" (congelados) ou "atuais" (tabela de hoje, mesmo %)
+   */
+  async carregarOrcamento(orc, modo, precos = "orcamento") {
+    if (!estado.catalogo) await carregar();
+    if (estado.pedido.length && !confirm("O pedido atual será substituído pelo orçamento. Continuar?")) return false;
+    estado.pedido = orc.itens.filter((i) => estado.catalogo.itens.has(i.itemId)).map((i) => {
+      const item = estado.catalogo.itens.get(i.itemId);
+      const livre = item.unidade === "valor_livre";
+      const tabelaHoje = precoTabela(i.itemId, i.acabamento);
+      const linha = {
+        uid: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+        itemId: i.itemId, acabamento: i.acabamento, quantidade: i.quantidade, comprimento: i.comprimento,
+        descricao: i.descricaoLivre || "", precoManual: null, variacaoPct: null, totalManual: null, motivo: i.motivo || "",
+      };
+      if (livre || precos === "orcamento") linha.totalManual = i.vendaTotal;
+      else if (tabelaHoje != null) linha.variacaoPct = i.variacaoPct ? arred(i.variacaoPct) : null;
+      else linha.precoManual = i.precoUnitario;
+      return linha;
+    });
+    estado.motivoGeral = orc.motivoGeral || "";
+    estado.vinculo = { id: orc.id, modo, cliente: orc.cliente, origem: orc.origem, obs: orc.obs, validadeDias: orc.validadeDias };
+    editorPagamentos.reiniciar(0);
+    renderPedido();
+    return true;
   },
 
   // Usado por registerDirectSale (script.js): tudo o que a venda grava

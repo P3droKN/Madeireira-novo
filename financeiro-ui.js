@@ -415,6 +415,15 @@ function renderConfig() {
     </div>
     <small class="texto-suave">Estoque estimado = inicial + compras − CMV. O controle por item fica para uma fase futura (as compras já aceitam itens).</small>
 
+    <h3 class="cfg-titulo">Orçamentos</h3>
+    <div class="form-row">
+      <div class="form-group"><label>Validade padrão (dias)</label><input type="number" min="1" max="90" step="1" id="cfg-orc-validade" value="${c.orcamentos.validadeDias}"></div>
+      <div class="form-group"><label>Lembrar de cobrar após (dias sem contato)</label><input type="number" min="1" max="60" step="1" id="cfg-orc-cobrar" value="${c.orcamentos.diasParaCobrar}"></div>
+      <div class="form-group"><label>Amarelo após (dias sem contato)</label><input type="number" min="1" max="60" step="1" id="cfg-orc-amarelo" value="${c.orcamentos.diasAmarelo}"></div>
+    </div>
+    <label>Modelos de mensagem de cobrança (variáveis: {nome}, {numero}, {valor}, {dias}, {validade}). Deixe em branco para apagar.</label>
+    <div class="modelos-orc">${[0, 1, 2].map((i) => `<textarea data-modelo="${i}" maxlength="600" placeholder="Modelo ${i + 1}">${esc(c.orcamentos.modelos[i] || "")}</textarea>`).join("")}</div>
+
     <div class="export-actions"><button type="submit" class="btn-primary">Salvar configuração</button></div>`;
 }
 
@@ -437,6 +446,12 @@ async function salvarConfig(e) {
     impostos: { regime: $("cfg-regime").value, estimarSimples: $("cfg-simples").checked, rbt12: num($("cfg-rbt12").value) },
     depreciacaoLigada: $("cfg-depreciacao").checked,
     estoque: { inicial: num($("cfg-estoque").value) || 0, dataInicial: $("cfg-estoque-data").value || null },
+    orcamentos: {
+      validadeDias: num($("cfg-orc-validade").value),
+      diasParaCobrar: num($("cfg-orc-cobrar").value),
+      diasAmarelo: num($("cfg-orc-amarelo").value),
+      modelos: [...document.querySelectorAll("[data-modelo]")].map((t) => t.value.trim()).filter(Boolean),
+    },
   };
   try {
     const r = await window.api("/api/config", { method: "POST", body: { financeiro } });
