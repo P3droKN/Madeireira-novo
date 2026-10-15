@@ -76,10 +76,17 @@ http.createServer(async (req, res) => {
     if (falhar.includes(globalThis.nImport)) { res.statusCode = 504; res.setHeader("content-type", "text/html"); return res.end("<html>FUNCTION_INVOCATION_TIMEOUT</html>"); }
   }
   if (url.pathname.startsWith("/api/")) {
-    const arquivo = path.join(RAIZ, url.pathname + ".js");
-    if (!fs.existsSync(arquivo) || path.basename(arquivo).startsWith("_")) { res.statusCode = 404; return res.end("{}"); }
+    // Igual à Vercel: arquivo com o mesmo nome, senão a rota dinâmica api/[recurso].js
+    const nome = url.pathname.slice("/api/".length);
+    let arquivo = path.join(RAIZ, "api", nome + ".js");
+    const query = Object.fromEntries(url.searchParams);
+    if (!fs.existsSync(arquivo) || nome.startsWith("_") || nome.includes("/")) {
+      arquivo = path.join(RAIZ, "api", "[recurso].js");
+      query.recurso = nome;
+    }
+    if (!fs.existsSync(arquivo)) { res.statusCode = 404; return res.end("{}"); }
     const { default: handler } = await import(pathToFileURL(arquivo).href);
-    req.query = Object.fromEntries(url.searchParams);
+    req.query = query;
     req.body = corpo ? JSON.parse(corpo) : undefined;
     res.status = (s) => { res.statusCode = s; return res; };
     res.json = (o) => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify(o)); return res; };
