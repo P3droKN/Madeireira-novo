@@ -56,10 +56,19 @@ async function garantir(nome) {
   }
 }
 
+// Cliente de conta corrente (pelo nome digitado): fiado sem vencimento
+function ehContaCorrente(nome) {
+  const n = chave(nome);
+  if (!n) return false;
+  const iguais = estado.lista.filter((c) => chave(c.nome) === n);
+  return iguais.length > 0 && iguais.every((c) => c.contaCorrente === true);
+}
+
 window.Clientes = {
   carregar,
   salvar,
   garantir,
+  ehContaCorrente,
   get lista() { return estado.lista; },
   porId: (id) => estado.lista.find((c) => String(c.id) === String(id)) || null,
 };

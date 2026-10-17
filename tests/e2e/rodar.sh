@@ -25,9 +25,10 @@ ALVO="${1:-todos}"
 [ "$ALVO" = todos -o "$ALVO" = lotes ] && rodar lotes VAZIO=1 FALHAR_IMPORTAR=3,4,5
 [ "$ALVO" = todos -o "$ALVO" = trava ] && rodar trava BANCO_PRODUCAO_HOST=localhost PERMITIR_ZERAR=sim
 [ "$ALVO" = todos -o "$ALVO" = fase2a ] && rodar fase2a SEED="$E/seed2a.json"
-[ "$ALVO" = todos -o "$ALVO" = orcamentos ] && rodar orcamentos X=1
+[ "$ALVO" = todos -o "$ALVO" = orcamentos ] && rodar orcamentos AGORA=2026-10-15T13:00:00Z
 [ "$ALVO" = todos -o "$ALVO" = fase2b ] && rodar fase2b SEED="$E/seed2a.json"
 [ "$ALVO" = todos -o "$ALVO" = frete ] && rodar frete X=1
 [ "$ALVO" = todos -o "$ALVO" = fiado ] && rodar fiado X=1
+[ "$ALVO" = todos -o "$ALVO" = contacorrente ] && rodar contacorrente X=1
 [ "$ALVO" = todos -o "$ALVO" = virada ] && rodar virada SEED="$E/seed2a.json" BANCO_PRODUCAO_HOST=https://producao-antigo.upstash.io PERMITIR_ZERAR=sim
 parar; rm -rf "$TMP"

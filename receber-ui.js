@@ -24,6 +24,7 @@ function calcular() {
 }
 
 const situacaoTag = (d) => d.situacao === "pago" ? '<span class="tag tag-mais">pago</span>'
+  : d.situacao === "em_aberto" ? `<span class="tag tag-cc">em aberto há ${d.diasEmAberto} dia(s)</span>`
   : d.situacao === "atrasado" ? `<span class="tag tag-menos">${d.diasAtraso} dia(s) de atraso</span>` : '<span class="tag">a vencer</span>';
 
 // ---------- Caixa › A receber ----------
@@ -39,7 +40,7 @@ function render(el) {
   const atrasados = r.porCliente.filter((c) => c.atrasado > 0).length;
   el.innerHTML = `
   <div class="saldos-grid receber-cards">
-    <div class="total-bloco"><span>A receber (fiado)</span><strong>${moeda(r.totalAberto)}</strong><small class="texto-suave">${r.porCliente.filter((c) => c.aberto > 0).length} cliente(s)</small></div>
+    <div class="total-bloco"><span>A receber (fiado)</span><strong>${moeda(r.totalAberto)}</strong><small class="texto-suave">${r.porCliente.filter((c) => c.aberto > 0).length} cliente(s)</small>${r.totalContaCorrente ? `<small class="texto-suave">conta corrente ${moeda(r.totalContaCorrente)} · com vencimento ${moeda(r.totalComVencimento)}</small>` : ""}${r.comAlerta ? `<small><span class="tag tag-alerta">⚠ ${r.comAlerta} conta(s) corrente(s) com alerta</span></small>` : ""}</div>
     <div class="total-bloco"><span>Atrasado</span><strong class="${r.totalAtrasado ? "type-expense" : ""}">${moeda(r.totalAtrasado)}</strong><small class="texto-suave">${atrasados} cliente(s) com atraso</small></div>
     <div class="total-bloco"><span>Cheques em carteira</span><strong>${moeda(carteira)}</strong><small class="texto-suave">a compensar</small></div>
     <div class="total-bloco destaque"><span>Total na rua</span><strong>${moeda(naRua)}</strong><small class="texto-suave">fiado + cheques em carteira</small></div>
@@ -72,11 +73,19 @@ function renderConteudo(rPronto) {
   if (estado.visao === "clientes") return renderClientes(alvo, rPronto || calcular().r);
   const r = rPronto || calcular().r;
   const lista = r.porCliente.filter((c) => (estado.quitados || c.aberto > 0 || c.credito > 0) && confere(c.cliente, c.telefone));
+  const cc = lista.filter((c) => c.contaCorrente);
+  const comVenc = lista.filter((c) => !c.contaCorrente);
   alvo.innerHTML = `
     <label class="check texto-suave"><input type="checkbox" id="rc-quitados" ${estado.quitados ? "checked" : ""}> Mostrar também quem já pagou tudo</label>
-    <div class="table-container"><table class="tabela-fin tabela-receber">
+    <div class="receber-secao-titulo"><h3>Conta corrente</h3><span class="texto-suave">sem vencimento: nunca fica atrasado · ${moeda(r.totalContaCorrente)}</span></div>
+    <div class="table-container"><table class="tabela-fin tabela-receber" id="rc-tabela-cc">
+      <thead><tr><th>Cliente</th><th class="num">Em aberto</th><th>Em aberto há</th><th>Último pagamento</th><th>Alerta</th><th>Ações</th></tr></thead>
+      <tbody>${cc.map((c) => linhaCliente(c)).join("") || '<tr><td colspan="6" class="texto-suave">Nenhum cliente de conta corrente em aberto. Marque "Conta corrente" no cadastro do cliente (Clientes).</td></tr>'}</tbody>
+    </table></div>
+    <div class="receber-secao-titulo"><h3>Fiado com vencimento</h3><span class="texto-suave">${moeda(r.totalComVencimento)}</span></div>
+    <div class="table-container"><table class="tabela-fin tabela-receber" id="rc-tabela-venc">
       <thead><tr><th>Cliente</th><th class="num">Em aberto</th><th class="num">Atrasado</th><th class="num">Maior atraso</th><th>Próximo vencimento</th><th>Ações</th></tr></thead>
-      <tbody>${lista.map((c) => linhaCliente(c)).join("") || '<tr><td colspan="6" class="texto-suave">Ninguém devendo. As vendas em "Fiado (a receber)" aparecem aqui.</td></tr>'}</tbody>
+      <tbody>${comVenc.map((c) => linhaCliente(c)).join("") || '<tr><td colspan="6" class="texto-suave">Ninguém devendo. As vendas em "Fiado (a receber)" aparecem aqui.</td></tr>'}</tbody>
     </table></div>`;
   $("rc-quitados").addEventListener("change", (e) => { estado.quitados = e.target.checked; renderConteudo(); });
 }
@@ -84,12 +93,16 @@ function renderConteudo(rPronto) {
 function linhaCliente(c) {
   const aberto = estado.abertos.has(c.chave);
   const tel = normalizarTelefone(c.telefone);
-  return `<tr class="${c.atrasado > 0 ? "cor-vermelho" : ""}" data-chave="${esc(c.chave)}">
-      <td><strong>${esc(c.cliente)}</strong><small>${esc(c.telefone || (c.clienteId ? "sem WhatsApp" : "sem cadastro"))}</small>${c.credito > 0 ? `<small class="texto-ok">crédito ${moeda(c.credito)}</small>` : ""}</td>
-      <td class="num"><strong>${moeda(c.aberto)}</strong></td>
+  const colunas = c.contaCorrente ? `
+      <td>${c.aberto ? `${c.diasEmAberto} dia(s)<small>desde ${dataBR(c.emAbertoDesde)}</small>` : "—"}</td>
+      <td>${c.ultimoPagamento ? `${dataBR(c.ultimoPagamento)}<small>${c.aberto ? `${c.diasSemPagar} dia(s) sem pagar` : ""}</small>` : "—"}</td>
+      <td>${c.alertas.map((a) => `<span class="tag tag-alerta">⚠ ${esc(a.texto)}</span>`).join(" ") || `<small class="texto-suave">${textoAlerta(c)}</small>`}</td>` : `
       <td class="num ${c.atrasado ? "type-expense" : ""}">${c.atrasado ? moeda(c.atrasado) : "—"}</td>
       <td class="num">${c.maiorAtraso ? `${c.maiorAtraso} dia(s)` : "—"}</td>
-      <td>${c.proximoVencimento ? dataBR(c.proximoVencimento) : "—"}</td>
+      <td>${c.proximoVencimento ? dataBR(c.proximoVencimento) : "—"}</td>`;
+  return `<tr class="${c.atrasado > 0 ? "cor-vermelho" : c.alertas.length ? "cor-alerta" : ""}" data-chave="${esc(c.chave)}">
+      <td><strong>${esc(c.cliente)}</strong><small>${esc(c.telefone || (c.clienteId ? "sem WhatsApp" : "sem cadastro"))}</small>${c.credito > 0 ? `<small class="texto-ok">crédito ${moeda(c.credito)}</small>` : ""}</td>
+      <td class="num"><strong>${moeda(c.aberto)}</strong></td>${colunas}
       <td class="orc-acoes">
         ${c.aberto > 0 ? `<button class="btn-icon mini destaque-verde" data-rc="receber">Receber</button>` : ""}
         ${c.aberto > 0 ? (tel.ok ? `<button class="btn-icon mini" data-rc="cobrar">Cobrar 💬</button>` : '<span class="texto-suave mini-nota">sem WhatsApp</span>') : ""}
@@ -98,11 +111,17 @@ function linhaCliente(c) {
     </tr>${aberto ? `<tr class="linha-detalhe"><td colspan="6">${detalheCliente(c)}</td></tr>` : ""}`;
 }
 
+// Alerta configurado (em branco = sem alerta)
+const textoAlerta = (c) => [c.alertaLimite != null ? `limite ${moeda(c.alertaLimite)}` : "", c.alertaDias != null ? `${c.alertaDias} dias sem pagar` : ""].filter(Boolean).join(" · ") || "sem alerta";
+
+// Venda com itens que dá para imprimir de novo (as 2 vias)
+const temVia = (d) => d.tipo === "fiado" && C().itens.some((l) => String(l.id) === String(d.origemId));
+
 function detalheCliente(c) {
   return `<div class="receber-detalhe">
     <table class="tabela-fin">
       <thead><tr><th>Data</th><th>O quê</th><th>Vencimento</th><th class="num">Valor</th><th class="num">Pago</th><th class="num">Em aberto</th><th>Situação</th></tr></thead>
-      <tbody>${c.dividas.map((d) => `<tr><td>${dataBR(d.data)}</td><td>${esc(d.descricao)}</td><td>${dataBR(d.vencimento)}</td>
+      <tbody>${c.dividas.map((d) => `<tr><td>${dataBR(d.data)}</td><td>${esc(d.descricao)}${temVia(d) ? ` <button class="btn-icon mini" data-rc-via="${esc(d.origemId)}" title="Imprimir as 2 vias (loja e cliente)">🖨 Via</button>` : ""}</td><td>${c.contaCorrente ? "conta corrente" : dataBR(d.vencimento)}</td>
         <td class="num">${moeda(d.valor)}</td><td class="num">${d.pago ? moeda(d.pago) : "—"}</td><td class="num"><strong>${moeda(d.aberto)}</strong></td><td>${situacaoTag(d)}</td></tr>`).join("")
         || '<tr><td colspan="7" class="texto-suave">Sem compras no fiado.</td></tr>'}</tbody>
     </table>
@@ -132,21 +151,32 @@ function renderClientes(alvo, r) {
         <div class="form-group"><label for="rc-cli-tel">WhatsApp com DDD (opcional)</label><input type="tel" id="rc-cli-tel" maxlength="20" placeholder="(47) 99999-1234" value="${esc(ed?.telefone || "")}"></div>
         <div class="form-group"><label for="rc-cli-obs">Observação</label><input type="text" id="rc-cli-obs" maxlength="500" placeholder="Ex: paga todo dia 10" value="${esc(ed?.obs || "")}"></div>
       </div>
+      <div class="form-row">
+        <div class="form-group"><label class="check"><input type="checkbox" id="rc-cli-cc" ${ed?.contaCorrente ? "checked" : ""}> Conta corrente (sem vencimento)</label>
+          <small class="texto-suave">Cliente antigo e de confiança: o fiado não vence e nunca aparece como atrasado.</small></div>
+        <div class="form-group rc-cli-alerta"><label for="rc-cli-limite">Alerta: limite em R$</label><input type="number" id="rc-cli-limite" step="0.01" min="0" inputmode="decimal" placeholder="em branco = sem alerta" value="${ed?.alertaLimite ?? ""}"></div>
+        <div class="form-group rc-cli-alerta"><label for="rc-cli-dias">Alerta: dias sem pagar</label><input type="number" id="rc-cli-dias" step="1" min="1" inputmode="numeric" placeholder="em branco = sem alerta" value="${ed?.alertaDias ?? ""}"></div>
+      </div>
       <div class="export-actions">
         ${ed ? '<button type="button" class="btn-icon" id="rc-cli-cancelar">Cancelar</button>' : ""}
         <button type="submit" class="btn-primary">${ed ? "Salvar alterações" : "+ Cadastrar cliente"}</button>
       </div>
     </form>
     <div class="table-container"><table class="tabela-fin">
-      <thead><tr><th>Cliente</th><th>WhatsApp</th><th>Observação</th><th class="num">Em aberto</th><th></th></tr></thead>
-      <tbody>${lista.map((c) => `<tr><td><strong>${esc(c.nome)}</strong></td><td>${esc(c.telefone || "—")}</td><td>${esc(c.obs || "")}</td>
+      <thead><tr><th>Cliente</th><th>Tipo</th><th>WhatsApp</th><th>Observação</th><th class="num">Em aberto</th><th></th></tr></thead>
+      <tbody>${lista.map((c) => `<tr><td><strong>${esc(c.nome)}</strong></td>
+        <td>${c.contaCorrente ? `<span class="tag tag-cc">Conta corrente</span><small>${esc(textoAlerta(c))}</small>` : '<span class="texto-suave">Fiado com vencimento</span>'}</td>
+        <td>${esc(c.telefone || "—")}</td><td>${esc(c.obs || "")}</td>
         <td class="num">${saldo[c.id]?.aberto ? moeda(saldo[c.id].aberto) : "—"}</td>
         <td><button class="btn-icon mini" data-rc-editar="${esc(c.id)}">Editar</button></td></tr>`).join("")
-        || '<tr><td colspan="5" class="texto-suave">Nenhum cliente cadastrado.</td></tr>'}</tbody>
+        || '<tr><td colspan="6" class="texto-suave">Nenhum cliente cadastrado.</td></tr>'}</tbody>
     </table></div>
     <p class="texto-suave">O mesmo cadastro dos orçamentos. Cliente sem WhatsApp fica com um código (C1, C2…).</p>`;
   $("rc-cliente-form").addEventListener("submit", salvarClienteForm);
   $("rc-cli-cancelar")?.addEventListener("click", () => { estado.editandoCliente = null; renderConteudo(); });
+  const mostrarAlertas = () => document.querySelectorAll(".rc-cli-alerta").forEach((g) => { g.hidden = !$("rc-cli-cc").checked; });
+  $("rc-cli-cc").addEventListener("change", mostrarAlertas);
+  mostrarAlertas();
 }
 
 async function salvarClienteForm(e) {
@@ -155,7 +185,11 @@ async function salvarClienteForm(e) {
   if (tel && !normalizarTelefone(tel).ok) return alert(normalizarTelefone(tel).erro);
   const ed = estado.editandoCliente;
   try {
-    await window.Clientes.salvar({ id: ed?.id, nome: $("rc-cli-nome").value.trim(), telefone: tel, obs: $("rc-cli-obs").value.trim() });
+    const cc = $("rc-cli-cc").checked;
+    await window.Clientes.salvar({
+      id: ed?.id, nome: $("rc-cli-nome").value.trim(), telefone: tel, obs: $("rc-cli-obs").value.trim(),
+      contaCorrente: cc, alertaLimite: cc ? $("rc-cli-limite").value.trim() : "", alertaDias: cc ? $("rc-cli-dias").value.trim() : "",
+    });
   } catch (err) {
     return alert(`O cliente não foi salvo: ${err.message}`);
   }
@@ -170,7 +204,7 @@ function abrirReceber(c) {
   estado.atual = c;
   const abertas = c.dividas.filter((d) => d.aberto > 0);
   $("rc-receber-titulo").textContent = `Receber de ${c.cliente}`;
-  $("rc-receber-info").innerHTML = `Em aberto: <strong>${moeda(c.aberto)}</strong>${c.atrasado ? ` · atrasado ${moeda(c.atrasado)}` : ""}`;
+  $("rc-receber-info").innerHTML = `Em aberto: <strong>${moeda(c.aberto)}</strong>${c.atrasado ? ` · atrasado ${moeda(c.atrasado)}` : ""}${c.contaCorrente && c.aberto ? ` · conta corrente, em aberto há ${c.diasEmAberto} dia(s)` : ""}`;
   $("rc-valor").value = c.aberto.toFixed(2);
   $("rc-data").value = hoje();
   $("rc-desc").value = "";
@@ -220,16 +254,28 @@ function relatorio(el) {
   const { r, carteira, chequesCarteira, naRua } = calcular();
   const em30 = somarDias(hoje(), 30);
   const ch30 = chequesCarteira.filter((c) => c.compensacao <= em30);
-  const lista = r.porCliente.filter((c) => c.aberto > 0);
+  const lista = r.porCliente.filter((c) => c.aberto > 0 && !c.contaCorrente);
+  const cc = r.porCliente.filter((c) => c.aberto > 0 && c.contaCorrente);
   el.innerHTML = `
   <section class="glass-panel">
-    <div class="painel-titulo"><h2>A receber por cliente</h2><span class="texto-suave">posição de ${dataBR(hoje())}</span></div>
+    <div class="painel-titulo"><h2>Conta corrente</h2><span class="texto-suave">posição de ${dataBR(hoje())} · sem vencimento</span></div>
+    <div class="table-container"><table class="tabela-fin">
+      <thead><tr><th>Cliente</th><th>WhatsApp</th><th class="num">Em aberto</th><th>Em aberto há</th><th>Último pagamento</th><th>Alerta</th></tr></thead>
+      <tbody>${cc.map((c) => `<tr><td>${esc(c.cliente)}</td><td>${esc(c.telefone || "—")}</td><td class="num">${moeda(c.aberto)}</td>
+        <td>${c.diasEmAberto} dia(s) (desde ${dataBR(c.emAbertoDesde)})</td><td>${c.ultimoPagamento ? dataBR(c.ultimoPagamento) : "—"}</td>
+        <td>${c.alertas.map((a) => `⚠ ${esc(a.texto)}`).join("; ") || "—"}</td></tr>`).join("")
+        || '<tr><td colspan="6" class="texto-suave">Nenhuma conta corrente em aberto.</td></tr>'}</tbody>
+      <tfoot><tr class="dre-total"><td colspan="2">Total conta corrente</td><td class="num">${moeda(r.totalContaCorrente)}</td><td colspan="3"></td></tr></tfoot>
+    </table></div>
+  </section>
+  <section class="glass-panel">
+    <div class="painel-titulo"><h2>Fiado com vencimento</h2><span class="texto-suave">posição de ${dataBR(hoje())}</span></div>
     <div class="table-container"><table class="tabela-fin">
       <thead><tr><th>Cliente</th><th>WhatsApp</th><th class="num">Em aberto</th><th class="num">Atrasado</th><th class="num">Maior atraso</th><th>Próximo vencimento</th></tr></thead>
       <tbody>${lista.map((c) => `<tr><td>${esc(c.cliente)}</td><td>${esc(c.telefone || "—")}</td><td class="num">${moeda(c.aberto)}</td>
         <td class="num">${c.atrasado ? moeda(c.atrasado) : "—"}</td><td class="num">${c.maiorAtraso ? `${c.maiorAtraso} dia(s)` : "—"}</td><td>${c.proximoVencimento ? dataBR(c.proximoVencimento) : "—"}</td></tr>`).join("")
         || '<tr><td colspan="6" class="texto-suave">Nada a receber.</td></tr>'}</tbody>
-      <tfoot><tr class="dre-total"><td colspan="2">Total</td><td class="num">${moeda(r.totalAberto)}</td><td class="num">${moeda(r.totalAtrasado)}</td><td colspan="2"></td></tr></tfoot>
+      <tfoot><tr class="dre-total"><td colspan="2">Total com vencimento</td><td class="num">${moeda(r.totalComVencimento)}</td><td class="num">${moeda(r.totalAtrasado)}</td><td colspan="2"></td></tr></tfoot>
     </table></div>
   </section>
   <section class="glass-panel">
@@ -250,8 +296,12 @@ function relatorio(el) {
 // ---------- Eventos ----------
 
 document.addEventListener("click", (e) => {
-  const b = e.target.closest("[data-rc], [data-rc-estornar], [data-rc-editar]");
+  const b = e.target.closest("[data-rc], [data-rc-estornar], [data-rc-editar], [data-rc-via]");
   if (!b || !estado.el?.contains(b)) return;
+  if (b.dataset.rcVia) {
+    window.Via?.imprimir(C().itens.find((l) => String(l.id) === String(b.dataset.rcVia)));
+    return;
+  }
   if (b.dataset.rcEstornar) {
     if (confirm("Estornar este recebimento? O valor volta a ficar em aberto para o cliente.")) C().excluir(b.dataset.rcEstornar);
     return;

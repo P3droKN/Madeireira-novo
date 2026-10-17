@@ -3,6 +3,7 @@
 import { movimentos, saldos, projecao, fluxoMensal, cheques, chequesNaAbertura, CONTAS_CAIXA, NOMES_CONTAS, rotuloTipo } from "./lib/caixa.js";
 import { grupoPorId } from "./lib/planoContas.js";
 import { somarDias } from "./lib/orcamentos.js";
+import { recebidoDeFiadoAnterior } from "./lib/receber.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -93,6 +94,8 @@ function renderFluxo(el, mes) {
   if (!ab) return semAbertura(el);
   const f = fluxoMensal(movs, ab, estado.mesFluxo, estado.contaFluxo || null);
   const nomeSaida = (k) => grupoPorId[k]?.nome || rotuloTipo(k);
+  // Só informação: quanto das entradas do mês pagou fiado da pasta (anterior à virada), para não parecer que a venda caiu
+  const doAnterior = estado.contaFluxo ? 0 : recebidoDeFiadoAnterior(C().itens, C().configFinanceiro, estado.mesFluxo, hoje(), window.Clientes?.lista || []);
   el.innerHTML = `
   <section class="glass-panel">
     <div class="painel-titulo"><h2>Fluxo de caixa</h2>
@@ -105,6 +108,7 @@ function renderFluxo(el, mes) {
           <tr class="dre-total"><td>Saldo inicial</td><td class="num">${moeda(f.saldoInicial)}</td></tr>
           ${Object.entries(f.entradas).map(([t, v]) => `<tr class="dre-sub"><td>(+) ${esc(rotuloTipo(t))}</td><td class="num type-income">${moeda(v)}</td></tr>`).join("")}
           <tr class="dre-total"><td>(=) Entradas</td><td class="num">${moeda(f.totalEntradas)}</td></tr>
+          ${doAnterior ? `<tr class="dre-sub dre-info-linha"><td><em>(i) Recebido de fiado anterior à virada</em><small class="texto-suave"> já está nas entradas; não é venda deste mês</small></td><td class="num">${moeda(doAnterior)}</td></tr>` : ""}
           ${Object.entries(f.saidas).map(([g, v]) => `<tr class="dre-sub"><td>(−) ${esc(nomeSaida(g))}</td><td class="num type-expense">${moeda(-v)}</td></tr>`).join("")}
           <tr class="dre-total"><td>(=) Saídas</td><td class="num">${moeda(-f.totalSaidas)}</td></tr>
           <tr class="dre-total dre-destaque"><td>Saldo final</td><td class="num">${moeda(f.saldoFinal)}</td></tr>
@@ -121,7 +125,7 @@ function renderFluxo(el, mes) {
 }
 
 // Ajustes › Saldos: abertura de saldos (fazer ou refazer), com os cheques em carteira um por um
-// e o fiado do caderno (o que cada cliente já devia no dia da virada).
+// e o fiado da pasta (o que cada cliente já devia no dia da virada).
 const rascunho = {}; // o que foi digitado na abertura sobrevive aos redesenhos (ao lançar cheque/fiado)
 
 function dataDaAbertura(ab, editando) {
@@ -197,19 +201,21 @@ function renderAbertura(el) {
   </section>
 
   <section class="glass-panel">
-    <div class="painel-titulo"><h2>Fiado anterior (caderno)</h2><strong>${moeda(totalFiado)}</strong></div>
+    <div class="painel-titulo"><h2>Fiado anterior (pasta)</h2><strong>${moeda(totalFiado)}</strong></div>
     <p class="texto-suave">O que cada cliente já devia no dia da virada. Vai para Caixa › A receber e é abatido nos recebimentos, mas não conta como venda (a venda foi antes do sistema).</p>
     <div class="table-container"><table class="tabela-fin">
       <thead><tr><th>Cliente</th><th class="num">Valor devido</th><th>Vencimento</th><th>Observação</th><th></th></tr></thead>
-      <tbody>${fiados.map((l) => `<tr><td>${esc(l.cliente)}</td><td class="num">${moeda(l.value)}</td><td>${dataBR(l.vencimento)}</td>
-        <td>${l.description && l.description !== "Fiado anterior (caderno)" ? esc(l.description) : ""}</td>
+      <tbody>${fiados.map((l) => `<tr><td>${esc(l.cliente)}</td><td class="num">${moeda(l.value)}</td><td>${l.contaCorrente || !l.vencimento || window.Clientes?.porId(l.clienteId)?.contaCorrente ? '<span class="tag tag-cc">conta corrente</span>' : dataBR(l.vencimento)}</td>
+        <td>${l.description && l.description !== "Fiado anterior (pasta)" ? esc(l.description) : ""}</td>
         <td><button class="delete-btn" data-ab-remover="${esc(l.id)}">Remover</button></td></tr>`).join("") || '<tr><td colspan="5" class="texto-suave">Nenhum fiado anterior lançado.</td></tr>'}</tbody>
     </table></div>
     <form id="cx-ab-fiado" class="fin-form linha-adicionar">
       <div class="form-row">
         <div class="form-group"><label for="cx-fa-cliente">Cliente</label><input type="text" id="cx-fa-cliente" maxlength="120" list="clientes-lista" autocomplete="off" required></div>
         <div class="form-group"><label for="cx-fa-valor">Valor devido (R$)</label><input type="number" step="0.01" min="0.01" id="cx-fa-valor" required></div>
-        <div class="form-group"><label for="cx-fa-venc">Vencimento</label><input type="date" id="cx-fa-venc" value="${somarDias(data, prazo)}" required></div>
+        <div class="form-group"><label class="check"><input type="checkbox" id="cx-fa-cc" checked> Conta corrente (sem vencimento)</label>
+          <small class="texto-suave">Marca o cliente como conta corrente no cadastro.</small></div>
+        <div class="form-group" id="cx-fa-venc-grupo" hidden><label for="cx-fa-venc">Vencimento</label><input type="date" id="cx-fa-venc" value="${somarDias(data, prazo)}"></div>
         <div class="form-group"><label for="cx-fa-obs">Observação (opcional)</label><input type="text" id="cx-fa-obs" maxlength="200" placeholder="Ex: compras de setembro"></div>
       </div>
       <button type="submit" class="btn-icon">+ Lançar fiado anterior</button>
@@ -226,6 +232,11 @@ function renderAbertura(el) {
     $("cx-refazer").addEventListener("click", () => { estado.refazer = true; renderAbertura(el); });
   }
   $("cx-ab-fiado").addEventListener("submit", lancarFiado);
+  // Conta corrente esconde o vencimento; cliente já marcado no cadastro vem marcado
+  const mostrarVenc = () => { $("cx-fa-venc-grupo").hidden = $("cx-fa-cc").checked; };
+  $("cx-fa-cc").addEventListener("change", mostrarVenc);
+  $("cx-fa-cliente").addEventListener("change", (e) => { if (window.Clientes?.ehContaCorrente(e.target.value)) { $("cx-fa-cc").checked = true; mostrarVenc(); } });
+  mostrarVenc();
   el.querySelectorAll("[data-ab-remover]").forEach((b) => b.addEventListener("click", () => C().excluir(b.dataset.abRemover)));
 }
 
@@ -263,12 +274,25 @@ async function lancarFiado(e) {
   const data = dataDaAbertura(ab, !ab || estado.refazer);
   const valor = num($("cx-fa-valor").value);
   if (!(valor > 0)) return alert("Informe o valor devido.");
-  const venc = $("cx-fa-venc").value;
+  const contaCorrente = $("cx-fa-cc").checked;
+  const venc = contaCorrente ? "" : $("cx-fa-venc").value;
+  if (!contaCorrente && !venc) return alert("Informe o vencimento (ou marque Conta corrente).");
   const obs = $("cx-fa-obs").value.trim();
   const cli = await window.Clientes.garantir($("cx-fa-cliente").value);
   if (!cli) return;
-  await C().gravar([{ id: C().novoId("FA"), v: 2, conta: "fiado_anterior", value: valor, competencia: data, clienteId: cli.id, cliente: cli.nome, vencimento: venc,
-    description: obs ? `Fiado anterior (caderno): ${obs}` : "Fiado anterior (caderno)" }]);
+  // Marca o cliente como conta corrente no cadastro (mantém telefone, observação e alertas)
+  const cad = window.Clientes.porId(cli.id);
+  if (contaCorrente && !cad?.contaCorrente) {
+    try {
+      await window.Clientes.salvar({ id: cli.id, nome: cad?.nome || cli.nome, telefone: cad?.telefone || "", obs: cad?.obs || "", contaCorrente: true });
+    } catch (err) {
+      return alert(`O cliente não foi marcado como conta corrente: ${err.message}`);
+    }
+  }
+  const item = { id: C().novoId("FA"), v: 2, conta: "fiado_anterior", value: valor, competencia: data, clienteId: cli.id, cliente: cli.nome,
+    description: obs ? `Fiado anterior (pasta): ${obs}` : "Fiado anterior (pasta)" };
+  if (contaCorrente) item.contaCorrente = true; else item.vencimento = venc;
+  await C().gravar([item]);
 }
 
 async function salvarAbertura(e) {

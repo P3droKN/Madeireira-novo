@@ -449,7 +449,10 @@ function validarPagamento(p, cfg, permitirMigracao) {
     if (dataOk(c.devolvidoEm)) limpo.cheque.devolvidoEm = c.devolvidoEm;
   }
   // Fiado: vira conta a receber; o vencimento combinado fica no pagamento (vazio = prazo padrão)
-  if (forma === "fiado") limpo.fiado = { vencimento: dataOk(p.fiado?.vencimento) ? p.fiado.vencimento : "" };
+  // Conta corrente: sem vencimento (o cliente paga quando o valor acumula)
+  if (forma === "fiado") {
+    limpo.fiado = p.fiado?.contaCorrente === true ? { contaCorrente: true, vencimento: "" } : { vencimento: dataOk(p.fiado?.vencimento) ? p.fiado.vencimento : "" };
+  }
   return limpo;
 }
 
@@ -502,13 +505,17 @@ export function validarLancamentoV2(item, cfgSalva) {
     return r;
   }
 
-  // Abertura (virada): o que o cliente já devia no caderno. Vira conta a receber, sem receita nem CMV
+  // Abertura (virada): o que o cliente já devia (vias da pasta). Vira conta a receber, sem receita nem CMV
   // (a venda aconteceu antes do sistema) e sem mexer no caixa.
   if (item.conta === "fiado_anterior") {
     const cli = clienteDoLancamento(item, { exigeId: true });
-    const vencimento = dataOk(item.vencimento) ? item.vencimento : somarDias(competencia, cfg.fiado.prazoDias);
-    return { ...base, conta: "fiado_anterior", category: "fiado_anterior", type: "transfer", method: "", clienteId: cli.id, cliente: cli.nome, vencimento,
-      description: base.description || "Fiado anterior (caderno)" };
+    // Conta corrente: sem vencimento
+    const contaCorrente = item.contaCorrente === true;
+    const vencimento = contaCorrente ? "" : dataOk(item.vencimento) ? item.vencimento : somarDias(competencia, cfg.fiado.prazoDias);
+    const r = { ...base, conta: "fiado_anterior", category: "fiado_anterior", type: "transfer", method: "", clienteId: cli.id, cliente: cli.nome, vencimento,
+      description: base.description || "Fiado anterior (pasta)" };
+    if (contaCorrente) r.contaCorrente = true;
+    return r;
   }
 
   // Abertura (virada): cheque que já estava na gaveta e não veio do sistema antigo. Ele já está dentro do
@@ -553,7 +560,7 @@ export function validarLancamentoV2(item, cfgSalva) {
     if (cli.nome) limpo.cliente = cli.nome;
     if (cli.id) limpo.clienteId = cli.id;
     for (const p of limpo.pagamentos) {
-      if (p.forma === "fiado" && !p.fiado.vencimento) p.fiado.vencimento = somarDias(competencia, cfg.fiado.prazoDias);
+      if (p.forma === "fiado" && !p.fiado.vencimento && !p.fiado.contaCorrente) p.fiado.vencimento = somarDias(competencia, cfg.fiado.prazoDias);
     }
     if (item.cmv != null && item.cmv !== "") {
       const cmv = Number(item.cmv);
@@ -795,7 +802,8 @@ async function salvarClienteDoOrcamento(kv, k, nome, telefone) {
   const t = normalizarTelefone(telefone);
   const atual = desembrulhar(await kv.hget(k.clientes, t.digitos));
   const agora = new Date().toISOString();
-  const cliente = { id: t.digitos, nome, telefone: t.formatado, obs: atual?.obs || "", criadoEm: atual?.criadoEm || agora, atualizadoEm: agora };
+  // Mantém o que o cadastro já tinha (obs, conta corrente, alertas); o orçamento só atualiza nome e telefone
+  const cliente = { ...(atual || {}), id: t.digitos, nome, telefone: t.formatado, obs: atual?.obs || "", criadoEm: atual?.criadoEm || agora, atualizadoEm: agora };
   await kv.hset(k.clientes, { [t.digitos]: cliente });
   return cliente;
 }
@@ -939,8 +947,21 @@ export async function salvarCliente(kv, k, c) {
     id = `C${Number(await kv.incr(k.cliSeq))}`;
   }
   const atual = desembrulhar(await kv.hget(k.clientes, id));
+  // Conta corrente: fiado sem vencimento (nunca "atrasado"); alertas opcionais por limite em R$ e/ou dias sem pagar
+  const opcional = (v, min, max, nome, inteiro) => {
+    if (v === undefined) return undefined;
+    if (v === null || v === "") return null;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < min || n > max || (inteiro && !Number.isInteger(n))) throw erro(400, `Alerta inválido: ${nome}.`);
+    return inteiro ? n : Math.round(n * 100) / 100;
+  };
+  const limite = opcional(c.alertaLimite, 0.01, 1e7, "limite em R$", false);
+  const dias = opcional(c.alertaDias, 1, 3650, "dias sem pagar", true);
   const cliente = {
     id, nome, telefone: t ? t.formatado : "", obs: texto(c.obs ?? atual?.obs, 500),
+    contaCorrente: c.contaCorrente === undefined ? Boolean(atual?.contaCorrente) : c.contaCorrente === true,
+    alertaLimite: limite === undefined ? (atual?.alertaLimite ?? null) : limite,
+    alertaDias: dias === undefined ? (atual?.alertaDias ?? null) : dias,
     criadoEm: atual?.criadoEm || agora, atualizadoEm: agora,
   };
   await kv.hset(k.clientes, { [id]: cliente });

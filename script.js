@@ -347,7 +347,10 @@ async function registerDirectSale() {
         }
         if (window.Orcamentos) window.Orcamentos.recarregar();
     }
-    alert(`Venda registrada${vendaItem.orcamento ? ` (orçamento ${vendaItem.orcamento} fechado)` : ''}: ${formatCurrency(vendaItem.value)}${frete ? `\n(itens ${formatCurrency(pedido.venda)} + frete ${formatCurrency(frete)})` : ''}\nCusto dos itens (CMV): ${formatCurrency(pedido.custo)}\nMargem dos produtos: ${margem}%${fiadoTotal ? `\n\nFiado: ${formatCurrency(fiadoTotal)} a receber de ${vendaItem.cliente} (Caixa › A receber).` : ''}`);
+    const contaCorrente = pagamentos.some((p) => p.forma === 'fiado' && p.fiado?.contaCorrente);
+    const aviso = (contaCorrente ? confirm : alert).bind(window);
+    const querVia = aviso(`Venda registrada${vendaItem.orcamento ? ` (orçamento ${vendaItem.orcamento} fechado)` : ''}: ${formatCurrency(vendaItem.value)}${frete ? `\n(itens ${formatCurrency(pedido.venda)} + frete ${formatCurrency(frete)})` : ''}\nCusto dos itens (CMV): ${formatCurrency(pedido.custo)}\nMargem dos produtos: ${margem}%${fiadoTotal ? `\n\nFiado: ${formatCurrency(fiadoTotal)} a receber de ${vendaItem.cliente} (Caixa › A receber).` : ''}${contaCorrente ? '\n\nCliente de conta corrente: imprimir as 2 vias para a pasta?' : ''}`);
+    if (contaCorrente && querVia) window.Via?.imprimir(vendaItem);
     window.Calculadora.limpar(false);
 }
 

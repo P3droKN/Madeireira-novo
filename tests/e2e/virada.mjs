@@ -1,5 +1,5 @@
 // Ensaio da virada: banco do v2 com dados de teste → Zerar (backup + ZERAR) → importar o export do sistema antigo
-// → Conferir "Tudo confere" → migrar → Conferir de novo → abertura com cheques um por um e fiado do caderno.
+// → Conferir "Tudo confere" → migrar → Conferir de novo → abertura com cheques um por um e fiado da pasta.
 // Servidor: SEED (dados de teste), BANCO_PRODUCAO_HOST (trava ativa, outro banco) e PERMITIR_ZERAR=sim.
 import { createRequire } from "node:module";
 const require = createRequire("/opt/node-tools/node_modules/");
@@ -86,7 +86,7 @@ await page.waitForFunction(() => document.getElementById("fin-aviso-v2").hidden)
 await irDados();
 ok((await conferir()).includes("Tudo confere"), "Conferir depois de migrar: Tudo confere (abertura × acumulado)");
 
-// 4. Abertura com cheques um por um e fiado do caderno
+// 4. Abertura com cheques um por um e fiado da pasta
 await sub("ajustes", "saldos");
 await page.waitForSelector("#cx-abertura");
 ok(nb(await page.textContent("#aj-abertura")).includes("Vieram do sistema antigo"), "lista os cheques que vieram do sistema antigo");
@@ -100,13 +100,15 @@ await page.waitForFunction(() => document.getElementById("aj-abertura").textCont
 ok(await page.inputValue("#cx-ab-gaveta") === "300" && await page.inputValue("#cx-ab-bradesco") === "5000", "o que já foi digitado na abertura continua depois de lançar o cheque");
 const cheq1 = nb(await page.textContent("#cx-ab-cheques"));
 ok(cheq0 === "R$ 400,00" && cheq1 === "R$ 650,00", `cheques em carteira: ${cheq0} do antigo + R$ 250 lançado = ${cheq1}`);
-// fiado do caderno, cliente novo
+// fiado da pasta, cliente novo
 await page.fill("#cx-fa-cliente", "Zé da Obra"); await page.fill("#cx-fa-valor", "480");
 ok(await page.inputValue("#cx-fa-venc") === "2026-11-21", "vencimento sugerido: data da abertura + prazo (20 dias, da configuração mantida)");
 respostas.push("");
 await page.click("#cx-ab-fiado button[type=submit]");
 await page.waitForFunction(() => document.getElementById("aj-abertura").textContent.includes("Zé da Obra"));
-ok(nb(await page.textContent("#aj-abertura")).includes("Fiado anterior (caderno)R$ 480,00"), "fiado anterior lançado: Zé da Obra R$ 480");
+ok(nb(await page.textContent("#aj-abertura")).includes("Fiado anterior (pasta)R$ 480,00"), "fiado anterior lançado: Zé da Obra R$ 480");
+ok((await db()).madeireira_lancamentos && Object.values((await db()).madeireira_lancamentos).map((x) => JSON.parse(x)).some((l) => l.conta === "fiado_anterior" && l.contaCorrente === true && !l.vencimento),
+  "fiado da pasta entra como conta corrente (sem vencimento), que vem marcado");
 await page.click("#cx-abertura button[type=submit]");
 await page.waitForSelector("#cx-refazer");
 const sal = JSON.parse((await db()).madeireira_saldos).abertura;
@@ -119,7 +121,7 @@ const carteira = nb(await page.locator(".saldo-conta", { hasText: "Cheques em ca
 ok(carteira === "R$ 650,00", "Caixa › Saldos: cheques em carteira R$ 650 (o cheque da abertura não conta duas vezes)");
 await sub("caixa", "receber");
 await page.waitForSelector("#fin-receber tr[data-chave]");
-ok(nb(await page.textContent("#fin-receber")).includes("Zé da Obra") && nb(await page.textContent("#fin-receber .receber-cards")).includes("R$ 480,00"), "A receber: Zé deve R$ 480 (do caderno)");
+ok(nb(await page.textContent("#fin-receber")).includes("Zé da Obra") && nb(await page.textContent("#fin-receber .receber-cards")).includes("R$ 480,00"), "A receber: Zé deve R$ 480 (da pasta)");
 await sub("caixa", "cheques");
 ok(nb(await page.textContent("#fin-cheques")).includes("901"), "o cheque da abertura aparece em Caixa › Cheques (pode compensar ou voltar)");
 d = await db();

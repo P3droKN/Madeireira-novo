@@ -4,6 +4,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+// AGORA=2026-10-15T13:00:00Z: o servidor finge estar nessa data (o relógio anda a partir dela), para os ensaios
+// não dependerem do dia em que rodam
+if (process.env.AGORA) {
+  const Real = Date, base = Real.parse(process.env.AGORA), ini = Real.now();
+  const agora = () => base + (Real.now() - ini);
+  globalThis.Date = class extends Real {
+    constructor(...a) { super(...(a.length ? a : [agora()])); }
+    static now() { return agora(); }
+  };
+}
+
 const RAIZ = process.argv[2];
 const PORTA = 4321;
 const db = new Map();

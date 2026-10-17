@@ -1041,3 +1041,23 @@ body.modo-balcao .sigilo { display: none !important; }
 .valor-calculado { display: block; font-size: 1.25rem; padding: 0.55rem 0; }
 .linha-adicionar { margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed var(--input-border); }
 .grupo-linha td { font-weight: 600; color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* ---------- CONTA CORRENTE (fiado sem vencimento) e VIAS para a pasta ---------- */
+.tag-cc { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
+.tag-alerta { background: rgba(245, 158, 11, 0.20); color: #fbbf24; font-weight: 600; }
+.receber-secao-titulo { display: flex; align-items: baseline; gap: 0.75rem; margin: 1rem 0 0.4rem; }
+.receber-secao-titulo h3 { margin: 0; font-size: 1rem; }
+.tabela-fin tr.cor-alerta td { background: rgba(245, 158, 11, 0.10); }
+.impressao-via { display: none; }
+@media print {
+    body.imprimindo-via .app-container, body.imprimindo-via .impressao-orcamento { display: none !important; }
+    body.imprimindo-via .impressao-via { display: block !important; color: black; font-size: 11px; }
+    body.imprimindo-via .via { height: 132mm; overflow: hidden; padding: 4mm 2mm; }
+    body.imprimindo-via .via-topo { display: flex; justify-content: space-between; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 4px; font-size: 13px; }
+    body.imprimindo-via .via p { margin: 2px 0; }
+    body.imprimindo-via .via table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+    body.imprimindo-via .via th, body.imprimindo-via .via td { color: black !important; font-size: 10px !important; padding: 2px 4px !important; border-bottom: 1px solid #ccc; text-align: left; }
+    body.imprimindo-via .via .num { text-align: right; }
+    body.imprimindo-via .via-assinatura { margin-top: 14mm; text-align: center; font-size: 10px; }
+    body.imprimindo-via .via-corte { text-align: center; color: #666; font-size: 9px; margin: 2mm 0; }
+}

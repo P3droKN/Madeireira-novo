@@ -19,8 +19,9 @@ const somarDias = (data, dias) => {
  * @param {boolean} [opcoes.semFiado] recebimento: sem a forma Fiado
  * @param {boolean} [opcoes.clienteExterno] a tela já tem um campo "Cliente" (o fiado usa ele)
  * @param {() => {ligado: boolean, prazoDias: number, data: string}} [opcoes.fiado] configuração do fiado e data da venda
+ * @param {(nomeCliente: string) => boolean} [opcoes.contaCorrente] o cliente é de conta corrente? (fiado sem vencimento)
  */
-export function criarEditorPagamentos(el, { total = 0, semFiado = false, clienteExterno = false, fiado = null } = {}) {
+export function criarEditorPagamentos(el, { total = 0, semFiado = false, clienteExterno = false, fiado = null, contaCorrente = null } = {}) {
   let alvo = total;
   let linhas = [{ forma: "dinheiro", valor: total, parcelas: 2, cheque: {} }];
   let cliente = "";
@@ -29,8 +30,11 @@ export function criarEditorPagamentos(el, { total = 0, semFiado = false, cliente
   const formas = () => FORMAS_PADRAO.filter((f) => !f.soMigracao && (!f.fiado || (!semFiado && cfgFiado().ligado)));
   const restante = () => (centavos(alvo) - linhas.reduce((s, l) => s + centavos(l.valor), 0)) / 100;
   const temFiado = () => linhas.some((l) => l.forma === "fiado" && centavos(l.valor) > 0);
+  const ehContaCorrente = () => Boolean(contaCorrente && contaCorrente(cliente.trim()));
 
+  let ccDesenhado = null;
   function render() {
+    ccDesenhado = ehContaCorrente();
     el.innerHTML = `
       <div class="pagamentos">
         ${linhas.map((l, i) => `
@@ -52,7 +56,8 @@ export function criarEditorPagamentos(el, { total = 0, semFiado = false, cliente
               <div class="pag-fiado">
                 ${clienteExterno ? '<span class="texto-suave">Cliente: use o campo "Cliente" acima (obrigatório no fiado).</span>'
                   : `<input type="text" class="pag-fiado-cliente" list="clientes-lista" placeholder="Cliente (obrigatório)" value="${esc(cliente)}" aria-label="Cliente do fiado" autocomplete="off">`}
-                <label class="texto-suave">Vence em <input type="date" class="pag-fiado-venc" value="${esc(l.vencimento || "")}" aria-label="Vencimento do fiado"></label>
+                ${ehContaCorrente() ? '<span class="tag tag-cc">Conta corrente: sem vencimento</span>'
+                  : `<label class="texto-suave">Vence em <input type="date" class="pag-fiado-venc" value="${esc(l.vencimento || "")}" aria-label="Vencimento do fiado"></label>`}
               </div>` : ""}
           </div>`).join("")}
         <div class="pag-rodape">
@@ -91,6 +96,8 @@ export function criarEditorPagamentos(el, { total = 0, semFiado = false, cliente
     if (e.target.classList.contains("pag-parcelas")) l.parcelas = Number(e.target.value);
     if (e.target.classList.contains("pag-ch")) l.cheque[e.target.dataset.campo] = e.target.value;
     if (e.target.classList.contains("pag-fiado-venc")) l.vencimento = e.target.value;
+    // Ao terminar de digitar o cliente: se for de conta corrente, some o vencimento
+    if (e.target.classList.contains("pag-fiado-cliente")) { cliente = e.target.value; atualizar(); }
   });
   el.addEventListener("input", (e) => {
     if (e.target.classList.contains("pag-fiado-cliente")) { cliente = e.target.value; return; }
@@ -108,6 +115,9 @@ export function criarEditorPagamentos(el, { total = 0, semFiado = false, cliente
       render();
     }
   });
+
+  // Só redesenha se mudou (conta corrente ou não): não apaga o que está sendo digitado
+  function atualizar() { if (ehContaCorrente() !== ccDesenhado) render(); }
 
   render();
 
@@ -131,6 +141,8 @@ export function criarEditorPagamentos(el, { total = 0, semFiado = false, cliente
     },
     clienteDigitado: () => cliente.trim(),
     temFiado,
+    // A tela mudou o cliente (campo "Cliente" de fora): redesenha (conta corrente esconde o vencimento)
+    atualizar,
     // Lança erro claro se a soma não fechar ou se faltar o vencimento do fiado
     ler() {
       if (Math.abs(restante()) >= 0.005) {
@@ -142,8 +154,11 @@ export function criarEditorPagamentos(el, { total = 0, semFiado = false, cliente
         if (l.forma === "credito_parcelado") p.parcelas = Number(l.parcelas) || 2;
         if (l.forma === "cheque") p.cheque = { ...l.cheque };
         if (l.forma === "fiado") {
-          if (!l.vencimento) throw new Error("Informe o vencimento do fiado.");
-          p.fiado = { vencimento: l.vencimento };
+          if (ehContaCorrente()) p.fiado = { contaCorrente: true };
+          else {
+            if (!l.vencimento) throw new Error("Informe o vencimento do fiado.");
+            p.fiado = { vencimento: l.vencimento };
+          }
         }
         return p;
       });

@@ -218,13 +218,21 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - Fiado a vencer **não entra na projeção de 30 dias** (pode entrar como "previsto" na 2D, se o usuário quiser).
 
 **Virada (decidida: caminho B, antes da 2D)** — guia em `VIRADA.md`
-- O v2 vira o oficial reaproveitando o banco `liked-drum`: **Zerar** (Ajustes › Dados; só com `PERMITIR_ZERAR=sim` + trava ativa + banco ≠ produção; baixa backup; digitar ZERAR; mantém preços, ajustes e config financeira) → importar o export final do antigo → "Tudo confere" → migrar → "Tudo confere" → **abertura** com cheques em carteira **um por um** (`cheque_anterior`, já dentro do saldo da abertura) e **fiado do caderno** (`fiado_anterior`, a receber sem receita) → trocar o link nos aparelhos.
+- O v2 vira o oficial reaproveitando o banco `liked-drum`: **Zerar** (Ajustes › Dados; só com `PERMITIR_ZERAR=sim` + trava ativa + banco ≠ produção; baixa backup; digitar ZERAR; mantém preços, ajustes e config financeira) → importar o export final do antigo → "Tudo confere" → migrar → "Tudo confere" → **abertura** com cheques em carteira **um por um** (`cheque_anterior`, já dentro do saldo da abertura) e **fiado da pasta** (`fiado_anterior`, a receber sem receita, normalmente conta corrente) → trocar o link nos aparelhos.
 - `BANCO_PRODUCAO_HOST` **fica** no v2 (aponta para o banco antigo). `PERMITIR_ZERAR` só no dia; apagar depois.
 - O antigo fica 2 semanas só para consulta, travado com o token só leitura da Upstash; script de volta: o usuário não quis.
 - Ensaio: no preview (branch `ensaio`, prefixo `preview:`), com `PERMITIR_ZERAR` só em Preview.
 
+**Fiado em conta corrente (pedido do usuário antes da virada)**
+- Não existe caderno: existe uma **pasta com as vias dos pedidos**, conta corrente de clientes antigos e de confiança, sem vencimento.
+- Cadastro do cliente: `contaCorrente` (bool), `alertaLimite` (R$) e `alertaDias` (dias sem pagar); `null` = sem alerta. Salvar cliente pelo orçamento preserva esses campos.
+- Na venda: `pagamentos[i].fiado = { contaCorrente: true, vencimento: "" }`; no fiado anterior: `contaCorrente: true`, sem `vencimento`. Quem decide se é conta corrente na tela de A receber é **o cadastro na hora do cálculo** (marcar ou desmarcar vale para o passado).
+- `lib/receber.js`: conta corrente nunca fica atrasada (`situacao: "em_aberto"`, `diasEmAberto`), abate as compras mais antigas; por cliente `emAbertoDesde`, `diasEmAberto`, `ultimoPagamento`, `diasSemPagar`, `alertas`; totais `totalContaCorrente`, `totalComVencimento`, `comAlerta`. `recebidoDeFiadoAnterior(lanc, cfg, mes, hoje, clientes)` = quanto dos recebimentos do mês pagou `fiado_anterior` (linha informativa no DRE e no fluxo; não é venda).
+- `via.js`: `window.Via.imprimir(lancamento)` imprime 2 vias (loja/pasta e cliente) numa A4, sem custo nem margem. Oferecido depois da venda fiado de conta corrente (Vender e Lançar) e no botão 🖨 Via em A receber.
+- E2E: `tests/e2e/contacorrente.mjs`. O servidor de teste aceita `AGORA=...` para fingir a data (usado em `orcamentos`, que dependia do dia em que rodava).
+
 ## 7. Próximos passos
-1. **Virada** (antes da 2D): ensaio no preview e depois o dia, conforme `VIRADA.md` e o checklist. Pendentes do usuário: resultado do teste da 2C, prazo do fiado, se existe caderno, nome do endereço e as datas.
+1. **Virada** (antes da 2D): ensaio no preview e depois o dia, conforme `VIRADA.md` e o checklist. 2C testada (ok), prazo 30 dias, fiado da pasta em conta corrente (entregue). Pendentes do usuário: resultado do ensaio no preview, nome do endereço e as datas.
 2. ~~Fase 2C~~ (entregue).
 3. **Fase 2D: relatórios, painel e limpeza**
    - "Vendas por forma de pagamento": a versão simples do mês já existe em Relatórios; falta dia/ano, por conta e o **CSV** com data, Nº NF-e, forma, tPag e valor para o escritório;
@@ -250,6 +258,6 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - **Taxas reais do cartão:** o pai preenche em Ajustes › Financeiro. Hoje estão em 0%.
 - **Preços de venda:** todos vazios até o pai preencher.
 - **Custos "a classificar" (compra ou CMV) dos dados antigos:** o pai precisa classificar no v2 e depois na produção. Enquanto não classifica, o DRE avisa que o lucro pode estar superestimado.
-- **Fiado:** usei prazo padrão de 30 dias e vencimento por venda (configurável). Confirmar com o usuário se está bom.
+- **Fiado:** prazo padrão de 30 dias confirmado. Clientes da pasta usam conta corrente (sem vencimento).
 - **A virada (A ou B)** ainda não foi decidida.
 - **Resumo do mês (antiga tela do Gestor de Caixa, agora em Relatórios):** mesmos números de antes (provado em `tests/relatorios.test.js`), ignorando abertura e transferências. O "resultado" dele é vendas − custos − despesas, **sem funcionários** (sempre foi assim); perguntar ao usuário se quer incluir.

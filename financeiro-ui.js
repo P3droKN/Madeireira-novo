@@ -5,6 +5,7 @@ import { CONTAS, GRUPOS, contaPorId, grupoPorId, naturezaDaConta, FORMAS_PADRAO,
 import { montarDRE, montarDREAnual, normalizar, mesDe, estoqueEstimado } from "./lib/financeiro.js";
 import { resumoDoMes, vendasPorForma } from "./lib/relatorios.js";
 import { criarEditorPagamentos } from "./pagamentos.js";
+import { recebidoDeFiadoAnterior } from "./lib/receber.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -186,7 +187,9 @@ function renderFormulario() {
     estado.editor = criarEditorPagamentos($("ff-pagamentos"), {
       clienteExterno: true,
       fiado: () => ({ ligado: f.ligado !== false, prazoDias: Number(f.prazoDias) || 30, data: $("ff-data")?.value || hoje }),
+      contaCorrente: () => Boolean(window.Clientes?.ehContaCorrente($("ff-cliente")?.value)),
     });
+    $("ff-cliente").addEventListener("change", () => estado.editor.atualizar());
   }
   if (tipo === "venda") $("ff-valor").addEventListener("input", (e) => estado.editor.definirTotal(num(e.target.value) || 0));
   if (tipo === "saida" || tipo === "entrada") {
@@ -250,7 +253,10 @@ async function enviarFormulario(e) {
     if (item.conta === "investimento" && num($("ff-vida").value)) item.vidaUtilMeses = num($("ff-vida").value);
   }
   if (await C().gravar([item])) {
-    alert("Lançamento registrado.");
+    // Fiado de conta corrente: oferece as 2 vias para a pasta
+    const cc = item.pagamentos?.some((p) => p.forma === "fiado" && p.fiado?.contaCorrente);
+    if (cc) { if (confirm("Lançamento registrado.\n\nImprimir as 2 vias para a pasta?")) window.Via?.imprimir(item); }
+    else alert("Lançamento registrado.");
     renderFormulario();
   }
 }
@@ -264,9 +270,9 @@ const NOMES_ESPECIAIS = { transferencia: "Transferência", recebimento: "Recebim
 function descreverForma(l) {
   if (l.conta === "transferencia") return `${CONTAS_FIN[l.de] || l.de} → ${CONTAS_FIN[l.para] || l.para}`;
   if (Array.isArray(l.pagamentos)) {
-    return l.pagamentos.map((p) => `${FORMAS[p.forma]?.nome || p.forma}${p.parcelas ? ` ${p.parcelas}x` : ""}${p.forma === "fiado" && p.fiado?.vencimento ? ` (vence ${dataBR(p.fiado.vencimento)})` : ""}`).join(" + ");
+    return l.pagamentos.map((p) => `${FORMAS[p.forma]?.nome || p.forma}${p.parcelas ? ` ${p.parcelas}x` : ""}${p.forma === "fiado" ? (p.fiado?.contaCorrente ? " (conta corrente)" : p.fiado?.vencimento ? ` (vence ${dataBR(p.fiado.vencimento)})` : "") : ""}`).join(" + ");
   }
-  if (l.conta === "fiado_anterior") return `a receber, vence ${dataBR(l.vencimento)}`;
+  if (l.conta === "fiado_anterior") return l.contaCorrente || !l.vencimento ? "a receber, conta corrente" : `a receber, vence ${dataBR(l.vencimento)}`;
   if (l.pagoCom) return NOME_PAGO[l.pagoCom] + (l.chequeEmitido?.numero ? ` nº ${l.chequeEmitido.numero}` : "");
   return l.abertura ? "abertura" : "—";
 }
@@ -397,6 +403,8 @@ function renderDRE() {
     </tr>`;
   };
   const estoque = estoqueEstimado(lista, cfg, mes);
+  // Recebimentos que pagaram fiado da pasta (antes da virada): entram no caixa, mas não são venda deste mês
+  const doAnterior = recebidoDeFiadoAnterior(C().itens, cfg, mes, C().hoje(), window.Clientes?.lista || []);
   alvo.innerHTML = `
     ${d.avisos.length ? `<ul class="pendencias">${d.avisos.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}
     <div class="table-container"><table class="tabela-dre">
@@ -411,6 +419,7 @@ function renderDRE() {
       <div><span>Compras do mês (viram estoque)</span><strong>${moeda(d.info.compras)}</strong></div>
       <div><span>Estoque estimado em R$ (compras − CMV)</span><strong>${moeda(estoque)}</strong></div>
       <div><span>Ponto de equilíbrio</span><strong>${moeda(d.info.pontoEquilibrio)}</strong></div>
+      ${doAnterior ? `<div><span>Recebido de fiado anterior à virada (entrou no caixa; não é venda deste mês)</span><strong>${moeda(doAnterior)}</strong></div>` : ""}
       ${d.info.aportes ? `<div><span>Aportes do dono</span><strong>${moeda(d.info.aportes)}</strong></div>` : ""}
     </div>`;
 }

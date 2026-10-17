@@ -414,7 +414,7 @@ test("config financeira: valida taxas, prazos e tPag; guarda tudo", async () => 
   assert.equal((await lerTudo(kv, K)).configFinanceiro.cartao.debito.taxaPct, 1.5);
 });
 
-import { salvarOrcamento, atualizarOrcamento, listarOrcamentos, salvarCliente } from "../api/_dados.js";
+import { salvarOrcamento, atualizarOrcamento, listarOrcamentos, salvarCliente, listarClientes } from "../api/_dados.js";
 
 const novoOrc = (extra = {}) => ({
   cliente: { nome: "Carlos Souza", telefone: "(47) 99999-1234" }, origem: "whatsapp", obs: "", hoje: "2026-10-10",
@@ -622,7 +622,7 @@ import { zerarMovimento, CHAVES_ZERAR } from "../api/_dados.js";
 test("abertura: valida fiado anterior (cadastro obrigatório, vencimento padrão) e cheque em carteira", () => {
   assert.throws(() => validarLancamentoV2({ id: "FA1", v: 2, conta: "fiado_anterior", value: 480, competencia: "2026-11-02", cliente: "Zé" }, {}), /cliente/);
   const f = validarLancamentoV2({ id: "FA1", v: 2, conta: "fiado_anterior", value: 480, competencia: "2026-11-02", clienteId: "C1", cliente: "Zé" }, {});
-  assert.deepEqual([f.conta, f.vencimento, f.description, f.type], ["fiado_anterior", "2026-12-02", "Fiado anterior (caderno)", "transfer"]);
+  assert.deepEqual([f.conta, f.vencimento, f.description, f.type], ["fiado_anterior", "2026-12-02", "Fiado anterior (pasta)", "transfer"]);
   const c = validarLancamentoV2({ id: "CA1", v: 2, conta: "cheque_anterior", value: 300, competencia: "2026-11-02", pagamentos: [{ valor: 300, cheque: { numero: "55", emissor: "Ana", compensacao: "2026-11-05" } }] }, {});
   assert.deepEqual([c.pagamentos[0].forma, c.pagamentos[0].conta, c.description], ["cheque", "cheques_carteira", "Cheque em carteira na abertura nº 55"]);
   assert.throws(() => validarLancamentoV2({ id: "CA2", v: 2, conta: "cheque_anterior", value: 300, competencia: "2026-11-02", pagamentos: [{ valor: 300, cheque: {} }] }, {}), /compensação/);
@@ -647,4 +647,20 @@ test("zerar: só com permissão e ZERAR; apaga o movimento, mantém preços e aj
   const copia = kv.dados.get(r.copia);
   assert.ok(copia.chaves.madeireira_orcamentos["ORC-0001"] && copia.chaves.madeireira_migrado_v1, "cópia de antes guardada");
   assert.equal((await salvarOrcamento(kv, K, novoOrc(), {})).id, "ORC-0001", "contador recomeça");
+});
+
+test("conta corrente: cadastro guarda a marcação e os alertas; orçamento não apaga; venda e fiado anterior sem vencimento", async () => {
+  const kv = kvFalso({});
+  const c = await salvarCliente(kv, K, { nome: "Seu Antônio", telefone: "47999991234", contaCorrente: true, alertaLimite: "2000", alertaDias: "45" });
+  assert.deepEqual([c.contaCorrente, c.alertaLimite, c.alertaDias], [true, 2000, 45]);
+  await assert.rejects(salvarCliente(kv, K, { id: c.id, nome: "Seu Antônio", alertaDias: 0 }), /Alerta inválido/);
+  const e = await salvarCliente(kv, K, { id: c.id, nome: "Seu Antônio", telefone: "47999991234", alertaLimite: "" });
+  assert.deepEqual([e.contaCorrente, e.alertaLimite, e.alertaDias], [true, null, 45], "em branco = sem alerta; o resto é mantido");
+  await salvarOrcamento(kv, K, novoOrc({ cliente: { nome: "Antônio", telefone: "(47) 99999-1234" } }), {});
+  const depois = (await listarClientes(kv, K)).clientes[0];
+  assert.deepEqual([depois.nome, depois.contaCorrente, depois.alertaDias], ["Antônio", true, 45], "salvar orçamento mantém a conta corrente");
+  const v = validarLancamentoV2({ id: "CC1V", v: 2, conta: "venda_produtos", value: 300, competencia: "2026-10-10", clienteId: c.id, cliente: "Antônio", pagamentos: [{ forma: "fiado", valor: 300, fiado: { contaCorrente: true } }] }, {});
+  assert.deepEqual(v.pagamentos[0].fiado, { contaCorrente: true, vencimento: "" }, "conta corrente: sem vencimento");
+  const fa = validarLancamentoV2({ id: "FA9", v: 2, conta: "fiado_anterior", value: 480, competencia: "2026-11-02", clienteId: c.id, cliente: "Antônio", contaCorrente: true, vencimento: "2026-12-01" }, {});
+  assert.deepEqual([fa.vencimento, fa.contaCorrente], ["", true]);
 });

@@ -104,11 +104,11 @@ test("texto de cobrança no WhatsApp", () => {
   assert.ok(t.startsWith("Olá Carlos") && t.includes("Consta em aberto R$ 500,00") && t.includes("01/09/2026 – R$ 500,00 (venceu 30/09/2026)"));
 });
 
-test("abertura: fiado do caderno vira conta a receber; cheque lançado na abertura não entra duas vezes na carteira", async () => {
+test("abertura: fiado da pasta vira conta a receber; cheque lançado na abertura não entra duas vezes na carteira", async () => {
   const { chequesNaAbertura } = await import("../lib/caixa.js");
   const ab = { data: "2026-11-02", contas: { gaveta: 100, bradesco: 1000, picpay: 0, cheques_carteira: 700 } };
   const l = [
-    { id: "FA1", v: 2, conta: "fiado_anterior", value: 480, competencia: "2026-11-02", clienteId: "C1", cliente: "Zé", vencimento: "2026-11-10", description: "Fiado anterior (caderno)" },
+    { id: "FA1", v: 2, conta: "fiado_anterior", value: 480, competencia: "2026-11-02", clienteId: "C1", cliente: "Zé", vencimento: "2026-11-10", description: "Fiado anterior (pasta)" },
     { id: "CA1", v: 2, conta: "cheque_anterior", value: 300, competencia: "2026-11-02", cliente: "Ana", pagamentos: [{ forma: "cheque", conta: "cheques_carteira", valor: 300, tPag: "02", cheque: { numero: "55", emissor: "Ana", compensacao: "2026-11-05" } }] },
     // do sistema antigo: recebido antes, compensa depois
     { id: "V0", v: 2, conta: "venda_produtos", value: 400, competencia: "2026-10-20", pagamentos: [{ forma: "cheque", conta: "cheques_carteira", valor: 400, tPag: "02", cheque: { numero: "44", compensacao: "2026-11-08" } }] },
@@ -127,4 +127,41 @@ test("abertura: fiado do caderno vira conta a receber; cheque lançado na abertu
   // cheque da abertura devolvido: a Ana passa a dever
   const dev = [l[0], { ...l[1], pagamentos: [{ ...l[1].pagamentos[0], cheque: { ...l[1].pagamentos[0].cheque, devolvidoEm: "2026-11-06" } }] }];
   assert.equal(contasAReceber(dev, {}, "2026-11-12").porCliente.find((c) => c.cliente === "Ana").aberto, 300);
+});
+
+test("conta corrente: sem vencimento, nunca atrasado; em aberto há X dias; abate a mais antiga; alertas opcionais", async () => {
+  const { recebidoDeFiadoAnterior } = await import("../lib/receber.js");
+  const cc = [{ id: "C7", nome: "Seu Antônio", telefone: "", contaCorrente: true, alertaLimite: 1000, alertaDias: 60 }];
+  const v = (id, data, valor) => ({ id, v: 2, conta: "venda_produtos", value: valor, competencia: data, clienteId: "C7", cliente: "Seu Antônio", pagamentos: [{ forma: "fiado", conta: null, valor, tPag: "05", fiado: { contaCorrente: true, vencimento: "" } }] });
+  const l = [
+    { id: "FA1", v: 2, conta: "fiado_anterior", value: 700, competencia: "2026-08-01", clienteId: "C7", cliente: "Seu Antônio", vencimento: "", contaCorrente: true },
+    v("V1", "2026-09-10", 200),
+    v("V2", "2026-10-01", 150),
+    { id: "R1", v: 2, conta: "recebimento", value: 800, competencia: "2026-10-05", clienteId: "C7", cliente: "Seu Antônio", pagamentos: [{ forma: "cheque", conta: "cheques_carteira", valor: 800, tPag: "02", cheque: { compensacao: "2026-10-20" } }] },
+  ];
+  const r = contasAReceber(l, {}, "2026-10-15", cc);
+  const c = r.porCliente[0];
+  assert.equal(c.contaCorrente, true);
+  assert.equal(c.atrasado, 0, "nunca atrasado");
+  assert.equal(r.totalAtrasado, 0);
+  assert.deepEqual(c.dividas.map((d) => [d.origemId, d.aberto, d.situacao, d.vencimento]), [["FA1", 0, "pago", null], ["V1", 100, "em_aberto", null], ["V2", 150, "em_aberto", null]]);
+  assert.equal(c.aberto, 250);
+  assert.deepEqual([c.emAbertoDesde, c.diasEmAberto, c.ultimoPagamento, c.diasSemPagar], ["2026-09-10", 35, "2026-10-05", 10]);
+  assert.deepEqual(c.alertas, [], "abaixo do limite e com pagamento recente: sem alerta");
+  assert.deepEqual([r.totalContaCorrente, r.totalComVencimento], [250, 0]);
+  assert.equal(c.recebimentos[0].paraAnterior, 700, "dos 800 recebidos, 700 pagaram a pasta anterior à virada");
+  assert.equal(recebidoDeFiadoAnterior(l, {}, "2026-10", "2026-10-15", cc), 700);
+  assert.equal(recebidoDeFiadoAnterior(l, {}, "2026-09", "2026-10-15", cc), 0);
+  // Alertas: limite e dias sem pagar
+  const muito = contasAReceber([...l, v("V3", "2026-10-10", 900)], {}, "2026-12-20", cc).porCliente[0];
+  assert.deepEqual(muito.alertas.map((a) => a.tipo), ["limite", "dias"]);
+  assert.ok(muito.alertas[0].texto.includes("limite de R$ 1.000,00") && muito.alertas[1].texto.startsWith("76 dias sem pagar"));
+  // Em branco = sem alerta
+  const semAlerta = contasAReceber([...l, v("V3", "2026-10-10", 900)], {}, "2026-12-20", [{ ...cc[0], alertaLimite: null, alertaDias: null }]).porCliente[0];
+  assert.deepEqual(semAlerta.alertas, []);
+  // Desmarcar conta corrente: volta a valer o vencimento padrão (data + 30)
+  const normal = contasAReceber(l, {}, "2026-10-15", [{ ...cc[0], contaCorrente: false }]).porCliente[0];
+  assert.equal(normal.contaCorrente, false);
+  assert.ok(normal.dividas.every((d) => d.vencimento));
+  assert.ok(textoCobrancaFiado(c, "2026-10-15").includes("• 10/09/2026 – R$ 100,00") && !textoCobrancaFiado(c, "2026-10-15").includes("vence"), "cobrança da conta corrente sem vencimento");
 });

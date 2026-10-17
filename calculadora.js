@@ -16,7 +16,10 @@ const configFiado = () => {
   const f = window.Caixa?.configFinanceiro?.fiado || {};
   return { ligado: f.ligado !== false, prazoDias: Number(f.prazoDias) || 30, data: document.getElementById("direct-sale-date")?.value || "" };
 };
-const editorPagamentos = criarEditorPagamentos(document.getElementById("calc-pagamentos"), { fiado: configFiado });
+const editorPagamentos = criarEditorPagamentos(document.getElementById("calc-pagamentos"), {
+  fiado: configFiado,
+  contaCorrente: (nome) => Boolean(window.Clientes?.ehContaCorrente(nome)),
+});
 
 const estado = {
   dados: null,      // { custos, precos, config, kvDisponivel }
