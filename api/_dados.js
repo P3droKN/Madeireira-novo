@@ -603,6 +603,8 @@ export function validarLancamentoV2(item, cfgSalva) {
     if (!Number.isInteger(n) || n < 1 || n > 600) throw erro(400, "Vida útil inválida (meses).");
     limpo.vidaUtilMeses = n;
   }
+  // Salário: vínculo CLT (padrão), não CLT ou pró-labore (FGTS e provisão só sobre CLT)
+  if (conta.id === "salarios") limpo.vinculo = VINCULOS_SALARIO.includes(item.vinculo) ? item.vinculo : "clt";
   // Compras: itens opcionais, para ligar estoque por item no futuro
   if (["compra_material", "frete_compras"].includes(conta.id) && Array.isArray(item.itens)) limpo.itens = item.itens.slice(0, 100).map(validarItemPedido);
   return limpo;
@@ -636,10 +638,13 @@ export async function migrarV2(kv, k) {
 }
 
 // Reclassificação em lote: muda a conta (ou aceita a sugestão) e, em vendas, a forma de pagamento.
+const VINCULOS_SALARIO = ["clt", "nao_clt", "pro_labore"];
+
 export async function reclassificar(kv, k, pedido) {
-  const { ids, conta, forma, aceitarSugestao } = pedido || {};
+  const { ids, conta, forma, aceitarSugestao, vinculo } = pedido || {};
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 1000) throw erro(400, "Selecione de 1 a 1000 lançamentos.");
-  if (!conta && !forma && !aceitarSugestao) throw erro(400, "Escolha a conta, a forma de pagamento ou aceitar as sugestões.");
+  if (!conta && !forma && !aceitarSugestao && !vinculo) throw erro(400, "Escolha a conta, a forma de pagamento, o vínculo ou aceitar as sugestões.");
+  if (vinculo && !VINCULOS_SALARIO.includes(vinculo)) throw erro(400, `Vínculo inválido: ${vinculo}`);
   if (conta && !contaPorId[conta]) throw erro(400, `Conta inválida: ${conta}`);
   const cfg = mesclarConfigFinanceiro(desembrulhar(await kv.get(k.configFinanceiro)) || {});
   if (forma && (!(forma in cfg.formas) || forma === "nao_informada")) throw erro(400, `Forma inválida: ${forma}`);
@@ -654,6 +659,11 @@ export async function reclassificar(kv, k, pedido) {
     if (["recebimento", "fiado_anterior", "cheque_anterior"].includes(item.conta)) { ignorados.push({ id, motivo: "recebimento ou item da abertura" }); continue; }
     if (forma === "fiado" || (forma && (item.pagamentos || []).some((p) => p.forma === "fiado"))) { ignorados.push({ id, motivo: "fiado não se troca em lote" }); continue; }
     const novo = { ...item };
+    if (vinculo) {
+      if (item.conta !== "salarios") { ignorados.push({ id, motivo: "não é salário" }); continue; }
+      alterados[id] = { ...novo, vinculo };
+      continue;
+    }
     const destino = aceitarSugestao ? item.sugestao?.conta : conta;
     if (destino) {
       if (item.conta === "transferencia") { ignorados.push({ id, motivo: "transferência" }); continue; }

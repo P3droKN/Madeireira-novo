@@ -402,6 +402,27 @@ test("reclassificar em lote: conta, sugestão, forma; entrada e saída não se t
   assert.deepEqual([v.pagamentos[0].forma, v.pagamentos[0].conta, v.pagamentos[0].tPag, v.formaOriginal], ["pix_picpay", "picpay", "17", "pix_bradesco"]);
 });
 
+test("salário: vínculo CLT por padrão, não CLT ou pró-labore; troca em lote só em salários", async () => {
+  const sal = (id, extra) => validarLancamentoV2(v2saida(id, { conta: "salarios", ...extra }), {});
+  assert.equal(sal("s1").vinculo, "clt");
+  assert.equal(sal("s2", { vinculo: "pro_labore" }).vinculo, "pro_labore");
+  assert.equal(sal("s3", { vinculo: "xyz" }).vinculo, "clt");
+  assert.equal(validarLancamentoV2(v2saida("e1"), {}).vinculo, undefined);
+  const kv = kvFalso({ [K.finance]: [
+    { id: "F1", category: "funcionario", type: "expense", value: 3000, date: "2026-09-30", method: "bradesco" },
+    { id: "D1", category: "despesa", type: "expense", value: 30, date: "2026-09-01", method: "bradesco" },
+  ] });
+  await migrar(kv, K);
+  await migrarV2(kv, K);
+  await assert.rejects(reclassificar(kv, K, { ids: ["F1"], vinculo: "socio" }), { status: 400 });
+  const r = await reclassificar(kv, K, { ids: ["F1", "D1"], vinculo: "pro_labore" });
+  assert.equal(r.alterados, 1);
+  assert.deepEqual(r.ignorados, [{ id: "D1", motivo: "não é salário" }]);
+  const f = await kv.hget(K.lancamentos, "F1");
+  assert.equal(f.vinculo, "pro_labore");
+  assert.equal(f.conta, "salarios");
+});
+
 test("config financeira: valida taxas, prazos e tPag; guarda tudo", async () => {
   const kv = kvFalso({});
   const c = await salvarConfigFinanceiro(kv, K, { cartao: { debito: { taxaPct: 1.5 } }, formas: { pix_bradesco: { tPag: "17" } }, impostos: { estimarSimples: true, rbt12: 600000 } });

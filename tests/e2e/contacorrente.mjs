@@ -125,6 +125,8 @@ await page.click("#btn-tab-relatorios"); await sub("relatorios", "dre");
 await page.waitForSelector("#fin-dre-conteudo .dre-info");
 const dre = nb(await page.textContent("#fin-dre-conteudo .dre-info"));
 ok(dre.includes("Recebido de fiado anterior à virada") && dre.includes("R$ 300,00"), "DRE: linha informativa \"Recebido de fiado anterior à virada\" R$ 300");
+ok(nb(await page.textContent("#fin-dre-conteudo tfoot .dre-info-linha")).includes("Recebido de fiado anterior à virada") && nb(await page.textContent("#fin-dre-conteudo tfoot")).includes("R$ 300,00"),
+  "DRE: também como linha informativa no fim da tabela (não soma no lucro)");
 await sub("relatorios", "fluxo");
 await page.waitForSelector("#rel-fluxo .tabela-dre");
 const fl = nb(await page.textContent("#rel-fluxo .tabela-dre"));

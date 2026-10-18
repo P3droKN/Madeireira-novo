@@ -2,7 +2,7 @@
 // Caixa › Lançar e Lançamentos; Relatórios › Resumo do mês, DRE e Formas de pagamento; Ajustes › Financeiro e Orçamentos.
 // Saldos, Cheques, Fluxo de caixa e Abertura de saldos ficam em caixa-ui.js.
 import { CONTAS, GRUPOS, contaPorId, grupoPorId, naturezaDaConta, FORMAS_PADRAO, PAGO_COM, mesclarConfigFinanceiro } from "./lib/planoContas.js";
-import { montarDRE, montarDREAnual, normalizar, mesDe, estoqueEstimado } from "./lib/financeiro.js";
+import { montarDRE, montarDREAnual, normalizar, mesDe, estoqueEstimado, VINCULOS } from "./lib/financeiro.js";
 import { resumoDoMes, vendasPorForma } from "./lib/relatorios.js";
 import { criarEditorPagamentos } from "./pagamentos.js";
 import { recebidoDeFiadoAnterior } from "./lib/receber.js";
@@ -167,6 +167,8 @@ function renderFormulario() {
     </div>
     <div class="form-row">
       <div class="form-group"><label for="ff-datapag">Data do ${entrada ? "recebimento" : "pagamento"}</label><input type="date" id="ff-datapag" value="${hoje}"></div>
+      <div class="form-group" id="ff-vinculo-grupo" hidden><label for="ff-vinculo">Vínculo</label><select id="ff-vinculo">${VINCULOS.map((v) => `<option value="${v.id}">${v.nome}</option>`).join("")}</select>
+        <small class="texto-suave">FGTS e provisão de 13º/férias só para CLT.</small></div>
       <div class="form-group" id="ff-vida-grupo" hidden><label for="ff-vida">Vida útil (meses), para depreciação</label><input type="number" id="ff-vida" min="1" max="600" step="1" placeholder="Ex: 120"></div>
     </div>
     <div id="ff-cheque" class="fin-cheque" hidden>
@@ -207,6 +209,7 @@ function renderFormulario() {
       const pc = document.querySelector('input[name="ff-pagocom"]:checked')?.value;
       $("ff-cheque") && ($("ff-cheque").hidden = pc !== "cheque_emitido");
       $("ff-vida-grupo").hidden = $("ff-conta").value !== "investimento";
+      $("ff-vinculo-grupo").hidden = $("ff-conta").value !== "salarios";
       if (pc === "cheque_emitido" && !$("ff-ch-favorecido").value && $("ff-fornecedor")) $("ff-ch-favorecido").value = $("ff-fornecedor").value;
     };
     $("ff-conta").addEventListener("change", atualizarSugestao);
@@ -251,6 +254,7 @@ async function enviarFormulario(e) {
       item.chequeEmitido = { numero: $("ff-ch-numero").value.trim(), favorecido: $("ff-ch-favorecido").value.trim(), compensacao: $("ff-ch-comp").value, conta: $("ff-ch-conta").value };
     }
     if (item.conta === "investimento" && num($("ff-vida").value)) item.vidaUtilMeses = num($("ff-vida").value);
+    if (item.conta === "salarios") item.vinculo = $("ff-vinculo").value;
   }
   if (await C().gravar([item])) {
     // Fiado de conta corrente: oferece as 2 vias para a pasta
@@ -302,6 +306,7 @@ function renderLista() {
   if (!$("fin-f-conta").options.length) {
     $("fin-f-conta").innerHTML = `<option value="">Todas</option>${opcoesContas(() => true)}<option value="transferencia">Transferência</option><option value="recebimento">Recebimento de fiado</option>`;
     $("fin-lote-conta").innerHTML = `<option value="" disabled selected>Nova conta…</option>${opcoesContas((c) => c.id !== "classificar_custo")}`;
+    $("fin-lote-vinculo").innerHTML = `<option value="" disabled selected>Vínculo (salários)…</option>${VINCULOS.map((v) => `<option value="${v.id}">${v.nome}</option>`).join("")}`;
     $("fin-lote-forma").innerHTML = `<option value="" disabled selected>Nova forma (vendas)…</option>${FORMAS_PADRAO.filter((f) => !f.soMigracao && !f.fiado).map((f) => `<option value="${f.id}">${esc(f.nome)}</option>`).join("")}`;
   }
   if (!C()) return;
@@ -317,7 +322,7 @@ function renderLista() {
       <td><input type="checkbox" class="fin-sel" value="${esc(l.id)}" ${estado.selecionados.has(String(l.id)) ? "checked" : ""} aria-label="Selecionar"></td>
       <td>${dataBR(l.competencia)}</td>
       <td>${esc(l.description || "")}${l.cliente ? `<small>cliente: ${esc(l.cliente)}</small>` : ""}${l.fornecedor ? `<small>${esc(l.fornecedor)}</small>` : ""}${l.nfe ? `<small>NF-e ${esc(l.nfe)}</small>` : ""}${l.frete ? `<small>inclui frete ${moeda(l.frete)}</small>` : ""}</td>
-      <td>${esc(c?.nome || NOMES_ESPECIAIS[l.conta] || l.conta)} ${tags}${sug}</td>
+      <td>${esc(c?.nome || NOMES_ESPECIAIS[l.conta] || l.conta)}${l.conta === "salarios" ? ` <small class="texto-suave">(${esc(VINCULOS.find((v) => v.id === (l.vinculo || "clt"))?.nome || "CLT")})</small>` : ""} ${tags}${sug}</td>
       <td>${esc(descreverForma(l))}</td>
       <td class="num ${foraDoSaldo(l) ? "" : entrada ? "type-income" : "type-expense"}">${moeda(l.value)}</td>
       <td><button class="delete-btn" data-excluir="${esc(l.id)}" title="Excluir (estornar) este lançamento">Excluir</button></td>
@@ -406,11 +411,15 @@ function renderDRE() {
   // Recebimentos que pagaram fiado da pasta (antes da virada): entram no caixa, mas não são venda deste mês
   const doAnterior = recebidoDeFiadoAnterior(C().itens, cfg, mes, C().hoje(), window.Clientes?.lista || []);
   alvo.innerHTML = `
+    ${d.provisorio.length ? `<div class="aviso aviso-alerta dre-provisorio"><strong>Resultado provisório: ${d.provisorio.length} pendência${d.provisorio.length > 1 ? "s" : ""}</strong>
+      <ul>${d.provisorio.map((p) => `<li>${esc(p.texto)}</li>`).join("")}</ul></div>` : ""}
     ${d.avisos.length ? `<ul class="pendencias">${d.avisos.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}
     <div class="table-container"><table class="tabela-dre">
       <thead><tr><th></th><th class="num">${mes.split("-").reverse().join("/")}</th><th class="num">% receita</th>
         <th class="num so-tela-dre">Mês anterior</th><th class="num so-tela-dre">Δ</th><th class="num so-tela-dre">Mesmo mês ${Number(mes.slice(0, 4)) - 1}</th><th class="num so-tela-dre">Δ</th></tr></thead>
       <tbody>${d.linhas.map(linha).join("")}</tbody>
+      ${doAnterior ? `<tfoot><tr class="dre-info-linha"><td><em>(i) Recebido de fiado anterior à virada</em><small class="texto-suave"> entrou no caixa; não é venda deste mês e não soma no lucro</small></td>
+        <td class="num">${moeda(doAnterior)}</td><td colspan="5"></td></tr></tfoot>` : ""}
     </table></div>
     <div class="dre-info">
       <div><span>Retiradas do dono (abaixo da linha)</span><strong>${moeda(d.info.retiradas)}</strong></div>
@@ -521,8 +530,8 @@ function renderConfig() {
     <div class="form-row">
       <div class="form-group"><label>Regime</label><select id="cfg-regime">
         ${[["simples_nacional", "Simples Nacional"], ["lucro_presumido", "Lucro presumido"], ["outro", "Outro"]].map(([v, n]) => `<option value="${v}" ${v === c.impostos.regime ? "selected" : ""}>${n}</option>`).join("")}</select></div>
-      <div class="form-group"><label class="check"><input type="checkbox" id="cfg-simples" ${c.impostos.estimarSimples ? "checked" : ""}> Estimar DAS pelo Simples (desligado: vale a guia lançada em "Impostos (DAS)")</label>
-        <label>RBT12 (receita dos últimos 12 meses)</label><input type="number" step="0.01" min="0" id="cfg-rbt12" value="${c.impostos.rbt12 ?? ""}" placeholder="só se for estimar"></div>
+      <div class="form-group"><label for="cfg-rbt12">RBT12 (receita bruta dos últimos 12 meses)</label><input type="number" step="0.01" min="0" id="cfg-rbt12" value="${c.impostos.rbt12 ?? ""}" placeholder="pergunte ao escritório">
+        <small class="texto-suave">Enquanto a guia do DAS do mês não é lançada (conta "Impostos (DAS)", com a data do mês a que se refere), o DRE estima pelo Simples, Anexo I, e marca como "estimado".</small></div>
       <div class="form-group"><label class="check"><input type="checkbox" id="cfg-depreciacao" ${c.depreciacaoLigada ? "checked" : ""}> Depreciação mensal dos investimentos</label></div>
     </div>
 
@@ -572,7 +581,7 @@ async function salvarConfig(e) {
     },
     cmv: { margemPadraoPct: num($("cfg-margem").value) ?? 30 },
     pessoal: { fgtsPct: num($("cfg-fgts").value) ?? 8, estimarFgts: $("cfg-fgts-estimar").checked, provisaoPct: num($("cfg-provisao").value) ?? 19.44, provisao13FeriasLigada: $("cfg-provisao-ligada").checked },
-    impostos: { regime: $("cfg-regime").value, estimarSimples: $("cfg-simples").checked, rbt12: num($("cfg-rbt12").value) },
+    impostos: { regime: $("cfg-regime").value, rbt12: num($("cfg-rbt12").value) },
     depreciacaoLigada: $("cfg-depreciacao").checked,
     estoque: { inicial: num($("cfg-estoque").value) || 0, dataInicial: $("cfg-estoque-data").value || null },
     cheques: { contaDeposito: $("cfg-cheque-deposito").value },
@@ -627,6 +636,11 @@ $("fin-lote-aplicar").addEventListener("click", () => {
 });
 $("fin-lote-sugestao").addEventListener("click", () => {
   if (confirm(`Aceitar a sugestão dos ${estado.selecionados.size} lançamento(s) selecionados? Os que não têm sugestão ficam como estão.`)) aplicarLote({ aceitarSugestao: true });
+});
+$("fin-lote-vinculo-aplicar").addEventListener("click", () => {
+  const vinculo = $("fin-lote-vinculo").value;
+  if (!vinculo) return alert("Escolha o vínculo.");
+  if (confirm(`Marcar os salários selecionados como "${VINCULOS.find((v) => v.id === vinculo).nome}"? Os que não são salário ficam como estão.`)) aplicarLote({ vinculo });
 });
 $("fin-lote-forma-aplicar").addEventListener("click", () => {
   const forma = $("fin-lote-forma").value;

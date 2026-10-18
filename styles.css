@@ -1061,3 +1061,10 @@ body.modo-balcao .sigilo { display: none !important; }
     body.imprimindo-via .via-assinatura { margin-top: 14mm; text-align: center; font-size: 10px; }
     body.imprimindo-via .via-corte { text-align: center; color: #666; font-size: 9px; margin: 2mm 0; }
 }
+
+/* ---------- DRE: resultado provisório e linha informativa ---------- */
+.dre-provisorio { margin-bottom: 0.75rem; }
+.dre-provisorio ul { margin: 0.35rem 0 0 1.1rem; }
+.dre-provisorio li { font-size: 0.875rem; }
+.tabela-dre tr.dre-info-linha td { color: var(--text-muted); border-top: 1px dashed rgba(255, 255, 255, 0.15); font-size: 0.875rem; }
+@media print { body.imprimindo-rel .dre-provisorio { display: block !important; border: 1px solid #999 !important; background: none !important; color: black !important; font-size: 9px !important; padding: 3px 6px !important; } }

@@ -16,14 +16,23 @@ test("Simples: RBT12 600.000 → alíquota efetiva 7,19%; DAS de 50.000 ≈ 3.59
   assert.equal(Math.round(50000 * aliq), 3595);
 });
 
-test("DAS: estimativa desligada por padrão; valor real lançado sempre vale", () => {
-  const sem = montarDRE([venda(50000, { cmv: 30000, origem: "calculadora" })], {}, "2026-09");
-  assert.equal(sem.valores.dasEstimado, undefined);
-  const ligada = montarDRE([venda(50000, { cmv: 30000 })], { impostos: { estimarSimples: true, rbt12: 600000 } }, "2026-09");
-  assert.equal(ligada.valores.dasEstimado, -3595);
-  const real = montarDRE([venda(50000, { cmv: 30000 }), saida("das", 3200)], { impostos: { estimarSimples: true, rbt12: 600000 } }, "2026-09");
-  assert.equal(real.valores.dasEstimado, undefined);
-  assert.equal(real.valores.dasReal, -3200);
+test("DAS: sem guia no mês, estimado pelo Simples (RBT12 de Ajustes); a guia lançada substitui a estimativa", () => {
+  const cfg = { impostos: { rbt12: 600000 } };
+  const est = montarDRE([venda(50000, { cmv: 30000 })], cfg, "2026-09");
+  assert.equal(est.valores.dasEstimado, -3595);
+  assert.ok(est.linhas.find((l) => l.id === "dasEstimado").estimado);
+  assert.ok(est.provisorio.some((p) => p.tipo === "das" && p.texto.includes("DAS estimado")));
+  const guia = montarDRE([venda(50000, { cmv: 30000 }), saida("das", 3200)], cfg, "2026-09");
+  assert.equal(guia.valores.dasEstimado, undefined);
+  assert.equal(guia.valores.dasReal, -3200);
+  assert.ok(!guia.provisorio.some((p) => p.tipo === "das"));
+  assert.equal(guia.valores.lucroLiquido - est.valores.lucroLiquido, 3595 - 3200);
+  // Sem RBT12: não dá para estimar, vira pendência
+  const semRbt = montarDRE([venda(50000, { cmv: 30000 })], {}, "2026-09");
+  assert.equal(semRbt.valores.dasEstimado, undefined);
+  assert.ok(semRbt.provisorio.some((p) => p.texto.includes("informe o RBT12")));
+  // Mês sem receita: sem DAS e sem pendência
+  assert.ok(!montarDRE([saida("aluguel", 100)], cfg, "2026-09").provisorio.length);
 });
 
 test("DRE completo de um mês: cada linha e o lucro líquido", () => {
@@ -88,7 +97,9 @@ test("vendas antigas (migradas) não ganham CMV estimado: o custo vem dos custos
   const d = montarDRE([antiga, custo], {}, "2026-09");
   assert.equal(d.valores.cmvEstimado, 0);
   assert.equal(d.info.custoAClassificar, 650);
-  assert.ok(d.avisos.some((a) => a.includes("não classificados")));
+  assert.equal(d.valores.custoAClassificar, -650);
+  assert.equal(d.valores.lucroBruto, 350);
+  assert.ok(d.provisorio.some((p) => p.tipo === "custos" && p.texto.includes("1 custo(s) a classificar")));
   const classificado = montarDRE([antiga, { ...converterLancamento(custo, formas), conta: "cmv", classificar: false }], {}, "2026-09");
   assert.equal(classificado.valores.cmvClassificado, -650);
   assert.equal(classificado.valores.lucroBruto, 350);
@@ -189,4 +200,70 @@ test("frete cobrado na venda: fica na receita, fora da base do CMV estimado", ()
   assert.equal(com.valores.cmvEstimado, sem.valores.cmvEstimado, "CMV estimado só sobre os R$ 1.000 de produtos");
   assert.equal(com.info.freteCobrado, 100);
   assert.equal(sem.info.freteCobrado, 0);
+});
+
+// Setembro como veio do sistema antigo: vendas, custos (a classificar), despesas e funcionários
+const setembroAntigo = () => [
+  { id: "a1", category: "venda", type: "income", value: 60000, date: "2026-09-05", method: "pix" },
+  { id: "a2", category: "venda", type: "income", value: 10000, date: "2026-09-06", method: "debito" },
+  { id: "a3", category: "custo", type: "expense", value: 30000, date: "2026-09-05", method: "bradesco", description: "Custo Extraído: PINUS" },
+  { id: "a4", category: "custo", type: "expense", value: 5000, date: "2026-09-12", method: "bradesco", description: "NF madeira" },
+  { id: "a5", category: "despesa", type: "expense", value: 12000, date: "2026-09-10", method: "bradesco" },
+  { id: "a6", category: "funcionario", type: "expense", value: 10000, date: "2026-09-30", method: "bradesco" },
+];
+
+test("setembro migrado: custos a classificar descontados uma vez só, sem CMV estimado em dobro", () => {
+  const d = montarDRE(setembroAntigo(), {}, "2026-09");
+  assert.equal(d.valores.receitaBruta, 70000);
+  assert.equal(d.valores.custoAClassificar, -35000);
+  assert.equal(d.valores.cmvEstimado, 0); // o mês tem custo a classificar: a estimativa contaria em dobro
+  assert.equal(d.valores.lucroBruto, 35000);
+  assert.ok(d.avisos.some((a) => a.includes("não foi aplicado")));
+  // Coerente com o sistema antigo: vendas − custos − despesas − funcionários = 13.000;
+  // o DRE desconta ainda FGTS (8%) e provisão (19,44%) dos salários CLT
+  assert.equal(d.valores.lucroLiquido, 70000 - 35000 - 12000 - 10000 - 800 - 1944);
+  // margem bruta de 50%: sem aviso de margem fora do normal
+  assert.ok(!d.avisos.some((a) => a.includes("fora do normal")));
+});
+
+test("custos classificados: CMV fica no lugar; tudo como compra (estoque) libera o CMV estimado", () => {
+  const conv = (l, conta) => ({ ...converterLancamento(l, formas), conta, classificar: false });
+  const base = setembroAntigo();
+  const comoCmv = montarDRE([...base.filter((l) => l.category !== "custo"), conv(base[2], "cmv"), conv(base[3], "compra_material")], {}, "2026-09");
+  assert.equal(comoCmv.valores.custoAClassificar, undefined);
+  assert.equal(comoCmv.valores.cmvClassificado, -30000);
+  assert.equal(comoCmv.valores.cmvEstimado, 0);
+  assert.equal(comoCmv.info.compras, 5000);
+  const tudoCompra = montarDRE([...base.filter((l) => l.category !== "custo"), conv(base[2], "compra_material"), conv(base[3], "compra_material")], {}, "2026-09");
+  assert.equal(tudoCompra.valores.cmvEstimado, -49000); // 70% de 70.000 (margem padrão 30%)
+  assert.equal(tudoCompra.provisorio.filter((p) => p.tipo === "custos").length, 0);
+});
+
+test("FGTS e provisão só sobre salários CLT; pró-labore e não CLT não geram", () => {
+  const l = [
+    venda(50000, { cmv: 30000 }),
+    saida("salarios", 3000, { vinculo: "clt" }),
+    saida("salarios", 2000), // sem campo: CLT (padrão e dados antigos)
+    saida("salarios", 1500, { vinculo: "nao_clt" }),
+    saida("salarios", 5000, { vinculo: "pro_labore" }),
+  ];
+  const d = montarDRE(l, {}, "2026-09");
+  assert.equal(d.valores.salarios, -11500);
+  assert.equal(d.valores.fgts, -400); // 8% de 5.000
+  assert.equal(d.valores.provisao, -972); // 19,44% de 5.000
+  const soDono = montarDRE([venda(50000, { cmv: 30000 }), saida("salarios", 5000, { vinculo: "pro_labore" })], {}, "2026-09");
+  assert.equal(soDono.valores.fgts, 0);
+  assert.equal(soDono.valores.provisao, undefined);
+});
+
+test("avisos: taxas de cartão não configuradas, margem bruta acima de 70% e resultado provisório", () => {
+  const cartao = venda(1000, { cmv: 100, pagamentos: [{ forma: "debito", valor: 600 }, { forma: "pix_bradesco", valor: 400 }] });
+  const d = montarDRE([cartao], {}, "2026-09");
+  assert.ok(d.provisorio.some((p) => p.tipo === "taxas" && p.texto.includes("R$ 600,00")));
+  assert.ok(d.avisos.some((a) => a.includes("Margem bruta de 90,0% fora do normal")));
+  const configurada = montarDRE([cartao], { cartao: { debito: { taxaPct: 1.5 } } }, "2026-09");
+  assert.ok(!configurada.provisorio.some((p) => p.tipo === "taxas"));
+  assert.equal(configurada.valores.taxaCartao, -9);
+  const normal = montarDRE([venda(1000, { cmv: 650 })], {}, "2026-09");
+  assert.ok(!normal.avisos.some((a) => a.includes("fora do normal")));
 });

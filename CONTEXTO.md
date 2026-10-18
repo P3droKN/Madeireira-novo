@@ -231,6 +231,14 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - `via.js`: `window.Via.imprimir(lancamento)` imprime 2 vias (loja/pasta e cliente) numa A4, sem custo nem margem. Oferecido depois da venda fiado de conta corrente (Vender e Lançar) e no botão 🖨 Via em A receber.
 - E2E: `tests/e2e/contacorrente.mjs`. O servidor de teste aceita `AGORA=...` para fingir a data (usado em `orcamentos`, que dependia do dia em que rodava).
 
+**DRE depois do ensaio (AJUSTES-POS-ENSAIO, item 1)**
+- O ensaio mostrou lucro irreal em set/2026 (R$ 40.369): os custos migrados "a classificar" ficavam fora do resultado.
+- **Custos a classificar** (`classificar_custo`) agora entram numa linha amarela "(−) Custos a classificar (compra ou CMV?)", descontada antes do lucro bruto, até virarem Compra (estoque) ou CMV.
+- **CMV estimado:** aplicado a toda venda sem custo gravado (nova ou migrada), **só quando o mês não tem custo a classificar nem CMV classificado**. Se tiver, esse custo já é o custo das vendas do mês, e a estimativa contaria em dobro. Se o pai classificar tudo do mês como Compra, a estimativa volta a valer.
+- **DAS:** sem guia no mês (conta `das`, competência = mês a que se refere), estima pelo Simples, Anexo I, com o RBT12 de Ajustes › Financeiro (não há mais a opção de desligar). A guia lançada substitui a estimativa. Sem RBT12, vira pendência.
+- **FGTS e provisão** só sobre salários CLT. Salário tem `vinculo`: `clt` (padrão, inclusive nos dados antigos), `nao_clt`, `pro_labore`. Lançar mostra o campo; Lançamentos tem "Aplicar vínculo" em lote.
+- **Avisos:** caixa "Resultado provisório: N pendências" (custos a classificar com quantidade e R$, DAS estimado ou sem RBT12, taxas de cartão em 0% com vendas no cartão); "margem bruta acima de 70%: verifique o CMV"; "Recebido de fiado anterior à virada" também como linha informativa no fim da tabela (não soma).
+
 ## 7. Próximos passos
 1. **Virada** (antes da 2D): ensaio no preview e depois o dia, conforme `VIRADA.md` e o checklist. 2C testada (ok), prazo 30 dias, fiado da pasta em conta corrente (entregue). Pendentes do usuário: resultado do ensaio no preview, nome do endereço e as datas.
 2. ~~Fase 2C~~ (entregue).
@@ -257,7 +265,8 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - **Códigos tPag:** o escritório precisa confirmar (principalmente o PIX 17 × 20).
 - **Taxas reais do cartão:** o pai preenche em Ajustes › Financeiro. Hoje estão em 0%.
 - **Preços de venda:** todos vazios até o pai preencher.
-- **Custos "a classificar" (compra ou CMV) dos dados antigos:** o pai precisa classificar no v2 e depois na produção. Enquanto não classifica, o DRE avisa que o lucro pode estar superestimado.
+- **Custos "a classificar" (compra ou CMV) dos dados antigos:** o pai precisa classificar. Enquanto não classifica, entram como custo na linha amarela e o DRE fica "provisório".
+- **RBT12** para o DAS estimado: pedir ao escritório e preencher em Ajustes › Financeiro.
 - **Fiado:** prazo padrão de 30 dias confirmado. Clientes da pasta usam conta corrente (sem vencimento).
 - **A virada (A ou B)** ainda não foi decidida.
 - **Resumo do mês (antiga tela do Gestor de Caixa, agora em Relatórios):** mesmos números de antes (provado em `tests/relatorios.test.js`), ignorando abertura e transferências. O "resultado" dele é vendas − custos − despesas, **sem funcionários** (sempre foi assim); perguntar ao usuário se quer incluir.

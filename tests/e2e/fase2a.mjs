@@ -123,6 +123,17 @@ await page.click("#fin-form button[type=submit]");
 await page.waitForTimeout(500);
 const ch = (await lanc()).find((l) => l.chequeEmitido?.numero === "1002");
 ok(ch && ch.chequeEmitido.conta === "picpay" && ch.chequeEmitido.favorecido === "Madeiras do Sul" && ch.conta === "compra_material", "cheque emitido gravado (conta PicPay, favorecido)");
+// Salário do dono: vínculo pró-labore (sem FGTS e sem provisão)
+await page.locator('label:has(input[name="fin-tipo"][value="saida"])').click();
+await page.fill("#ff-data", "2026-10-05");
+await page.selectOption("#ff-conta", "salarios"); await page.dispatchEvent("#ff-conta", "change");
+ok(await page.isVisible("#ff-vinculo") && await page.inputValue("#ff-vinculo") === "clt", "salário: campo Vínculo aparece, com CLT como padrão");
+await page.selectOption("#ff-vinculo", "pro_labore");
+await page.fill("#ff-valor", "2000");
+await page.locator('label:has(input[name="ff-pagocom"][value="bradesco"])').click();
+await page.click("#fin-form button[type=submit]");
+await page.waitForTimeout(500);
+ok((await lanc()).some((l) => l.conta === "salarios" && l.value === 2000 && l.vinculo === "pro_labore"), "salário gravado como pró-labore");
 // Saída sem "Pago com" é recusada
 await page.locator('label:has(input[name="fin-tipo"][value="saida"])').click();
 await page.selectOption("#ff-conta", "agua"); await page.fill("#ff-valor", "40"); await page.fill("#ff-fornecedor", "Fornecedor Novo"); await page.dispatchEvent("#ff-fornecedor", "change");
@@ -167,6 +178,10 @@ ok(dre.includes("R$ 2.090,00"), "DRE outubro: receita bruta R$ 2.090,00");
 ok(dre.includes("−R$ 1,00") || dre.includes("-R$ 1,00"), "taxa de débito 2% sobre R$ 50 = R$ 1,00");
 ok(dre.includes("CMV estimado") && dre.includes("estimado"), "venda manual sem custo: CMV estimado e marcado");
 ok(dre.includes("Compras do mês") && dre.includes("R$ 3.400,00"), "compras (900 + 2.500) aparecem como estoque, fora do resultado");
+const linhaDre = async (t) => nb(await page.locator("#fin-dre-conteudo tbody tr", { hasText: t }).first().textContent());
+// outubro: João R$ 1.500 (CLT, veio do antigo) + pró-labore R$ 2.000
+ok((await linhaDre("Salários")).includes("R$ 3.500,00") && (await linhaDre("FGTS")).includes("R$ 120,00") && (await linhaDre("Provisão")).includes("R$ 291,60"),
+  "FGTS (8%) e provisão (19,44%) só sobre o salário CLT de R$ 1.500; o pró-labore de R$ 2.000 não entra");
 await page.screenshot({ path: "dre-mes.png", fullPage: true });
 await page.locator('label:has(input[name="rel-visao"][value="ano"])').click();
 ok((await page.locator(".tabela-dre.anual tbody tr").count()) > 15, "DRE anual com 12 meses + total");
@@ -174,7 +189,8 @@ await page.screenshot({ path: "dre-ano.png", fullPage: false });
 await page.locator('label:has(input[name="rel-visao"][value="mes"])').click();
 await page.fill("#rel-mes", "2026-08"); await page.dispatchEvent("#rel-mes", "change");
 const ago = nb(await page.textContent("#fin-dre-conteudo"));
-ok(ago.includes("não classificados"), "agosto avisa custos não classificados (abertura)");
+ok(ago.includes("Resultado provisório") && ago.includes("custo(s) a classificar"), "agosto: aviso de resultado provisório com os custos a classificar (abertura)");
+ok(nb(await page.locator("#fin-dre-conteudo tr.dre-alerta", { hasText: "Custos a classificar" }).textContent()).includes("-R$"), "agosto: linha amarela \"Custos a classificar\" descontada antes do lucro bruto");
 // Relatórios › Formas de pagamento (outubro) e Imprimir A4
 await page.click('.subtabs[data-grupo="relatorios"] .subtab[data-sub="formas"]');
 await page.fill("#rel-mes", "2026-10"); await page.dispatchEvent("#rel-mes", "change");
