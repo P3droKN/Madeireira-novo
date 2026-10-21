@@ -2,10 +2,11 @@
 // Caixa › Lançar e Lançamentos; Relatórios › Resumo do mês, DRE e Formas de pagamento; Ajustes › Financeiro e Orçamentos.
 // Saldos, Cheques, Fluxo de caixa e Abertura de saldos ficam em caixa-ui.js.
 import { CONTAS, GRUPOS, contaPorId, grupoPorId, naturezaDaConta, FORMAS_PADRAO, PAGO_COM, mesclarConfigFinanceiro } from "./lib/planoContas.js";
-import { montarDRE, montarDREAnual, normalizar, mesDe, estoqueEstimado, VINCULOS } from "./lib/financeiro.js";
+import { montarDRE, montarDREAnual, normalizar, mesDe, estoqueEstimado, VINCULOS, pontoEquilibrioMedio } from "./lib/financeiro.js";
 import { resumoDoMes, vendasPorForma } from "./lib/relatorios.js";
 import { criarEditorPagamentos } from "./pagamentos.js";
 import { recebidoDeFiadoAnterior } from "./lib/receber.js";
+import { sugestaoDe } from "./lib/migracaoV2.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -64,6 +65,7 @@ function renderSub() {
   if (grupo === "relatorios") {
     if (!$("rel-mes").value) $("rel-mes").value = mesRelatorio();
     $("rel-visao-grupo").hidden = sub !== "dre";
+    renderEquilibrio();
     if (sub === "resumo") renderResumo();
     if (sub === "dre") renderDRE();
     const mesBR = mesRelatorio().split("-").reverse().join("/");
@@ -292,7 +294,7 @@ function filtrarLista() {
     if (mes && mesDe(l) !== mes) return false;
     if (conta && l.conta !== conta) return false;
     if (tipo === "classificar" && !l.classificar) return false;
-    if (tipo === "sugestao" && !(l.classificar && l.sugestao)) return false;
+    if (tipo === "sugestao" && !sugestaoDe(l)) return false;
     if (tipo === "entradas" && naturezaDaConta(l.conta) !== "entrada") return false;
     if (tipo === "saidas" && (l.conta === "transferencia" || naturezaDaConta(l.conta) !== "saida")) return false;
     if (tipo === "migrados" && !l.migrado) return false;
@@ -316,7 +318,8 @@ function renderLista() {
   $("fin-lista-body").innerHTML = lista.slice(0, LIMITE).map((l) => {
     const c = contaPorId[l.conta];
     const entrada = naturezaDaConta(l.conta) === "entrada";
-    const sug = l.classificar && l.sugestao ? `<small class="sugestao">sugestão: ${esc(contaPorId[l.sugestao.conta]?.nome || l.sugestao.conta)} (${esc(l.sugestao.motivo)})</small>` : "";
+    const s = sugestaoDe(l);
+    const sug = s ? `<small class="sugestao">sugestão: ${esc(contaPorId[s.conta]?.nome || s.conta)} (${esc(s.motivo)})</small>` : "";
     const tags = [l.classificar ? '<span class="tag tag-menos">a classificar</span>' : "", l.abertura ? '<span class="tag">abertura</span>' : "", l.migrado && !l.abertura ? '<span class="tag">migrado</span>' : ""].join(" ");
     return `<tr class="${estado.selecionados.has(String(l.id)) ? "selecionado" : ""}">
       <td><input type="checkbox" class="fin-sel" value="${esc(l.id)}" ${estado.selecionados.has(String(l.id)) ? "checked" : ""} aria-label="Selecionar"></td>
@@ -390,11 +393,17 @@ function renderDRE() {
     return;
   }
 
+  // Mês em andamento: compara com o mesmo pedaço (até o mesmo dia) do mês anterior e do ano passado,
+  // para não parecer queda frente a um mês completo
+  const hojeStr = C().hoje();
+  const emAndamento = mes === hojeStr.slice(0, 7);
+  const ateDia = emAndamento ? Number(hojeStr.slice(8, 10)) : null;
+  const ddmm = (m) => `${String(ateDia).padStart(2, "0")}/${m.slice(5, 7)}`;
   const d = montarDRE(lista, cfg, mes, { jaNormalizado: true });
-  const ant = montarDRE(lista, cfg, mesAnterior(mes), { jaNormalizado: true });
-  const anoAnt = montarDRE(lista, cfg, mesAnterior(mes, 12), { jaNormalizado: true });
+  const ant = montarDRE(lista, cfg, mesAnterior(mes), { jaNormalizado: true, ateDia });
+  const anoAnt = montarDRE(lista, cfg, mesAnterior(mes, 12), { jaNormalizado: true, ateDia });
   const rb = d.valores.receitaBruta;
-  $("rel-titulo-impressao").textContent = `DRE gerencial · ${mes.split("-").reverse().join("/")}`;
+  $("rel-titulo-impressao").textContent = `DRE gerencial · ${mes.split("-").reverse().join("/")}${emAndamento ? ` (mês em andamento, até ${ddmm(mes)})` : ""}`;
   const linha = (l) => {
     const va = ant.valores[l.id] ?? 0, vb = anoAnt.valores[l.id] ?? 0;
     const dv = variacao(l.valor, va), dy = variacao(l.valor, vb);
@@ -411,12 +420,14 @@ function renderDRE() {
   // Recebimentos que pagaram fiado da pasta (antes da virada): entram no caixa, mas não são venda deste mês
   const doAnterior = recebidoDeFiadoAnterior(C().itens, cfg, mes, C().hoje(), window.Clientes?.lista || []);
   alvo.innerHTML = `
+    ${emAndamento ? `<div class="aviso dre-andamento"><strong>Mês em andamento (até ${ddmm(mes)})</strong>: as comparações usam o mesmo período (1 a ${ddmm(mesAnterior(mes))} no mês anterior). Salários e contas do fim do mês ainda podem entrar.</div>` : ""}
     ${d.provisorio.length ? `<div class="aviso aviso-alerta dre-provisorio"><strong>Resultado provisório: ${d.provisorio.length} pendência${d.provisorio.length > 1 ? "s" : ""}</strong>
       <ul>${d.provisorio.map((p) => `<li>${esc(p.texto)}</li>`).join("")}</ul></div>` : ""}
     ${d.avisos.length ? `<ul class="pendencias">${d.avisos.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}
     <div class="table-container"><table class="tabela-dre">
-      <thead><tr><th></th><th class="num">${mes.split("-").reverse().join("/")}</th><th class="num">% receita</th>
-        <th class="num so-tela-dre">Mês anterior</th><th class="num so-tela-dre">Δ</th><th class="num so-tela-dre">Mesmo mês ${Number(mes.slice(0, 4)) - 1}</th><th class="num so-tela-dre">Δ</th></tr></thead>
+      <thead><tr><th></th><th class="num">${mes.split("-").reverse().join("/")}${emAndamento ? ` <small>(até ${ddmm(mes)})</small>` : ""}</th><th class="num">% receita</th>
+        <th class="num so-tela-dre">Mês anterior${emAndamento ? ` <small>(até ${ddmm(mesAnterior(mes))})</small>` : ""}</th><th class="num so-tela-dre">Δ</th>
+        <th class="num so-tela-dre">Mesmo mês ${Number(mes.slice(0, 4)) - 1}${emAndamento ? ` <small>(até ${ddmm(mesAnterior(mes, 12))})</small>` : ""}</th><th class="num so-tela-dre">Δ</th></tr></thead>
       <tbody>${d.linhas.map(linha).join("")}</tbody>
       ${doAnterior ? `<tfoot><tr class="dre-info-linha"><td><em>(i) Recebido de fiado anterior à virada</em><small class="texto-suave"> entrou no caixa; não é venda deste mês e não soma no lucro</small></td>
         <td class="num">${moeda(doAnterior)}</td><td colspan="5"></td></tr></tfoot>` : ""}
@@ -446,6 +457,30 @@ function ultimoDia(mes) {
 function diaDoMes(mes) {
   const h = C()?.hoje() || "";
   return h.startsWith(mes) ? h : ultimoDia(mes);
+}
+
+// Relatórios: "Quanto preciso vender por mês para empatar" (média dos últimos 3 meses completos)
+function renderEquilibrio() {
+  const el = $("rel-equilibrio");
+  if (!el || !C()) return;
+  const hoje = C().hoje();
+  const mes = hoje.slice(0, 7);
+  const pe = pontoEquilibrioMedio(C().itens, C().configFinanceiro, mes, 3);
+  if (!pe) { el.innerHTML = ""; return; }
+  const nomes = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  const meses = pe.meses.map((m) => `${nomes[Number(m.slice(5, 7)) - 1]}/${m.slice(2, 4)}`).join(", ");
+  const doMes = montarDRE(C().itens, C().configFinanceiro, mes).valores.receitaBruta;
+  const pct = (pe.margemContribuicaoPct * 100).toFixed(1).replace(".", ",");
+  el.innerHTML = pe.pontoEquilibrio == null
+    ? `<div class="equilibrio aviso aviso-alerta"><span>Quanto preciso vender por mês para empatar</span>
+        <strong>Sem ponto de equilíbrio</strong><small>A margem de contribuição de ${meses} ficou negativa (${pct}%): vender mais não cobre os custos. Verifique o CMV e os preços.</small></div>`
+    : `<div class="equilibrio">
+        <span>Quanto preciso vender por mês para empatar</span>
+        <strong id="rel-equilibrio-valor">${moeda(pe.pontoEquilibrio)}</strong>
+        <small>Custos fixos médios ${moeda(pe.custosFixosMedia)} ÷ margem de contribuição de ${pct}% · média de ${meses}</small>
+        <small>Vendas médias nesses meses: ${moeda(pe.vendasMedia)} (${pe.vendasMedia >= pe.pontoEquilibrio ? `${moeda(pe.vendasMedia - pe.pontoEquilibrio)} acima` : `${moeda(pe.pontoEquilibrio - pe.vendasMedia)} abaixo`} do empate)
+          · este mês até ${hoje.slice(8, 10)}/${hoje.slice(5, 7)}: ${moeda(doMes)}${doMes < pe.pontoEquilibrio ? ` (faltam ${moeda(pe.pontoEquilibrio - doMes)})` : " (já empatou)"}</small>
+      </div>`;
 }
 
 function renderResumo() {

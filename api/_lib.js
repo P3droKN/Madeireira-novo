@@ -75,6 +75,7 @@ export function chaves(ambiente = process.env.VERCEL_ENV, prefixoFixo = process.
     orcSeq: p + "madeireira_orc_seq",        // contador do número sequencial
     clientes: p + "madeireira_clientes",     // hash: telefone (DDD+número) ou C1, C2… -> cliente
     cliSeq: p + "madeireira_cli_seq",        // contador dos clientes sem WhatsApp (C1, C2…)
+    vendaSeq: p + "madeireira_venda_seq",    // contador do número curto das vendas (V-0001…)
     saldos: p + "madeireira_saldos",         // abertura de saldos e conferências
   };
 }

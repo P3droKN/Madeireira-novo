@@ -1050,9 +1050,10 @@ body.modo-balcao .sigilo { display: none !important; }
 .tabela-fin tr.cor-alerta td { background: rgba(245, 158, 11, 0.10); }
 .impressao-via { display: none; }
 @media print {
-    body.imprimindo-via .app-container, body.imprimindo-via .impressao-orcamento { display: none !important; }
-    body.imprimindo-via .impressao-via { display: block !important; color: black; font-size: 11px; }
-    body.imprimindo-via .via { height: 132mm; overflow: hidden; padding: 4mm 2mm; }
+    body.imprimindo-via { display: block !important; background: white !important; min-height: 0 !important; padding: 0 !important; margin: 0 !important; }
+    body.imprimindo-via > *:not(.impressao-via) { display: none !important; }
+    body.imprimindo-via .impressao-via { display: block !important; color: black; font-size: 11px; padding: 6mm 12mm; }
+    body.imprimindo-via .via { height: 125mm; overflow: hidden; padding: 2mm 0; }
     body.imprimindo-via .via-topo { display: flex; justify-content: space-between; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 4px; font-size: 13px; }
     body.imprimindo-via .via p { margin: 2px 0; }
     body.imprimindo-via .via table { width: 100%; border-collapse: collapse; margin: 6px 0; }
@@ -1068,3 +1069,10 @@ body.modo-balcao .sigilo { display: none !important; }
 .dre-provisorio li { font-size: 0.875rem; }
 .tabela-dre tr.dre-info-linha td { color: var(--text-muted); border-top: 1px dashed rgba(255, 255, 255, 0.15); font-size: 0.875rem; }
 @media print { body.imprimindo-rel .dre-provisorio { display: block !important; border: 1px solid #999 !important; background: none !important; color: black !important; font-size: 9px !important; padding: 3px 6px !important; } }
+
+/* ---------- Relatórios: quanto preciso vender para empatar ---------- */
+.equilibrio { display: flex; flex-direction: column; gap: 0.2rem; padding: 1rem 1.25rem; margin-bottom: 1rem; border-radius: 12px; border: 1px solid var(--primary); background: rgba(59, 130, 246, 0.10); }
+.equilibrio span { color: var(--text-muted); font-size: 0.9rem; }
+.equilibrio strong { font-size: 1.9rem; }
+.equilibrio small { color: var(--text-muted); font-size: 0.82rem; }
+.dre-andamento { margin-bottom: 0.75rem; }

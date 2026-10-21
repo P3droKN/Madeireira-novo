@@ -239,6 +239,14 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - **FGTS e provisão** só sobre salários CLT. Salário tem `vinculo`: `clt` (padrão, inclusive nos dados antigos), `nao_clt`, `pro_labore`. Lançar mostra o campo; Lançamentos tem "Aplicar vínculo" em lote.
 - **Avisos:** caixa "Resultado provisório: N pendências" (custos a classificar com quantidade e R$, DAS estimado ou sem RBT12, taxas de cartão em 0% com vendas no cartão); "margem bruta acima de 70%: verifique o CMV"; "Recebido de fiado anterior à virada" também como linha informativa no fim da tabela (não soma).
 
+**Ajustes pós-ensaio (itens 2 a 4) e extras** — DRE aprovado pelo usuário no preview (set R$ 4.983,15; ago −R$ 18.320,48; out −R$ 23.248,70)
+- **Via:** número curto `numero` = `V-0001…`, dado pelo servidor (`madeireira_venda_seq`, zerado no Zerar, no backup e no restaurar) a toda `venda_produtos` nova; editar mantém. A via usa `numero` (vendas antigas: o id). Margem zero só durante a impressão da via (um `<style>@page{margin:0}</style>` posto e tirado pelo `via.js`): sem margem o navegador não imprime cabeçalho e rodapé. As 2 vias cabem numa A4.
+- **Fiado anterior:** campo `desde` (via mais antiga, ≤ data da abertura); A receber conta "em aberto há X dias" a partir dele. Aviso ao lançar outro para o mesmo cliente ("já tem um Fiado anterior de R$ X. Somar mesmo assim?"). Total no fim da lista.
+- **Alerta pelo "Ver"** (Caixa › A receber): conta corrente, limite em R$ e dias sem pagar, salvos no cadastro.
+- **Sugestão DAS/FGTS:** `sugestaoDe(l)` em `lib/migracaoV2.js` (calculada na hora para `classificar_despesa`): "DAS", "Simples", "imposto(s)", "guia" → `das`; "FGTS" → `fgts`. Aceitar leva a competência para o último dia do mês anterior (a guia é do mês anterior; guarda `competenciaOriginal`; o caixa continua na data do pagamento), substituindo a estimativa daquele mês.
+- **DRE mês em andamento:** aviso "Mês em andamento (até DD/MM)" e comparação com o mesmo pedaço do mês anterior e do ano passado (`montarDRE(..., { ateDia })`).
+- **Quanto preciso vender por mês para empatar** (topo de Relatórios): `pontoEquilibrioMedio` = custos fixos médios (pessoal + fixas + operacionais + despesas a classificar) ÷ margem de contribuição em % da receita, nos últimos 3 meses completos com venda.
+
 ## 7. Próximos passos
 1. **Virada** (antes da 2D): ensaio no preview e depois o dia, conforme `VIRADA.md` e o checklist. 2C testada (ok), prazo 30 dias, fiado da pasta em conta corrente (entregue). Pendentes do usuário: resultado do ensaio no preview, nome do endereço e as datas.
 2. ~~Fase 2C~~ (entregue).

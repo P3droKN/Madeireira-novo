@@ -685,3 +685,59 @@ test("conta corrente: cadastro guarda a marcação e os alertas; orçamento não
   const fa = validarLancamentoV2({ id: "FA9", v: 2, conta: "fiado_anterior", value: 480, competencia: "2026-11-02", clienteId: c.id, cliente: "Antônio", contaCorrente: true, vencimento: "2026-12-01" }, {});
   assert.deepEqual([fa.vencimento, fa.contaCorrente], ["", true]);
 });
+
+test("venda nova ganha número curto e sequencial (V-0001…); editar mantém; zerar e backup levam o contador", async () => {
+  const kv = kvFalso({ [K.finance]: [] });
+  await migrar(kv, K);
+  const venda = (id, extra = {}) => ({ id, v: 2, conta: "venda_produtos", value: 100, competencia: "2026-10-01", pagamentos: [{ forma: "dinheiro", valor: 100 }], ...extra });
+  const r1 = await salvarLancamentos(kv, K, [venda("1792288921806ww9V"), venda("B2")]);
+  assert.deepEqual(r1.numeros, { "1792288921806ww9V": "V-0001", B2: "V-0002" });
+  // o número vem do servidor (o aparelho não escolhe) e editar não troca
+  await salvarLancamentos(kv, K, [venda("B2", { value: 150, pagamentos: [{ forma: "dinheiro", valor: 150 }], numero: "V-9999" })]);
+  assert.equal((await kv.hget(K.lancamentos, "B2")).numero, "V-0002");
+  await salvarLancamentos(kv, K, [{ id: "S1", v: 2, conta: "energia", value: 50, competencia: "2026-10-01", pagoCom: "picpay" }]);
+  assert.equal((await kv.hget(K.lancamentos, "S1")).numero, undefined);
+  assert.equal((await salvarLancamentos(kv, K, [venda("B3")])).numeros.B3, "V-0003");
+  assert.equal((await montarBackup(kv, K)).chaves.madeireira_venda_seq, 3);
+  assert.ok(CHAVES_ZERAR.includes("vendaSeq"));
+});
+
+test("fiado anterior: \"desde\" (via mais antiga) até a data da abertura; A receber conta os dias a partir dele", async () => {
+  const base = { id: "FA1", v: 2, conta: "fiado_anterior", value: 480, competencia: "2026-11-02", clienteId: "C1", cliente: "Zé", contaCorrente: true };
+  assert.equal(validarLancamentoV2({ ...base, desde: "2026-08-15" }, {}).desde, "2026-08-15");
+  assert.equal(validarLancamentoV2(base, {}).desde, undefined);
+  assert.throws(() => validarLancamentoV2({ ...base, desde: "2026-11-03" }, {}), /desde/);
+  assert.throws(() => validarLancamentoV2({ ...base, desde: "ontem" }, {}), /desde/);
+  const { contasAReceber } = await import("../lib/receber.js");
+  const clientes = [{ id: "C1", nome: "Zé", contaCorrente: true }];
+  const r = contasAReceber([{ ...base, desde: "2026-08-15" }], {}, "2026-11-02", clientes);
+  assert.equal(r.porCliente[0].diasEmAberto, 79);
+  assert.equal(r.porCliente[0].emAbertoDesde, "2026-08-15");
+  assert.equal(contasAReceber([base], {}, "2026-11-02", clientes).porCliente[0].diasEmAberto, 0);
+});
+
+test("sugestão: despesas antigas com DAS/Simples/imposto/guia → Impostos (DAS); FGTS → FGTS; competência no mês da guia", async () => {
+  const { sugestaoDespesa } = await import("../lib/migracaoV2.js");
+  const d = (description, date = "2026-09-20") => ({ category: "despesa", description, date, competencia: date });
+  for (const t of ["DAS setembro", "Guia do Simples", "imposto", "Impostos municipais", "pagamento guia"]) {
+    assert.equal(sugestaoDespesa(d(t))?.conta, "das", t);
+  }
+  assert.equal(sugestaoDespesa(d("Guia FGTS"))?.conta, "fgts");
+  assert.equal(sugestaoDespesa(d("fgts João"))?.competencia, "2026-08-31");
+  assert.match(sugestaoDespesa(d("DAS")).motivo, /guia de 08\/2026/);
+  for (const t of ["Conta de luz", "dasher", "", "Gasolina guiada"]) assert.equal(sugestaoDespesa(d(t)), null, t);
+
+  const kv = kvFalso({ [K.finance]: [
+    { id: "D1", category: "despesa", type: "expense", value: 900, date: "2026-09-20", method: "bradesco", description: "DAS Simples" },
+    { id: "D2", category: "despesa", type: "expense", value: 240, date: "2026-09-07", method: "bradesco", description: "Guia FGTS" },
+    { id: "D3", category: "despesa", type: "expense", value: 210, date: "2026-09-10", method: "bradesco", description: "Conta de luz" },
+  ] });
+  await migrar(kv, K);
+  await migrarV2(kv, K);
+  const r = await reclassificar(kv, K, { ids: ["D1", "D2", "D3"], aceitarSugestao: true });
+  assert.equal(r.alterados, 2);
+  assert.deepEqual(r.ignorados, [{ id: "D3", motivo: "sem sugestão" }]);
+  const das = await kv.hget(K.lancamentos, "D1");
+  assert.deepEqual([das.conta, das.competencia, das.competenciaOriginal, das.dataPagamento], ["das", "2026-08-31", "2026-09-20", "2026-09-20"]);
+  assert.equal((await kv.hget(K.lancamentos, "D2")).conta, "fgts");
+});

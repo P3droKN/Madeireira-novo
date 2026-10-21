@@ -204,15 +204,19 @@ function renderAbertura(el) {
     <div class="painel-titulo"><h2>Fiado anterior (pasta)</h2><strong>${moeda(totalFiado)}</strong></div>
     <p class="texto-suave">O que cada cliente já devia no dia da virada. Vai para Caixa › A receber e é abatido nos recebimentos, mas não conta como venda (a venda foi antes do sistema).</p>
     <div class="table-container"><table class="tabela-fin">
-      <thead><tr><th>Cliente</th><th class="num">Valor devido</th><th>Vencimento</th><th>Observação</th><th></th></tr></thead>
-      <tbody>${fiados.map((l) => `<tr><td>${esc(l.cliente)}</td><td class="num">${moeda(l.value)}</td><td>${l.contaCorrente || !l.vencimento || window.Clientes?.porId(l.clienteId)?.contaCorrente ? '<span class="tag tag-cc">conta corrente</span>' : dataBR(l.vencimento)}</td>
+      <thead><tr><th>Cliente</th><th class="num">Valor devido</th><th>Desde</th><th>Vencimento</th><th>Observação</th><th></th></tr></thead>
+      <tbody>${fiados.map((l) => `<tr><td>${esc(l.cliente)}</td><td class="num">${moeda(l.value)}</td><td>${l.desde ? dataBR(l.desde) : '<span class="texto-suave">—</span>'}</td><td>${l.contaCorrente || !l.vencimento || window.Clientes?.porId(l.clienteId)?.contaCorrente ? '<span class="tag tag-cc">conta corrente</span>' : dataBR(l.vencimento)}</td>
         <td>${l.description && l.description !== "Fiado anterior (pasta)" ? esc(l.description) : ""}</td>
-        <td><button class="delete-btn" data-ab-remover="${esc(l.id)}">Remover</button></td></tr>`).join("") || '<tr><td colspan="5" class="texto-suave">Nenhum fiado anterior lançado.</td></tr>'}</tbody>
+        <td><button class="delete-btn" data-ab-remover="${esc(l.id)}">Remover</button></td></tr>`).join("") || '<tr><td colspan="6" class="texto-suave">Nenhum fiado anterior lançado.</td></tr>'}</tbody>
+      ${fiados.length ? `<tfoot><tr class="dre-total" id="cx-fa-total"><td>Total do Fiado anterior (${fiados.length} lançamento${fiados.length > 1 ? "s" : ""})</td><td class="num">${moeda(totalFiado)}</td>
+        <td colspan="4" class="texto-suave">confira com a soma da pasta</td></tr></tfoot>` : ""}
     </table></div>
     <form id="cx-ab-fiado" class="fin-form linha-adicionar">
       <div class="form-row">
         <div class="form-group"><label for="cx-fa-cliente">Cliente</label><input type="text" id="cx-fa-cliente" maxlength="120" list="clientes-lista" autocomplete="off" required></div>
         <div class="form-group"><label for="cx-fa-valor">Valor devido (R$)</label><input type="number" step="0.01" min="0.01" id="cx-fa-valor" required></div>
+        <div class="form-group"><label for="cx-fa-desde">Desde (via mais antiga)</label><input type="date" id="cx-fa-desde" max="${data}">
+          <small class="texto-suave">Para mostrar há quantos dias está em aberto. Em branco: data da abertura.</small></div>
         <div class="form-group"><label class="check"><input type="checkbox" id="cx-fa-cc" checked> Conta corrente (sem vencimento)</label>
           <small class="texto-suave">Marca o cliente como conta corrente no cadastro.</small></div>
         <div class="form-group" id="cx-fa-venc-grupo" hidden><label for="cx-fa-venc">Vencimento</label><input type="date" id="cx-fa-venc" value="${somarDias(data, prazo)}"></div>
@@ -278,8 +282,16 @@ async function lancarFiado(e) {
   const venc = contaCorrente ? "" : $("cx-fa-venc").value;
   if (!contaCorrente && !venc) return alert("Informe o vencimento (ou marque Conta corrente).");
   const obs = $("cx-fa-obs").value.trim();
+  const desde = $("cx-fa-desde").value;
+  if (desde && desde > data) return alert(`"Desde" é a data da via mais antiga: não pode ser depois da abertura (${dataBR(data)}).`);
   const cli = await window.Clientes.garantir($("cx-fa-cliente").value);
   if (!cli) return;
+  // Mesmo cliente com outro Fiado anterior: confirma antes de somar (evita lançar duas vezes)
+  const ja = C().itens.filter((l) => l.conta === "fiado_anterior" && !l.excluido && String(l.clienteId) === String(cli.id));
+  if (ja.length) {
+    const soma = ja.reduce((s, l) => s + Math.round(l.value * 100), 0) / 100;
+    if (!confirm(`${cli.nome} já tem um Fiado anterior de ${moeda(soma)}${ja.length > 1 ? ` (${ja.length} lançamentos)` : ""}. Somar mesmo assim?\n\nNovo: ${moeda(valor)} → total ${moeda(soma + valor)}.`)) return;
+  }
   // Marca o cliente como conta corrente no cadastro (mantém telefone, observação e alertas)
   const cad = window.Clientes.porId(cli.id);
   if (contaCorrente && !cad?.contaCorrente) {
@@ -292,6 +304,7 @@ async function lancarFiado(e) {
   const item = { id: C().novoId("FA"), v: 2, conta: "fiado_anterior", value: valor, competencia: data, clienteId: cli.id, cliente: cli.nome,
     description: obs ? `Fiado anterior (pasta): ${obs}` : "Fiado anterior (pasta)" };
   if (contaCorrente) item.contaCorrente = true; else item.vencimento = venc;
+  if (desde) item.desde = desde;
   await C().gravar([item]);
 }
 

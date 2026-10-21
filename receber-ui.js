@@ -117,8 +117,22 @@ const textoAlerta = (c) => [c.alertaLimite != null ? `limite ${moeda(c.alertaLim
 // Venda com itens que dá para imprimir de novo (as 2 vias)
 const temVia = (d) => d.tipo === "fiado" && C().itens.some((l) => String(l.id) === String(d.origemId));
 
+// Conta corrente e alertas, direto no detalhe do cliente (o mesmo que Clientes › Editar)
+function formAlerta(c) {
+  if (!c.clienteId) return '<p class="texto-suave">Cliente sem cadastro: cadastre em Clientes para usar conta corrente e alertas.</p>';
+  return `<form class="rc-alerta-form fin-form" data-cliente="${esc(c.clienteId)}">
+    <div class="form-row">
+      <div class="form-group"><label class="check"><input type="checkbox" class="rc-al-cc" ${c.contaCorrente ? "checked" : ""}> Conta corrente (sem vencimento)</label></div>
+      <div class="form-group"><label>Alerta: limite em R$</label><input type="number" class="rc-al-limite" step="0.01" min="0" inputmode="decimal" placeholder="em branco = sem alerta" value="${c.alertaLimite ?? ""}" ${c.contaCorrente ? "" : "disabled"}></div>
+      <div class="form-group"><label>Alerta: dias sem pagar</label><input type="number" class="rc-al-dias" step="1" min="1" inputmode="numeric" placeholder="em branco = sem alerta" value="${c.alertaDias ?? ""}" ${c.contaCorrente ? "" : "disabled"}></div>
+      <div class="form-group"><button type="submit" class="btn-icon">Salvar alerta</button></div>
+    </div>
+  </form>`;
+}
+
 function detalheCliente(c) {
   return `<div class="receber-detalhe">
+    ${formAlerta(c)}
     <table class="tabela-fin">
       <thead><tr><th>Data</th><th>O quê</th><th>Vencimento</th><th class="num">Valor</th><th class="num">Pago</th><th class="num">Em aberto</th><th>Situação</th></tr></thead>
       <tbody>${c.dividas.map((d) => `<tr><td>${dataBR(d.data)}</td><td>${esc(d.descricao)}${temVia(d) ? ` <button class="btn-icon mini" data-rc-via="${esc(d.origemId)}" title="Imprimir as 2 vias (loja e cliente)">🖨 Via</button>` : ""}</td><td>${c.contaCorrente ? "conta corrente" : dataBR(d.vencimento)}</td>
@@ -321,6 +335,28 @@ document.addEventListener("click", (e) => {
     if (estado.abertos.has(chave)) estado.abertos.delete(chave); else estado.abertos.add(chave);
     renderConteudo();
   }
+});
+document.addEventListener("change", (e) => {
+  if (!e.target.classList.contains("rc-al-cc")) return;
+  const f = e.target.closest("form");
+  f.querySelectorAll(".rc-al-limite, .rc-al-dias").forEach((i) => { i.disabled = !e.target.checked; });
+});
+document.addEventListener("submit", async (e) => {
+  const f = e.target.closest(".rc-alerta-form");
+  if (!f) return;
+  e.preventDefault();
+  const cad = window.Clientes.porId(f.dataset.cliente);
+  if (!cad) return alert("Cliente não encontrado no cadastro.");
+  const cc = f.querySelector(".rc-al-cc").checked;
+  try {
+    await window.Clientes.salvar({
+      id: cad.id, nome: cad.nome, telefone: cad.telefone || "", obs: cad.obs || "", contaCorrente: cc,
+      alertaLimite: cc ? f.querySelector(".rc-al-limite").value.trim() : "", alertaDias: cc ? f.querySelector(".rc-al-dias").value.trim() : "",
+    });
+  } catch (err) {
+    return alert(`O alerta não foi salvo: ${err.message}`);
+  }
+  renderConteudo();
 });
 $("rc-receber-form").addEventListener("submit", salvarRecebimento);
 $("rc-receber-cancelar").addEventListener("click", fecharReceber);

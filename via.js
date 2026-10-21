@@ -15,7 +15,7 @@ function umaVia(l, titulo) {
   const outras = (l.pagamentos || []).filter((p) => p.forma !== "fiado").reduce((s, p) => s + Number(p.valor || 0), 0);
   return `<div class="via">
     <div class="via-topo"><strong>Madeireira</strong><span>${esc(titulo)}</span></div>
-    <p>Data: <strong>${dataBR(l.competencia)}</strong> · Pedido ${esc(l.id)}${l.nfe ? ` · NF ${esc(l.nfe)}` : ""}</p>
+    <p>Data: <strong>${dataBR(l.competencia)}</strong> · Pedido <strong>${esc(l.numero || l.id)}</strong>${l.nfe ? ` · NF ${esc(l.nfe)}` : ""}</p>
     <p>Cliente: <strong>${esc(l.cliente || "")}</strong> · Conta corrente</p>
     <table><thead><tr><th>Item</th><th>Qtd.</th><th class="num">Preço</th><th class="num">Total</th></tr></thead>
     <tbody>${itens ? itens.map((i) => `<tr><td>${esc(i.descricao)}</td><td>${qtd(i)}</td>
@@ -28,14 +28,20 @@ function umaVia(l, titulo) {
   </div>`;
 }
 
-/** Imprime as 2 vias (loja/pasta e cliente) de uma venda. */
+/** Imprime as 2 vias (loja/pasta e cliente) de uma venda (a gravada, que já tem o número V-0001). */
 function imprimir(lancamento) {
   const el = document.getElementById("impressao-via");
   if (!el || !lancamento) return;
+  lancamento = window.Caixa?.itens?.find((l) => String(l.id) === String(lancamento.id)) || lancamento;
   el.innerHTML = umaVia(lancamento, "Via da loja (pasta)") + '<div class="via-corte">✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - -</div>' + umaVia(lancamento, "Via do cliente");
+  // Margem zero só nesta impressão: sem margem, o navegador não tem onde pôr o cabeçalho e o rodapé (data e endereço)
+  const folha = document.createElement("style");
+  folha.textContent = "@page { size: A4; margin: 0; }";
+  document.head.appendChild(folha);
   document.body.classList.add("imprimindo-via");
   window.print();
   document.body.classList.remove("imprimindo-via");
+  folha.remove();
 }
 
 window.Via = { imprimir };

@@ -2,7 +2,7 @@
 // para poder ser testado sem banco (ver tests/dados.test.js).
 
 import { contaPorId, naturezaDaConta, PAGO_COM, mesclarConfigFinanceiro, CONFIG_FINANCEIRO_PADRAO } from "../lib/planoContas.js";
-import { converterLancamento, lancamentosDeAbertura, categoriaLegada } from "../lib/migracaoV2.js";
+import { converterLancamento, lancamentosDeAbertura, categoriaLegada, sugestaoDe } from "../lib/migracaoV2.js";
 import { numeroOrcamento, normalizarTelefone, somarDias, ORIGENS, MOTIVOS_PERDA } from "../lib/orcamentos.js";
 
 const CATEGORIAS = { venda: "income", custo: "expense", funcionario: "expense", despesa: "expense" };
@@ -138,6 +138,7 @@ export async function montarBackup(kv, k) {
       madeireira_clientes: (await kv.hgetall(k.clientes)) ?? null,
       madeireira_orc_seq: (await kv.get(k.orcSeq)) ?? null,
       madeireira_cli_seq: (await kv.get(k.cliSeq)) ?? null,
+      madeireira_venda_seq: (await kv.get(k.vendaSeq)) ?? null,
       madeireira_saldos: desembrulhar(await kv.get(k.saldos)) ?? null,
     },
   };
@@ -160,7 +161,7 @@ export async function salvarCopia(kv, k, motivo) {
 
 // Zerar banco (só para a virada): apaga o movimento e mantém os ajustes.
 // Só funciona com PERMITIR_ZERAR=sim e com a trava de produção configurada (statusBanco().zerarPermitido).
-export const CHAVES_ZERAR = ["finance", "acumulado", "lancamentos", "migrado", "trava", "migradoV2", "orcamentos", "orcSeq", "clientes", "cliSeq", "saldos"];
+export const CHAVES_ZERAR = ["finance", "acumulado", "lancamentos", "migrado", "trava", "migradoV2", "orcamentos", "orcSeq", "clientes", "cliSeq", "vendaSeq", "saldos"];
 export const CHAVES_MANTIDAS = ["precos", "config", "configFinanceiro", "backups"];
 
 export async function zerarMovimento(kv, k, pedido, permitido) {
@@ -227,9 +228,23 @@ export async function salvarLancamentos(kv, k, itens) {
   const cfg = mesclarConfigFinanceiro(desembrulhar(await kv.get(k.configFinanceiro)) || {});
   // Lançamento novo (v2) é validado pelo plano de contas; o antigo continua aceito
   const limpos = itens.map((i) => (i && i.v === 2 ? validarLancamentoV2(i, cfg) : validarLancamento(i)));
+  // Venda nova ganha um número curto e sequencial (V-0001…), usado na via; editar mantém o número
+  const vendas = limpos.filter((i) => i.v === 2 && i.conta === "venda_produtos");
+  const numeros = {};
+  if (vendas.length) {
+    const atuais = (await kv.hmget(k.lancamentos, ...vendas.map((i) => String(i.id)))) || {};
+    for (const i of vendas) {
+      const antes = desembrulhar(atuais[i.id]);
+      i.numero = antes ? antes.numero : numeroVenda(Number(await kv.incr(k.vendaSeq)));
+      if (!i.numero) delete i.numero;
+      else numeros[i.id] = i.numero;
+    }
+  }
   await kv.hset(k.lancamentos, Object.fromEntries(limpos.map((i) => [i.id, i])));
-  return { salvos: limpos.length };
+  return { salvos: limpos.length, numeros };
 }
+
+export const numeroVenda = (n) => `V-${String(n).padStart(4, "0")}`;
 
 // Exclusão "suave": o lançamento fica guardado com a marca de excluído.
 export async function excluirLancamento(kv, k, id) {
@@ -351,6 +366,7 @@ export async function restaurar(kv, k, arquivo) {
   }
   if ("madeireira_orc_seq" in alvo) await gravar(k.orcSeq, alvo.madeireira_orc_seq);
   if ("madeireira_cli_seq" in alvo) await gravar(k.cliSeq, alvo.madeireira_cli_seq);
+  if ("madeireira_venda_seq" in alvo) await gravar(k.vendaSeq, alvo.madeireira_venda_seq);
   if ("madeireira_saldos" in alvo) await gravar(k.saldos, alvo.madeireira_saldos);
 
   return {
@@ -515,6 +531,11 @@ export function validarLancamentoV2(item, cfgSalva) {
     const r = { ...base, conta: "fiado_anterior", category: "fiado_anterior", type: "transfer", method: "", clienteId: cli.id, cliente: cli.nome, vencimento,
       description: base.description || "Fiado anterior (pasta)" };
     if (contaCorrente) r.contaCorrente = true;
+    // "Desde": data da via mais antiga do cliente na pasta (para "em aberto há X dias"); não pode ser depois da abertura
+    if (item.desde) {
+      if (!dataOk(item.desde) || item.desde > competencia) throw erro(400, "Data \"desde\" inválida: deve ser a da via mais antiga, até a data da abertura.");
+      r.desde = item.desde;
+    }
     return r;
   }
 
@@ -664,7 +685,8 @@ export async function reclassificar(kv, k, pedido) {
       alterados[id] = { ...novo, vinculo };
       continue;
     }
-    const destino = aceitarSugestao ? item.sugestao?.conta : conta;
+    const sug = aceitarSugestao ? sugestaoDe(item) : null;
+    const destino = aceitarSugestao ? sug?.conta : conta;
     if (destino) {
       if (item.conta === "transferencia") { ignorados.push({ id, motivo: "transferência" }); continue; }
       const eraEntrada = naturezaDaConta(item.conta) === "entrada";
@@ -674,6 +696,12 @@ export async function reclassificar(kv, k, pedido) {
       novo.category = categoriaLegada(destino);
       novo.classificar = destino.startsWith("classificar_");
       if (!novo.classificar) delete novo.classificar;
+      // Guia de DAS/FGTS: competência no mês a que a guia se refere (o caixa fica na data do pagamento)
+      if (sug?.competencia && sug.competencia !== item.competencia) {
+        if (!novo.competenciaOriginal) novo.competenciaOriginal = item.competencia;
+        novo.competencia = sug.competencia;
+        if (!novo.dataPagamento) novo.dataPagamento = item.competencia;
+      }
     } else if (aceitarSugestao) {
       ignorados.push({ id, motivo: "sem sugestão" });
       continue;

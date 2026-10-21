@@ -32,6 +32,14 @@ Não existe caderno: existe uma **pasta com as vias dos pedidos**, que funciona 
 - `npm test`: 128 passando (zerar com e sem permissão, o que apaga e o que mantém, validação do fiado anterior e do cheque da abertura, carteira sem contar duas vezes, cheque da abertura compensando e voltando, conta corrente sem atraso, alertas, recebido de fiado anterior).
 - `bash tests/e2e/rodar.sh`: 12 baterias passando. A **`virada`** (26 verificações) faz o dia inteiro: dados de teste → zerar → importar um export no formato do antigo → "Tudo confere" → migrar → "Tudo confere" → abertura com cheques e fiado da pasta → saldos e A receber certos. A nova **`contacorrente`** (31) cobre cadastro com alertas, fiado anterior marcando o cliente, venda sem vencimento nas duas telas, 2 vias, A receber separado, linha informativa no DRE e no fluxo e desmarcar a conta corrente. A **`trava`** confirma que o banco de produção não pode ser zerado nem com a variável ligada.
 
+### Ajustes depois do ensaio
+- **DRE:** custos a classificar no resultado (linha amarela), CMV estimado sem contar em dobro, DAS estimado até a guia ser lançada, FGTS e provisão só sobre CLT, "Resultado provisório", margem acima de 70%, mês em andamento comparado com o mesmo período.
+- **Sugestões em lote:** despesas antigas com DAS/Simples/imposto/guia → Impostos (DAS); com FGTS → FGTS, já no mês a que a guia se refere. Depois da virada: Caixa › Lançamentos › filtro "Com sugestão" › selecionar › Aceitar sugestões.
+- **Via:** número V-0001, V-0002…; sem cabeçalho e rodapé do navegador; as 2 vias numa folha.
+- **Fiado anterior:** campo "Desde" (data da via mais antiga do cliente), aviso de cliente repetido e total no fim da lista para conferir com a soma da pasta.
+- **A receber › Ver:** editar conta corrente e alertas ali mesmo.
+- **Relatórios:** quadro "Quanto preciso vender por mês para empatar".
+
 ## Ensaio no preview (pelo menos 3 dias antes)
 O preview do v2 usa o mesmo banco `liked-drum`, mas com as chaves separadas (prefixo `preview:`). O ensaio não mexe em nada da produção do v2 nem no antigo.
 
@@ -53,5 +61,6 @@ Seguir o checklist (13 passos). Pontos de atenção:
 
 ## Como voltar atrás
 - **Primeira semana:** ver o quadro "Se der problema" no checklist (corrigir no v2 primeiro; voltar ao antigo só se impedir de vender: exportar o v2, devolver o token normal no antigo, relançar à mão o que foi feito desde a virada).
+- **Ajustes pós-ensaio (via, fiado anterior, alerta, sugestões, mês em andamento, empate):** `git revert <commit desta entrega>` (ver CONTEXTO.md). O DRE corrigido é o `9f328d4`.
 - **Conta corrente:** `git revert 48be372`. Volta o fiado com vencimento para todos (as vendas de conta corrente passam a vencer em data + 30 dias); as marcas no cadastro ficam guardadas, só não são usadas.
 - **Zerar e abertura com cheques/fiado:** `git revert 5cbc305`. O Zerar some; cheques e fiado já lançados na abertura continuam no banco (a versão anterior só não sabe mostrá-los).

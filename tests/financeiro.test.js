@@ -267,3 +267,44 @@ test("avisos: taxas de cartão não configuradas, margem bruta acima de 70% e re
   const normal = montarDRE([venda(1000, { cmv: 650 })], {}, "2026-09");
   assert.ok(!normal.avisos.some((a) => a.includes("fora do normal")));
 });
+
+test("guia de DAS/FGTS aceita pela sugestão: substitui a estimativa do mês da guia, sem somar", () => {
+  const cfg = { impostos: { rbt12: 600000 } };
+  const l = [
+    venda(50000, { cmv: 30000, competencia: "2026-08-10", date: "2026-08-10" }),
+    saida("salarios", 3000, { competencia: "2026-08-30", date: "2026-08-30" }),
+    saida("das", 3500, { competencia: "2026-08-31", dataPagamento: "2026-09-20" }),
+    saida("fgts", 240, { competencia: "2026-08-31", dataPagamento: "2026-09-07" }),
+  ];
+  const ago = montarDRE(l, cfg, "2026-08");
+  assert.equal(ago.valores.dasReal, -3500);
+  assert.equal(ago.valores.dasEstimado, undefined);
+  assert.equal(ago.valores.fgts, -240); // a guia, não 8% estimado
+  assert.ok(!ago.linhas.find((x) => x.id === "fgts").estimado);
+});
+
+test("mês em andamento: ateDia compara só o mesmo pedaço do mês", () => {
+  const l = [venda(1000, { cmv: 600, competencia: "2026-09-05" }), venda(5000, { cmv: 3000, competencia: "2026-09-25" })];
+  assert.equal(montarDRE(l, {}, "2026-09").valores.receitaBruta, 6000);
+  assert.equal(montarDRE(l, {}, "2026-09", { ateDia: 21 }).valores.receitaBruta, 1000);
+  assert.equal(montarDRE(l, {}, "2026-09", { ateDia: 31 }).valores.receitaBruta, 6000);
+});
+
+test("quanto vender para empatar: custos fixos médios ÷ margem de contribuição dos últimos 3 meses com venda", async () => {
+  const { pontoEquilibrioMedio } = await import("../lib/financeiro.js");
+  const mes = (m, receita, cmv, aluguel) => [
+    venda(receita, { cmv, competencia: `2026-${m}-10`, date: `2026-${m}-10` }),
+    saida("aluguel", aluguel, { competencia: `2026-${m}-05`, date: `2026-${m}-05` }),
+  ];
+  const l = [...mes("07", 20000, 12000, 4000), ...mes("08", 30000, 18000, 4000), ...mes("09", 10000, 6000, 4000), ...mes("10", 99999, 0, 0)];
+  const pe = pontoEquilibrioMedio(l, {}, "2026-10");
+  assert.deepEqual(pe.meses, ["2026-07", "2026-08", "2026-09"]); // outubro (em andamento) fica fora
+  assert.equal(pe.vendasMedia, 20000);
+  assert.equal(pe.custosFixosMedia, 4000);
+  perto(pe.margemContribuicaoPct, 0.4);
+  assert.equal(pe.pontoEquilibrio, 10000);
+  // meses sem venda não entram na média; margem negativa = sem ponto de equilíbrio
+  assert.deepEqual(pontoEquilibrioMedio(mes("09", 10000, 6000, 4000), {}, "2026-10").meses, ["2026-09"]);
+  assert.equal(pontoEquilibrioMedio(mes("09", 10000, 12000, 4000), {}, "2026-10").pontoEquilibrio, null);
+  assert.equal(pontoEquilibrioMedio([], {}, "2026-10"), null);
+});
