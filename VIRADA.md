@@ -61,6 +61,6 @@ Seguir o checklist (13 passos). Pontos de atenção:
 
 ## Como voltar atrás
 - **Primeira semana:** ver o quadro "Se der problema" no checklist (corrigir no v2 primeiro; voltar ao antigo só se impedir de vender: exportar o v2, devolver o token normal no antigo, relançar à mão o que foi feito desde a virada).
-- **Ajustes pós-ensaio (via, fiado anterior, alerta, sugestões, mês em andamento, empate):** `git revert <commit desta entrega>` (ver CONTEXTO.md). O DRE corrigido é o `9f328d4`.
+- **Ajustes pós-ensaio (via, fiado anterior, alerta, sugestões, mês em andamento, empate):** `git revert 82339d4`. O DRE corrigido é o `9f328d4`.
 - **Conta corrente:** `git revert 48be372`. Volta o fiado com vencimento para todos (as vendas de conta corrente passam a vencer em data + 30 dias); as marcas no cadastro ficam guardadas, só não são usadas.
 - **Zerar e abertura com cheques/fiado:** `git revert 5cbc305`. O Zerar some; cheques e fiado já lançados na abertura continuam no banco (a versão anterior só não sabe mostrá-los).
