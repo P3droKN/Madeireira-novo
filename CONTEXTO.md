@@ -247,6 +247,12 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - **DRE mês em andamento:** aviso "Mês em andamento (até DD/MM)" e comparação com o mesmo pedaço do mês anterior e do ano passado (`montarDRE(..., { ateDia })`).
 - **Quanto preciso vender por mês para empatar** (topo de Relatórios): `pontoEquilibrioMedio` = custos fixos médios (pessoal + fixas + operacionais + despesas a classificar) ÷ margem de contribuição em % da receita, nos últimos 3 meses completos com venda.
 
+**PEDIDOS-CONSOLIDADOS, seção A: custo na venda do Caixa**
+- Caixa › Lançar › Venda tem o bloco **"Itens vendidos"** (`itens-caixa.js`): material, bitola, acabamento, quantidade (e comprimento), preço da tabela editável. Usa `window.Calculadora.calcularLinha` e `itensDaVenda` (os mesmos do Vender, que chamam `calcularItem`). Com itens, total e CMV saem dos itens (total só leitura, CMV calculado mostrado); sem itens, aviso "Sem itens, o custo será estimado…" e o campo manual do CMV.
+- **Margem padrão inicial: 50%** (era 30%). Configuração já salva em Ajustes › Financeiro mantém o valor salvo.
+- **DRE:** linha "(−) CMV calculado pelos itens" (vendas com itens), "(−) CMV informado à mão" (com CMV sem itens) e quadro "Custo das vendas (CMV) do mês" com R$ e % de cada origem (`info.cmvOrigem`). A margem média real usa também as vendas do Caixa com itens.
+- E2E: `tests/e2e/caixaitens.mjs`.
+
 ## 7. Próximos passos
 1. **Virada** (antes da 2D): ensaio no preview e depois o dia, conforme `VIRADA.md` e o checklist. 2C testada (ok), prazo 30 dias, fiado da pasta em conta corrente (entregue). Pendentes do usuário: resultado do ensaio no preview, nome do endereço e as datas.
 2. ~~Fase 2C~~ (entregue).

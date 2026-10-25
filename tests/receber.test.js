@@ -74,7 +74,7 @@ test("fiado: receita e CMV na data da venda; não entra no caixa; recebimento en
   ];
   const d = montarDRE(l, {}, "2026-10");
   assert.equal(d.valores.receitaBruta, 500);
-  assert.equal(d.valores.cmvCalculadora, -300); // no DRE as deduções vêm negativas
+  assert.equal(d.valores.cmvInformado, -300); // no DRE as deduções vêm negativas (venda sem itens: CMV informado)
   const movs = movimentos(l, {});
   assert.deepEqual(movs.map((m) => [m.data, m.conta, m.valor, m.tipo]), [["2026-10-01", "gaveta", 100, "venda"], ["2026-10-20", "gaveta", 400, "recebimento"]]);
 });

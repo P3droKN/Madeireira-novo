@@ -1076,3 +1076,12 @@ body.modo-balcao .sigilo { display: none !important; }
 .equilibrio strong { font-size: 1.9rem; }
 .equilibrio small { color: var(--text-muted); font-size: 0.82rem; }
 .dre-andamento { margin-bottom: 0.75rem; }
+
+/* ---------- Caixa › Lançar › Venda: itens vendidos ---------- */
+.ff-itens { border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12)); border-radius: 10px; padding: 0.75rem 1rem 0.5rem; margin: 0.75rem 0 1rem; }
+.ff-itens legend { padding: 0 0.4rem; color: var(--text-muted); font-size: 0.9rem; }
+.ff-itens .ic-seletor { align-items: flex-end; flex-wrap: wrap; }
+.ff-itens .aviso { margin: 0.5rem 0; font-size: 0.875rem; }
+.mini-input { width: 7rem !important; padding: 0.3rem 0.4rem !important; text-align: right; }
+.dre-cmv-origem { display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; margin: 0.75rem 0; padding: 0.6rem 0.9rem; border-radius: 8px; background: rgba(255, 255, 255, 0.04); font-size: 0.875rem; color: var(--text-muted); }
+.dre-cmv-origem strong { color: var(--text-main); }

@@ -7,6 +7,7 @@ import { resumoDoMes, vendasPorForma } from "./lib/relatorios.js";
 import { criarEditorPagamentos } from "./pagamentos.js";
 import { recebidoDeFiadoAnterior } from "./lib/receber.js";
 import { sugestaoDe } from "./lib/migracaoV2.js";
+import { criarItensCaixa } from "./itens-caixa.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -139,10 +140,15 @@ function renderFormulario() {
       <div class="form-group"><label for="ff-cliente">Cliente (obrigatório no fiado)</label><input type="text" id="ff-cliente" maxlength="120" list="clientes-lista" autocomplete="off"></div>
       <div class="form-group"><label for="ff-nfe">Nº da NF-e (opcional)</label><input type="text" id="ff-nfe" maxlength="20" inputmode="numeric"></div>
     </div>
+    <fieldset class="ff-itens" id="ff-itens-bloco"><legend>Itens vendidos</legend>
+      <div id="ff-itens"></div>
+      <p class="aviso aviso-alerta" id="ff-itens-aviso">Sem itens, o custo será estimado. Para o lucro sair certo, adicione os itens ou use a aba Vender.</p>
+      <p class="sigilo" id="ff-cmv-calculado" hidden>Custo dos produtos (CMV) calculado pelos itens: <strong></strong></p>
+    </fieldset>
     <div class="form-group"><label>Formas de pagamento</label><div id="ff-pagamentos"></div></div>
-    <div class="form-group"><label for="ff-cmv">Custo dos produtos (CMV), se souber</label>
+    <div class="form-group" id="ff-cmv-grupo"><label for="ff-cmv">Custo dos produtos (CMV), se souber</label>
       <input type="number" id="ff-cmv" step="0.01" min="0" inputmode="decimal" placeholder="vazio = estimado pela margem padrão">
-      <small class="texto-suave">Vendas pela aba Vender já gravam o custo exato. Aqui, sem custo, o DRE estima e marca como "estimado".</small></div>`;
+      <small class="texto-suave">Sem itens e sem custo, o DRE estima pela margem padrão e marca como "estimado".</small></div>`;
   } else if (tipo === "transferencia") {
     const op = (sel) => Object.entries(CONTAS_FIN).map(([id, n]) => `<option value="${id}" ${id === sel ? "selected" : ""}>${n}</option>`).join("");
     html += `
@@ -194,6 +200,23 @@ function renderFormulario() {
       contaCorrente: () => Boolean(window.Clientes?.ehContaCorrente($("ff-cliente")?.value)),
     });
     $("ff-cliente").addEventListener("change", () => estado.editor.atualizar());
+    // Com itens: total e CMV saem dos itens (mesmo cálculo do Vender); sem itens: valor digitado e CMV estimado
+    estado.itensCaixa = criarItensCaixa($("ff-itens"), (r) => {
+      estado.itensVenda = r;
+      const tem = r.linhas.length > 0;
+      $("ff-itens-aviso").hidden = tem;
+      $("ff-cmv-grupo").hidden = tem;
+      $("ff-cmv-calculado").hidden = !tem;
+      $("ff-cmv-calculado").querySelector("strong").textContent = moeda(r.custo);
+      $("ff-valor").readOnly = tem;
+      if (tem) {
+        $("ff-valor").value = r.venda.toFixed(2);
+        estado.editor.definirTotal(r.venda);
+      }
+    });
+    const soProdutos = () => { $("ff-itens-bloco").hidden = $("ff-conta").value !== "venda_produtos"; };
+    $("ff-conta").addEventListener("change", soProdutos);
+    soProdutos();
   }
   if (tipo === "venda") $("ff-valor").addEventListener("input", (e) => estado.editor.definirTotal(num(e.target.value) || 0));
   if (tipo === "saida" || tipo === "entrada") {
@@ -240,8 +263,17 @@ async function enviarFormulario(e) {
       item.cliente = cli.nome;
       item.clienteId = cli.id;
     }
-    const cmv = num($("ff-cmv").value);
-    if (cmv != null) item.cmv = cmv;
+    const iv = item.conta === "venda_produtos" ? estado.itensVenda : null;
+    if (iv?.linhas.length) {
+      if (iv.semPreco) return alert("Há item sem preço. Digite o preço unitário na linha do item.");
+      item.itens = iv.itens;
+      item.cmv = iv.custo;
+      if (iv.tabela) item.tabelaTotal = iv.tabela;
+      if (!item.description) item.description = `Venda: ${iv.itens.map((i) => i.descricao).join(", ")}`.slice(0, 200);
+    } else {
+      const cmv = num($("ff-cmv").value);
+      if (cmv != null) item.cmv = cmv;
+    }
   } else if (tipo === "transferencia") {
     Object.assign(item, { conta: "transferencia", de: $("ff-de").value, para: $("ff-para").value });
   } else {
@@ -261,8 +293,10 @@ async function enviarFormulario(e) {
   if (await C().gravar([item])) {
     // Fiado de conta corrente: oferece as 2 vias para a pasta
     const cc = item.pagamentos?.some((p) => p.forma === "fiado" && p.fiado?.contaCorrente);
-    if (cc) { if (confirm("Lançamento registrado.\n\nImprimir as 2 vias para a pasta?")) window.Via?.imprimir(item); }
-    else alert("Lançamento registrado.");
+    const numero = C().itens.find((l) => String(l.id) === String(item.id))?.numero;
+    const msg = numero ? `Venda ${numero} registrada.` : "Lançamento registrado.";
+    if (cc) { if (confirm(`${msg}\n\nImprimir as 2 vias para a pasta?`)) window.Via?.imprimir(item); }
+    else alert(msg);
     renderFormulario();
   }
 }
@@ -432,6 +466,7 @@ function renderDRE() {
       ${doAnterior ? `<tfoot><tr class="dre-info-linha"><td><em>(i) Recebido de fiado anterior à virada</em><small class="texto-suave"> entrou no caixa; não é venda deste mês e não soma no lucro</small></td>
         <td class="num">${moeda(doAnterior)}</td><td colspan="5"></td></tr></tfoot>` : ""}
     </table></div>
+    ${cmvOrigemHtml(d.info.cmvOrigem)}
     <div class="dre-info">
       <div><span>Retiradas do dono (abaixo da linha)</span><strong>${moeda(d.info.retiradas)}</strong></div>
       <div><span>Lucro retido</span><strong>${moeda(d.info.lucroRetido)}</strong></div>
@@ -442,6 +477,21 @@ function renderDRE() {
       ${doAnterior ? `<div><span>Recebido de fiado anterior à virada (entrou no caixa; não é venda deste mês)</span><strong>${moeda(doAnterior)}</strong></div>` : ""}
       ${d.info.aportes ? `<div><span>Aportes do dono</span><strong>${moeda(d.info.aportes)}</strong></div>` : ""}
     </div>`;
+}
+
+// De onde vem o custo das vendas do mês: o quanto o lucro é confiável
+function cmvOrigemHtml(o) {
+  if (!o?.total) return "";
+  const p = (x) => `${(x.pct * 100).toFixed(0)}%`;
+  const partes = [
+    ["dre-cmv-itens", "calculado pelos itens", o.itens],
+    ["dre-cmv-estimado", "estimado (vendas sem itens)", o.estimado],
+    ["", "informado à mão", o.informado],
+    ["", "custos antigos classificados como CMV", o.classificado],
+    ["", "custos a classificar", o.aClassificar],
+  ].filter(([id, , x]) => x.valor || id);
+  return `<div class="dre-cmv-origem" id="dre-cmv-origem"><span>Custo das vendas (CMV) do mês: <strong>${moeda(o.total)}</strong></span>
+    ${partes.map(([id, rot, x]) => `<span${id ? ` id="${id}"` : ""}>${rot}: <strong>${moeda(x.valor)}</strong> (${p(x)})</span>`).join("")}</div>`;
 }
 
 const fmtCurto = (v) => (v ? v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : "–");

@@ -704,40 +704,47 @@ window.Calculadora = {
 
   // Usado por registerDirectSale (script.js): tudo o que a venda grava
   resumo() {
-    const resultados = estado.pedido.map(calcularLinha);
-    const t = totalizarPedido(resultados);
-    const itens = estado.pedido.map((l, i) => {
-      const item = estado.catalogo.itens.get(l.itemId);
-      const r = resultados[i];
-      return {
-        itemId: l.itemId,
-        descricao: item.unidade === "valor_livre" ? `${item.material}${l.descricao ? " - " + l.descricao : ""}` : `${item.material} ${item.rotuloDimensao}`,
-        acabamento: l.acabamento,
-        quantidadeCobrada: r.quantidadeCobrada,
-        unidade: r.unidadeCobranca,
-        custoTotal: r.custoTotal,
-        precoTabela: r.precoTabela,
-        tabelaTotal: r.tabelaTotal,
-        precoUnitario: r.precoUnitario,
-        vendaTotal: r.vendaTotal,
-        variacaoPct: r.variacaoPct,
-        motivo: l.motivo || "",
-      };
-    });
+    const r = itensDaVenda(estado.pedido);
     return {
-      itens,
-      custo: t.custo,
-      venda: t.venda,
-      tabela: t.tabela,
-      variacao: t.variacao,
-      variacaoPct: t.variacaoPct,
+      ...r,
       motivoGeral: estado.motivoGeral || "",
-      semPreco: t.semPreco,
       frete: valorFrete(),
-      descricao: (itens.map((i) => i.descricao).join(", ") + (valorFrete() ? " + frete" : "")).slice(0, 300),
+      descricao: (r.itens.map((i) => i.descricao).join(", ") + (valorFrete() ? " + frete" : "")).slice(0, 300),
     };
   },
+
+  // Para o Caixa › Lançar › Venda usar o mesmo catálogo e o mesmo cálculo do Vender
+  pronta: () => Boolean(estado.catalogo),
+  catalogo: () => estado.catalogo,
+  precoTabela,
+  calcularLinha,
+  itensDaVenda,
 };
+
+// O que a venda grava a partir das linhas do pedido (Vender e Caixa › Lançar): itens, custo e total
+function itensDaVenda(linhas) {
+  const resultados = linhas.map(calcularLinha);
+  const t = totalizarPedido(resultados);
+  const itens = linhas.map((l, i) => {
+    const item = estado.catalogo.itens.get(l.itemId);
+    const r = resultados[i];
+    return {
+      itemId: l.itemId,
+      descricao: item.unidade === "valor_livre" ? `${item.material}${l.descricao ? " - " + l.descricao : ""}` : `${item.material} ${item.rotuloDimensao}`,
+      acabamento: l.acabamento,
+      quantidadeCobrada: r.quantidadeCobrada,
+      unidade: r.unidadeCobranca,
+      custoTotal: r.custoTotal,
+      precoTabela: r.precoTabela,
+      tabelaTotal: r.tabelaTotal,
+      precoUnitario: r.precoUnitario,
+      vendaTotal: r.vendaTotal,
+      variacaoPct: r.variacaoPct,
+      motivo: l.motivo || "",
+    };
+  });
+  return { itens, resultados, custo: t.custo, venda: t.venda, tabela: t.tabela, variacao: t.variacao, variacaoPct: t.variacaoPct, semPreco: t.semPreco };
+}
 
 // ---------- Aba Preços ----------
 

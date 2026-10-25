@@ -73,9 +73,10 @@ test("provisão de 13º e férias: 19,44% dos salários; 13º pago não entra no
   assert.equal(desligada.valores.decimoPago, -5000);
 });
 
-test("CMV estimado: venda sem itens usa margem padrão de 30% e fica marcado", () => {
+test("CMV estimado: venda sem itens usa margem padrão de 50% e fica marcado", () => {
   const d = montarDRE([venda(1000)], {}, "2026-09");
-  assert.equal(d.valores.cmvEstimado, -700);
+  assert.equal(d.valores.cmvEstimado, -500); // venda × (1 − 50%)
+  assert.match(d.linhas.find((x) => x.id === "cmvEstimado").rotulo, /margem padrão de 50,0%/);
   assert.equal(d.linhas.find((x) => x.id === "cmvEstimado").estimado, true);
   assert.equal(d.info.margemReferencia.fonte, "padrao");
 });
@@ -88,7 +89,7 @@ test("CMV estimado passa a usar a média real quando há 3 meses de vendas da ca
   const d = montarDRE([...meses, venda(1000)], {}, "2026-09");
   assert.equal(d.valores.cmvEstimado, -600);
   const doisMeses = montarDRE([...meses.slice(1), venda(1000)], {}, "2026-09");
-  assert.equal(doisMeses.valores.cmvEstimado, -700);
+  assert.equal(doisMeses.valores.cmvEstimado, -500);
 });
 
 test("vendas antigas (migradas) não ganham CMV estimado: o custo vem dos custos classificados", () => {
@@ -132,7 +133,7 @@ test("DRE anual: total é a soma dos meses", () => {
 
 test("estoque estimado em R$ = inicial + compras − CMV", () => {
   const l = [saida("compra_material", 5000), venda(3000, { cmv: 1800 }), venda(1000)];
-  assert.equal(estoqueEstimado(l, { estoque: { inicial: 2000 } }, "2026-09"), 2000 + 5000 - 1800 - 700);
+  assert.equal(estoqueEstimado(l, { estoque: { inicial: 2000 } }, "2026-09"), 2000 + 5000 - 1800 - 500);
 });
 
 test("migração: formas e contas dos lançamentos antigos", () => {
@@ -235,7 +236,7 @@ test("custos classificados: CMV fica no lugar; tudo como compra (estoque) libera
   assert.equal(comoCmv.valores.cmvEstimado, 0);
   assert.equal(comoCmv.info.compras, 5000);
   const tudoCompra = montarDRE([...base.filter((l) => l.category !== "custo"), conv(base[2], "compra_material"), conv(base[3], "compra_material")], {}, "2026-09");
-  assert.equal(tudoCompra.valores.cmvEstimado, -49000); // 70% de 70.000 (margem padrão 30%)
+  assert.equal(tudoCompra.valores.cmvEstimado, -35000); // 50% de 70.000 (margem padrão 50%)
   assert.equal(tudoCompra.provisorio.filter((p) => p.tipo === "custos").length, 0);
 });
 
@@ -307,4 +308,23 @@ test("quanto vender para empatar: custos fixos médios ÷ margem de contribuiç�
   assert.deepEqual(pontoEquilibrioMedio(mes("09", 10000, 6000, 4000), {}, "2026-10").meses, ["2026-09"]);
   assert.equal(pontoEquilibrioMedio(mes("09", 10000, 12000, 4000), {}, "2026-10").pontoEquilibrio, null);
   assert.equal(pontoEquilibrioMedio([], {}, "2026-10"), null);
+});
+
+test("DRE separa o CMV calculado pelos itens, informado à mão e estimado (R$ e %)", () => {
+  const comItens = venda(1000, { cmv: 450, itens: [{ descricao: "PINUS 2x4x3,00", vendaTotal: 1000, custoTotal: 450 }] });
+  const informado = venda(400, { cmv: 250 });
+  const semCusto = venda(600);
+  const d = montarDRE([comItens, informado, semCusto], {}, "2026-09");
+  assert.equal(d.valores.cmvCalculadora, -450);
+  assert.equal(d.valores.cmvInformado, -250);
+  assert.equal(d.valores.cmvEstimado, -300); // 600 × (1 − 50%)
+  const o = d.info.cmvOrigem;
+  assert.equal(o.total, 1000);
+  assert.deepEqual([o.itens.valor, o.informado.valor, o.estimado.valor], [450, 250, 300]);
+  perto(o.itens.pct, 0.45);
+  perto(o.estimado.pct, 0.3);
+  assert.equal(d.valores.lucroBruto, 2000 - 1000);
+  // a venda com itens também conta para a margem média real (não só a origem "calculadora")
+  const meses = ["2026-06", "2026-07", "2026-08"].map((m) => venda(1000, { cmv: 600, itens: [{ descricao: "x" }], competencia: `${m}-10`, date: `${m}-10` }));
+  assert.equal(margemReferencia(normalizar(meses, {}), "2026-09", mesclarConfigFinanceiro({})).fonte, "media");
 });
