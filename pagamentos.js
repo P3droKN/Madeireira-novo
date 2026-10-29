@@ -139,6 +139,17 @@ export function criarEditorPagamentos(el, { total = 0, semFiado = false, cliente
       cliente = nome || "";
       render();
     },
+    // Corrigir uma venda: volta as formas gravadas (valor, parcelas, cheque, vencimento do fiado)
+    carregar(pagamentos, total, nomeCliente = "") {
+      alvo = Number(total) || 0;
+      linhas = (pagamentos || []).map((p) => ({
+        forma: p.forma, valor: Number(p.valor) || 0, parcelas: p.parcelas || 2, cheque: { ...(p.cheque || {}) },
+        vencimento: p.fiado?.vencimento || "",
+      }));
+      if (!linhas.length) linhas = [{ forma: "dinheiro", valor: alvo, parcelas: 2, cheque: {} }];
+      cliente = nomeCliente || "";
+      render();
+    },
     clienteDigitado: () => cliente.trim(),
     temFiado,
     // A tela mudou o cliente (campo "Cliente" de fora): redesenha (conta corrente esconde o vencimento)

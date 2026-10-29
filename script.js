@@ -324,13 +324,19 @@ async function registerDirectSale() {
     if (frete) vendaItem.frete = frete;
     const vinculo = window.Calculadora.vinculo();
     if (vinculo && vinculo.modo === 'converter') vendaItem.orcamento = vinculo.id;
+    // Corrigir venda: mesmo id (o servidor mantém o número V-000X e guarda o histórico)
+    const corrigindo = vinculo && vinculo.modo === 'corrigir' ? vinculo : null;
+    if (corrigindo) {
+        vendaItem.id = corrigindo.id;
+        if (corrigindo.orcamento) vendaItem.orcamento = corrigindo.orcamento;
+    }
     // Cliente: obrigatório (e cadastrado) no fiado; numa venda de orçamento, vem do orçamento
     if (pagamentos.some((p) => p.forma === 'fiado')) {
         const cli = await window.Clientes.garantir(window.Calculadora.clienteFiado());
         if (!cli) return;
         vendaItem.clienteId = cli.id;
         vendaItem.cliente = cli.nome;
-    } else if (vinculo && vinculo.modo === 'converter' && vinculo.cliente?.nome) {
+    } else if (vinculo && (vinculo.modo === 'converter' || vinculo.modo === 'corrigir') && vinculo.cliente?.nome) {
         vendaItem.cliente = vinculo.cliente.nome;
         if (vinculo.cliente.id) vendaItem.clienteId = vinculo.cliente.id;
     }
@@ -339,7 +345,7 @@ async function registerDirectSale() {
     const margem = ((pedido.venda - pedido.custo) / pedido.venda * 100).toFixed(1).replace('.', ',');
     const fiadoTotal = pagamentos.filter((p) => p.forma === 'fiado').reduce((s, p) => s + p.valor, 0);
     // Venda veio de um orçamento: marca como Fechado, com vínculo para a venda
-    if (vendaItem.orcamento) {
+    if (vendaItem.orcamento && !corrigindo) {
         try {
             await api('/api/orcamentos', { method: 'PATCH', body: { id: vendaItem.orcamento, acao: 'fechar', vendaId: vendaItem.id, hoje: vendaItem.competencia } });
         } catch (e) {
@@ -347,11 +353,19 @@ async function registerDirectSale() {
         }
         if (window.Orcamentos) window.Orcamentos.recarregar();
     }
-    const contaCorrente = pagamentos.some((p) => p.forma === 'fiado' && p.fiado?.contaCorrente);
-    const aviso = (contaCorrente ? confirm : alert).bind(window);
-    const querVia = aviso(`Venda registrada${vendaItem.orcamento ? ` (orçamento ${vendaItem.orcamento} fechado)` : ''}: ${formatCurrency(vendaItem.value)}${frete ? `\n(itens ${formatCurrency(pedido.venda)} + frete ${formatCurrency(frete)})` : ''}\nCusto dos itens (CMV): ${formatCurrency(pedido.custo)}\nMargem dos produtos: ${margem}%${fiadoTotal ? `\n\nFiado: ${formatCurrency(fiadoTotal)} a receber de ${vendaItem.cliente} (Caixa › A receber).` : ''}${contaCorrente ? '\n\nCliente de conta corrente: imprimir as 2 vias para a pasta?' : ''}`);
-    if (contaCorrente && querVia) window.Via?.imprimir(vendaItem);
+    // Janela "Venda V-0012 registrada" com as vias (qualquer forma de pagamento)
+    const salva = (window.Caixa?.itens || []).find((l) => String(l.id) === String(vendaItem.id)) || vendaItem;
+    const num = salva.numero || '';
+    const esc = window.Impressao.esc;
+    const linhas = [
+        `Total: <strong>${formatCurrency(vendaItem.value)}</strong>${frete ? ` (itens ${formatCurrency(pedido.venda)} + frete ${formatCurrency(frete)})` : ''}`,
+        corrigindo ? `Antes da correção: ${formatCurrency(corrigindo.valorAntes)}. O número continua ${esc(num)}.` : '',
+        vendaItem.orcamento && !corrigindo ? `Orçamento ${esc(vendaItem.orcamento)} marcado como Fechado.` : '',
+        `<span class="sigilo">Custo dos itens (CMV): ${formatCurrency(pedido.custo)} · Margem dos produtos: ${margem}%</span>`,
+        fiadoTotal ? `Fiado: ${formatCurrency(fiadoTotal)} a receber de ${esc(vendaItem.cliente)} (Caixa › A receber).` : '',
+    ].filter(Boolean);
     window.Calculadora.limpar(false);
+    window.Impressao.abrir({ venda: salva, titulo: `Venda ${num} ${corrigindo ? 'corrigida' : 'registrada'}`, mensagem: linhas.map((t) => `<div>${t}</div>`).join('') });
 }
 
 // --- LOGICA DE ACUMULADOS ---

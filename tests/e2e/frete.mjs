@@ -2,6 +2,7 @@
 import { createRequire } from "node:module";
 const require = createRequire("/opt/node-tools/node_modules/");
 const { chromium } = require("playwright");
+import { fecharVias } from "./janela.mjs";
 const URL = "http://localhost:4321";
 const H = { "content-type": "application/json", "x-senha": "pinho123" };
 const nb = (s) => (s || "").replace(/\u00a0/g, " ");
@@ -75,6 +76,7 @@ ok((await page.inputValue("#frete-valor")) === "50.00", "frete mantido ao recarr
 await page.click("#btn-salvar-orcamento");
 await page.fill("#orc-nome", "Cláudio"); await page.fill("#orc-tel", "(47) 99999-1234");
 await page.click("#orc-salvar-botao");
+await fecharVias(page, dialogos);
 await page.waitForFunction(() => document.getElementById("modal-orc-salvar").style.display === "none");
 const o = JSON.parse((await db()).madeireira_orcamentos["ORC-0001"]);
 ok(o.frete === 50 && o.total === 390, "orçamento grava frete R$ 50 e total R$ 390");
@@ -89,6 +91,7 @@ ok((await page.inputValue("#frete-valor")) === "50.00" && await cobrar() === "R$
 
 // 4. Venda com frete
 await page.click("#btn-registrar-venda");
+await fecharVias(page, dialogos);
 await page.waitForFunction(() => document.querySelectorAll("#items-body tr.linha-item").length === 0);
 const v = Object.values((await db()).madeireira_lancamentos).map((x) => JSON.parse(x)).find((l) => l.origem === "calculadora");
 ok(v && v.value === 390 && v.frete === 50 && v.pagamentos[0].valor === 390 && v.cmv > 0, `venda gravada: valor R$ ${v?.value} com frete R$ ${v?.frete}; pagamento cobre o total`);

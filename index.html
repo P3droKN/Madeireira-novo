@@ -170,6 +170,7 @@
                             </div>
                         </div>
                         <div class="botoes-finalizar">
+                            <button class="btn-icon" id="btn-imprimir-vias" onclick="Calculadora.imprimirRascunho()" title="Imprime o pedido da tela (ainda sem número). Depois de registrar, a venda sai com o número V-000X.">🖨 Imprimir 2 vias</button>
                             <button class="btn-icon btn-orcamento" id="btn-salvar-orcamento" onclick="Orcamentos.abrirSalvar()">💾 Salvar como orçamento</button>
                             <button class="btn-success" id="btn-registrar-venda" onclick="registerDirectSale()">Registrar venda</button>
                         </div>
@@ -282,7 +283,7 @@
                         <table class="tabela-fin">
                             <thead><tr>
                                 <th><input type="checkbox" id="fin-sel-todos" aria-label="Selecionar todos"></th>
-                                <th>Data</th><th>Descrição</th><th>Conta</th><th>Forma / pago com</th><th class="num">Valor</th><th></th>
+                                <th>Data</th><th>Nº</th><th>Descrição</th><th>Conta</th><th>Forma / pago com</th><th class="num">Valor</th><th></th>
                             </tr></thead>
                             <tbody id="fin-lista-body"></tbody>
                         </table>
@@ -350,6 +351,7 @@
                     <button class="subtab ativo" data-sub="precos">Preços</button>
                     <button class="subtab" data-sub="financeiro">Financeiro</button>
                     <button class="subtab" data-sub="orcamentos">Orçamentos</button>
+                    <button class="subtab" data-sub="impressao">Impressão</button>
                     <button class="subtab" data-sub="saldos">Saldos</button>
                     <button class="subtab" data-sub="dados">Dados</button>
                 </nav>
@@ -430,6 +432,22 @@
                 <section class="glass-panel fin-sub" id="aj-orcamentos" data-sub-de="ajustes" hidden>
                     <div class="painel-titulo"><h2>Orçamentos</h2></div>
                     <form id="orc-config-form"></form>
+                </section>
+
+                <section class="glass-panel fin-sub" id="aj-impressao" data-sub-de="ajustes" hidden>
+                    <div class="painel-titulo"><h2>Impressão das vias</h2></div>
+                    <p class="texto-suave">Cabeçalho que sai em todo pedido e orçamento impresso (e no PDF). Os campos em branco não aparecem.</p>
+                    <form id="aj-impressao-form" class="fin-form">
+                        <div class="form-row">
+                            <div class="form-group"><label for="imp-cfg-nome">Nome da madeireira</label><input type="text" id="imp-cfg-nome" maxlength="80"></div>
+                            <div class="form-group"><label for="imp-cfg-telefone">Telefone / WhatsApp</label><input type="text" id="imp-cfg-telefone" maxlength="60"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label for="imp-cfg-endereco">Endereço</label><input type="text" id="imp-cfg-endereco" maxlength="160"></div>
+                            <div class="form-group"><label for="imp-cfg-cnpj">CNPJ (opcional)</label><input type="text" id="imp-cfg-cnpj" maxlength="25"></div>
+                        </div>
+                        <div class="export-actions"><button type="submit" class="btn-primary">Salvar</button></div>
+                    </form>
                 </section>
 
                 <div class="fin-sub" id="aj-saldos" data-sub-de="ajustes" hidden>
@@ -662,11 +680,29 @@
         </div>
     </div>
 
-    <!-- ORÇAMENTO PARA IMPRESSÃO -->
-    <div id="impressao-orcamento" class="impressao-orcamento"></div>
 
-    <!-- VIAS DO PEDIDO (conta corrente, para a pasta) -->
+    <!-- VIAS (pedidos e orçamentos): folha que vai para a impressora -->
     <div id="impressao-via" class="impressao-via"></div>
+
+    <!-- JANELA DE IMPRESSÃO DAS VIAS -->
+    <div id="modal-impressao" class="modal-overlay" style="display: none;">
+        <div class="modal-content glass-panel modal-impressao">
+            <h2 id="imp-titulo">Imprimir</h2>
+            <div id="imp-mensagem" class="imp-mensagem" hidden></div>
+            <div class="segmentado imp-modo" id="imp-modo" role="radiogroup" aria-label="Quais vias">
+                <label><input type="radio" name="imp-modo" value="duas" checked><span>2 vias: loja + cliente</span></label>
+                <label><input type="radio" name="imp-modo" value="loja"><span>1 via: só da loja</span></label>
+                <label><input type="radio" name="imp-modo" value="cliente"><span>1 via: só do cliente</span></label>
+            </div>
+            <div id="imp-aviso" class="aviso aviso-alerta" hidden>Pedido grande: não cabe em meia folha, então cada via vai numa página inteira.</div>
+            <div class="imp-previa" aria-label="Prévia da impressão"><div id="imp-previa-folha"></div></div>
+            <div class="export-actions">
+                <button class="btn-icon" id="imp-fechar">Fechar</button>
+                <button class="btn-icon" id="imp-pdf">⬇ Baixar PDF</button>
+                <button class="btn-primary" id="imp-imprimir">🖨 Imprimir</button>
+            </div>
+        </div>
+    </div>
 
     <!-- MODAL RECEBER (fiado) -->
     <div id="modal-receber" class="modal-overlay" style="display: none;">
@@ -716,6 +752,6 @@
     <script type="module" src="caixa-ui.js"></script>
     <script type="module" src="clientes.js"></script>
     <script type="module" src="receber-ui.js"></script>
-    <script type="module" src="via.js"></script>
+    <script type="module" src="impressao-ui.js"></script>
 </body>
 </html>

@@ -29,7 +29,7 @@ const estado = { aba: null, sub: { caixa: "lancar", relatorios: "resumo", ajuste
 const TELAS = {
   caixa: { lancar: "fin-lancar", saldos: "fin-saldos", cheques: "fin-cheques", receber: "fin-receber", lista: "fin-lista" },
   relatorios: { resumo: "rel-resumo", dre: "fin-dre", fluxo: "rel-fluxo", formas: "rel-formas", receber: "rel-receber", orcamentos: "rel-orcamentos" },
-  ajustes: { precos: "aj-precos", financeiro: "aj-financeiro", orcamentos: "aj-orcamentos", saldos: "aj-saldos", dados: "aj-dados" },
+  ajustes: { precos: "aj-precos", financeiro: "aj-financeiro", orcamentos: "aj-orcamentos", impressao: "aj-impressao", saldos: "aj-saldos", dados: "aj-dados" },
 };
 
 function opcoesContas(filtro, selecionada) {
@@ -80,6 +80,10 @@ function renderSub() {
   if (grupo === "ajustes") {
     if (sub === "precos") window.Precos?.abrir();
     if (sub === "financeiro" || sub === "orcamentos") renderConfig();
+    if (sub === "impressao") {
+      const i = mesclarConfigFinanceiro(C()?.configFinanceiro).impressao;
+      for (const k of ["nome", "telefone", "endereco", "cnpj"]) $(`imp-cfg-${k}`).value = i[k] || "";
+    }
     if (sub === "saldos") window.CaixaUI?.abertura($("aj-abertura"));
   }
 }
@@ -219,7 +223,22 @@ function renderFormulario() {
     const soProdutos = () => { $("ff-itens-bloco").hidden = $("ff-conta").value !== "venda_produtos"; };
     $("ff-conta").addEventListener("change", soProdutos);
     soProdutos();
-  }
+    // Corrigir uma venda sem itens: o formulário volta preenchido; ao salvar, mantém o número
+    const corr = estado.corrigindo;
+    if (corr) {
+      const l = corr.origem;
+      $("ff-data").value = l.competencia;
+      $("ff-conta").value = l.conta;
+      $("ff-valor").value = Number(l.value).toFixed(2);
+      $("ff-desc").value = l.description || "";
+      $("ff-cliente").value = l.cliente || "";
+      $("ff-nfe").value = l.nfe || "";
+      if (l.cmv != null) $("ff-cmv").value = l.cmv;
+      estado.editor.carregar(l.pagamentos, l.value, l.cliente || "");
+      form.insertAdjacentHTML("afterbegin", `<div class="aviso" id="ff-corrigindo">Corrigindo a venda <strong>${esc(corr.numero || "")}</strong> (antes ${moeda(corr.valorAntes)}). Ao salvar, o número continua o mesmo. <button type="button" class="link-suave" id="ff-corrigir-cancelar">cancelar correção</button></div>`);
+      $("ff-corrigir-cancelar").addEventListener("click", () => { estado.corrigindo = null; renderFormulario(); });
+    }
+  } else estado.corrigindo = null;
   if (tipo === "venda") $("ff-valor").addEventListener("input", (e) => estado.editor.definirTotal(num(e.target.value) || 0));
   if (tipo === "saida" || tipo === "entrada") {
     const atualizarSugestao = () => {
@@ -252,7 +271,8 @@ async function enviarFormulario(e) {
   const valor = num($("ff-valor").value);
   const data = $("ff-data").value;
   if (!(valor > 0)) return alert("Informe o valor.");
-  const item = { id: C().novoId(tipo === "venda" ? "V" : tipo === "transferencia" ? "T" : "S"), v: 2, value: valor, competencia: data, description: $("ff-desc").value.trim() };
+  const corrigindo = tipo === "venda" ? estado.corrigindo : null;
+  const item = { id: corrigindo ? corrigindo.id : C().novoId(tipo === "venda" ? "V" : tipo === "transferencia" ? "T" : "S"), v: 2, value: valor, competencia: data, description: $("ff-desc").value.trim() };
   if (tipo === "venda") {
     try { item.pagamentos = estado.editor.ler(); } catch (err) { return alert(err.message); }
     item.conta = $("ff-conta").value;
@@ -293,13 +313,14 @@ async function enviarFormulario(e) {
     if (item.conta === "salarios") item.vinculo = $("ff-vinculo").value;
   }
   if (await C().gravar([item])) {
-    // Fiado de conta corrente: oferece as 2 vias para a pasta
-    const cc = item.pagamentos?.some((p) => p.forma === "fiado" && p.fiado?.contaCorrente);
-    const numero = C().itens.find((l) => String(l.id) === String(item.id))?.numero;
-    const msg = numero ? `Venda ${numero} registrada.` : "Lançamento registrado.";
-    if (cc) { if (confirm(`${msg}\n\nImprimir as 2 vias para a pasta?`)) window.Via?.imprimir(item); }
-    else alert(msg);
+    estado.corrigindo = null;
     renderFormulario();
+    // Venda de produtos: a janela das vias ("Venda V-0003 registrada"); o resto, um aviso simples
+    const salvo = vendaPorId(item.id);
+    if (salvo?.numero) {
+      window.Impressao.abrir({ venda: salvo, titulo: `Venda ${salvo.numero} ${corrigindo ? "corrigida" : "registrada"}`,
+        mensagem: `<div>Total: <strong>${moeda(salvo.value)}</strong>${corrigindo ? ` · antes da correção: ${moeda(corrigindo.valorAntes)}` : ""}</div>` });
+    } else alert("Lançamento registrado.");
   }
 }
 
@@ -335,10 +356,41 @@ function filtrarLista() {
     if (tipo === "saidas" && (l.conta === "transferencia" || naturezaDaConta(l.conta) !== "saida")) return false;
     if (tipo === "migrados" && !l.migrado) return false;
     if (tipo === "fiado" && !(l.conta === "recebimento" || l.conta === "fiado_anterior" || (l.pagamentos || []).some((p) => p.forma === "fiado"))) return false;
-    if (busca && ![l.description, l.fornecedor, l.nfe, l.cliente].some((t) => String(t || "").toLowerCase().includes(busca))) return false;
+    if (busca && ![l.description, l.fornecedor, l.nfe, l.cliente, l.numero].some((t) => String(t || "").toLowerCase().includes(busca)) && !numeroConfere(l.numero, busca)) return false;
     return true;
   }).sort((a, b) => String(b.competencia).localeCompare(String(a.competencia)) || String(b.id).localeCompare(String(a.id)));
 }
+
+// Busca pelo número da venda: "V-0012", "v12" ou só "12"
+const numeroConfere = (numero, busca) => {
+  if (!numero || !/^\s*v?-?\s*\d+\s*$/i.test(busca)) return false;
+  return Number(busca.replace(/\D/g, "")) === Number(String(numero).replace(/\D/g, ""));
+};
+const dataHoraBR = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).replace(",", "") : "");
+
+// Vendas: imprimir as vias e corrigir (com itens, volta para o Vender; sem itens, para o Caixa › Lançar)
+function vendaPorId(id) { return C()?.itens.find((l) => String(l.id) === String(id)); }
+function viasDaVenda(id) {
+  const l = vendaPorId(id);
+  if (l) window.Impressao.abrir({ venda: l });
+}
+async function corrigirVenda(id) {
+  const l = vendaPorId(id);
+  if (!l) return;
+  if (C().somenteLeitura) return alert("Sem conexão com a nuvem. Nada pode ser corrigido.");
+  if (Array.isArray(l.itens) && l.itens.length) {
+    window.switchTab("vender");
+    if (await window.Calculadora.carregarVenda(l)) $("btn-registrar-venda")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  estado.corrigindo = { id: l.id, numero: l.numero, valorAntes: l.value, origem: l };
+  window.switchTab("caixa");
+  mostrarSub("caixa", "lancar");
+  const r = document.querySelector('input[name="fin-tipo"][value="venda"]');
+  if (r) r.checked = true;
+  renderFormulario();
+}
+window.Vendas = { vias: viasDaVenda, corrigir: corrigirVenda };
 
 function renderLista() {
   if (!$("fin-f-conta").options.length) {
@@ -361,13 +413,15 @@ function renderLista() {
     return `<tr class="${estado.selecionados.has(String(l.id)) ? "selecionado" : ""}">
       <td><input type="checkbox" class="fin-sel" value="${esc(l.id)}" ${estado.selecionados.has(String(l.id)) ? "checked" : ""} aria-label="Selecionar"></td>
       <td>${dataBR(l.competencia)}</td>
+      <td>${l.numero ? `<strong>${esc(l.numero)}</strong>` : ""}${l.historico?.length ? `<small title="${esc(l.historico.map((h) => `corrigida em ${dataHoraBR(h.em)}, antes ${moeda(h.valorAntes)}`).join("\n"))}">corrigida</small>` : ""}</td>
       <td>${esc(l.description || "")}${l.cliente ? `<small>cliente: ${esc(l.cliente)}</small>` : ""}${l.fornecedor ? `<small>${esc(l.fornecedor)}</small>` : ""}${l.nfe ? `<small>NF-e ${esc(l.nfe)}</small>` : ""}${l.frete ? `<small>inclui frete ${moeda(l.frete)}</small>` : ""}</td>
       <td>${esc(c?.nome || NOMES_ESPECIAIS[l.conta] || l.conta)}${l.conta === "salarios" && estimativasLigadas() ? ` <small class="texto-suave">(${esc(VINCULOS.find((v) => v.id === (l.vinculo || "clt"))?.nome || "CLT")})</small>` : ""} ${tags}${sug}</td>
       <td>${esc(descreverForma(l))}</td>
       <td class="num ${foraDoSaldo(l) ? "" : entrada ? "type-income" : "type-expense"}">${moeda(l.value)}</td>
-      <td><button class="delete-btn" data-excluir="${esc(l.id)}" title="Excluir (estornar) este lançamento">Excluir</button></td>
+      <td class="lanc-acoes">${l.conta === "venda_produtos" ? `<button class="btn-icon mini" data-vias="${esc(l.id)}" title="Imprimir as vias desta venda">🖨 Vias</button><button class="btn-icon mini" data-corrigir="${esc(l.id)}" title="Abrir a venda de volta para corrigir (mantém o número)">Corrigir</button>` : ""}
+        <button class="delete-btn" data-excluir="${esc(l.id)}" title="${l.conta === "venda_produtos" ? "Estornar: desfaz a venda inteira (o número fica marcado como estornado)" : "Excluir (estornar) este lançamento"}">${l.conta === "venda_produtos" ? "Estornar" : "Excluir"}</button></td>
     </tr>`;
-  }).join("") || '<tr><td colspan="7" class="texto-suave">Nenhum lançamento com esse filtro.</td></tr>';
+  }).join("") || '<tr><td colspan="8" class="texto-suave">Nenhum lançamento com esse filtro.</td></tr>';
   const total = lista.reduce((s, l) => s + (foraDoSaldo(l) ? 0 : (naturezaDaConta(l.conta) === "entrada" ? 1 : -1) * Math.round(l.value * 100)), 0) / 100;
   $("fin-lista-contagem").textContent = `${lista.length} lançamentos${lista.length > LIMITE ? ` (mostrando ${LIMITE})` : ""} · saldo do filtro ${moeda(total)}`;
   $("fin-sel-todos").checked = lista.length > 0 && lista.every((l) => estado.selecionados.has(String(l.id)));
@@ -714,6 +768,18 @@ document.querySelectorAll(".subtabs[data-grupo]").forEach((nav) => nav.addEventL
 $("fin-tipo").addEventListener("change", renderFormulario);
 $("fin-form").addEventListener("submit", enviarFormulario);
 $("fin-config-form").addEventListener("submit", salvarConfig);
+// Ajustes › Impressão: só o cabeçalho; o resto da configuração vai junto, como está
+$("aj-impressao-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const impressao = Object.fromEntries(["nome", "telefone", "endereco", "cnpj"].map((k) => [k, $(`imp-cfg-${k}`).value.trim()]));
+  try {
+    const r = await window.api("/api/config", { method: "POST", body: { financeiro: { ...mesclarConfigFinanceiro(C().configFinanceiro), impressao } } });
+    C().configFinanceiro = r.financeiro;
+    alert("Cabeçalho da impressão salvo.");
+  } catch (err) {
+    alert(`Não foi salvo: ${err.message}`);
+  }
+});
 $("orc-config-form").addEventListener("submit", salvarConfig);
 for (const id of ["fin-f-mes", "fin-f-tipo", "fin-f-conta"]) $(id).addEventListener("change", () => { estado.selecionados.clear(); renderLista(); });
 $("fin-f-busca").addEventListener("input", () => renderLista());
@@ -724,8 +790,11 @@ $("fin-lista-body").addEventListener("change", (e) => {
   atualizarLote();
 });
 $("fin-lista-body").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-excluir]");
-  if (b) C().excluir(b.dataset.excluir);
+  const b = e.target.closest("[data-excluir], [data-vias], [data-corrigir]");
+  if (!b) return;
+  if (b.dataset.excluir) C().excluir(b.dataset.excluir);
+  if (b.dataset.vias) viasDaVenda(b.dataset.vias);
+  if (b.dataset.corrigir) corrigirVenda(b.dataset.corrigir);
 });
 $("fin-sel-todos").addEventListener("change", (e) => {
   for (const l of estado.visivel) { if (e.target.checked) estado.selecionados.add(String(l.id)); else estado.selecionados.delete(String(l.id)); }

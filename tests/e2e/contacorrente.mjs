@@ -106,11 +106,15 @@ await page.click("#btn-registrar-venda");
 await page.waitForFunction(() => document.querySelectorAll("#items-body tr.linha-item").length === 0);
 const v1 = (await lanc()).find((l) => l.origem === "calculadora");
 ok(v1 && v1.clienteId === arlindo.id && v1.pagamentos[0].fiado.contaCorrente === true && v1.pagamentos[0].fiado.vencimento === "", "venda gravada como conta corrente, sem vencimento");
-ok(nb(dialogos.at(-1)).includes("imprimir as 2 vias para a pasta"), "pergunta se quer imprimir as 2 vias");
+await page.waitForSelector("#modal-impressao", { state: "visible" });
+ok(nb(await page.textContent("#imp-titulo")) === "Venda V-0002 registrada" && await page.isChecked('input[name="imp-modo"][value="duas"]'), "janela \"Venda V-0002 registrada\" com 2 vias marcado");
+await page.click("#imp-imprimir");
+await page.waitForFunction(() => window.__impressoes.length === 1);
 let imp = nb((await impressoes()).at(-1));
-ok(imp.includes("Via da loja (pasta)") && imp.includes("Via do cliente") && imp.includes("Seu Arlindo") && imp.includes("R$ 250,00") && imp.includes("Assinatura"), "2 vias impressas: loja e cliente, com cliente, total e assinatura");
-ok(!/custo|margem|CMV/i.test(imp), "a via não mostra custo nem margem");
-ok(imp.includes("Pedido V-0002") && !imp.includes(v1.id), "via com número curto e sequencial (V-0002; a V-0001 foi a venda de setembro)");
+ok(imp.includes("VIA DA LOJA") && imp.includes("VIA DO CLIENTE") && imp.includes("Seu Arlindo") && imp.includes("R$ 250,00") && imp.includes("Assinatura do cliente") && imp.includes("A prazo"), "2 vias impressas: loja e cliente, com cliente, total, forma (a prazo) e assinatura");
+ok(!/custo|margem|CMV|conta corrente|tabela/i.test(imp), "a via não mostra custo, margem nem conta corrente");
+ok(imp.includes("PEDIDO Nº V-0002") && !imp.includes(v1.id), "via com número curto e sequencial (V-0002; a V-0001 foi a venda de setembro)");
+await page.click("#imp-fechar");
 
 // 4. Caixa › Lançar: fiado antigo do Seu Arlindo (20/08), passa do limite
 await page.click("#btn-tab-caixa"); await sub("caixa", "lancar");
@@ -120,7 +124,10 @@ await page.locator("#ff-pagamentos .pag-forma").first().selectOption("fiado");
 await page.fill("#ff-cliente", "seu arlindo"); await page.dispatchEvent("#ff-cliente", "change");
 ok(nb(await page.textContent("#ff-pagamentos")).includes("Conta corrente: sem vencimento"), "Lançar: digitou cliente de conta corrente, o vencimento some");
 await page.click("#fin-form button[type=submit]");
+await page.waitForSelector("#modal-impressao", { state: "visible" });
+await page.click("#imp-imprimir");
 await page.waitForFunction(() => window.__impressoes.length === 2);
+await page.click("#imp-fechar");
 const v2 = (await lanc()).find((l) => l.value === 400 && l.conta === "venda_produtos");
 ok(v2?.pagamentos[0].fiado.contaCorrente === true, "Lançar: fiado conta corrente gravado");
 
@@ -143,7 +150,11 @@ await linhaA.locator('[data-rc="ver"]').click();
 const det = page.locator("#fin-receber tr.linha-detalhe");
 ok(nb(await det.textContent()).includes("conta corrente") && nb(await det.textContent()).includes("em aberto há 51 dia(s)"), "detalhe: sem vencimento, \"em aberto há X dias\"");
 await det.locator("[data-rc-via]").first().click();
-ok((await impressoes()).length === 3, "botão 🖨 Via reimprime as 2 vias de uma venda");
+await page.waitForSelector("#modal-impressao", { state: "visible" });
+await page.click("#imp-imprimir");
+await page.waitForFunction(() => window.__impressoes.length === 3);
+ok(nb((await impressoes()).at(-1)).includes("2ª impressão em 10/10/2026"), "botão 🖨 Vias reimprime, marcada \"2ª impressão em DD/MM\"");
+await page.click("#imp-fechar");
 // Editar o alerta pelo "Ver": limite R$ 1.000 e 30 dias sem pagar
 const fAl = det.locator(".rc-alerta-form");
 ok(await fAl.locator(".rc-al-limite").inputValue() === "500", "Ver: o alerta atual vem preenchido");

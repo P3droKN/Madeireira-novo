@@ -3,6 +3,7 @@
 import { createRequire } from "node:module";
 const require = createRequire("/opt/node-tools/node_modules/");
 const { chromium } = require("playwright");
+import { fecharVias } from "./janela.mjs";
 const URL = "http://localhost:4321";
 const H = { "content-type": "application/json", "x-senha": "pinho123" };
 const nb = (s) => (s || "").replace(/ /g, " ");
@@ -34,6 +35,7 @@ await page.fill("#quantity-pieces", "10"); await page.click("#btn-adicionar");
 await page.selectOption("#material", "CEDRO_MESCLADO"); await page.selectOption("#dimension", "CEDRO_MESCLADO|1x2");
 await page.fill("#quantity-pieces", "6"); await page.fill("#quantity-length", "2.5"); await page.click("#btn-adicionar");
 await page.click("#btn-registrar-venda");
+await fecharVias(page, dialogos);
 await page.waitForFunction(() => document.querySelectorAll("#items-body tr.linha-item").length === 0);
 const v1 = (await lanc()).find((l) => l.origem === "calculadora");
 ok(v1 && v1.itens.length === 2 && v1.value === 370 && v1.cmv > 0, `Vender: pedido de 2 itens, R$ 370 (250 + 120), CMV R$ ${v1?.cmv}`);
@@ -54,6 +56,7 @@ ok(await page.inputValue("#ff-valor") === "370.00" && await page.getAttribute("#
 ok(await page.isHidden("#ff-cmv-grupo") && await page.isHidden("#ff-itens-aviso"), "com itens: some o CMV manual e o aviso");
 ok(nb(await page.textContent("#ff-cmv-calculado")).includes(nb(new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v1.cmv))), "mostra o custo calculado, só para leitura");
 await page.click("#fin-form button[type=submit]");
+await fecharVias(page, dialogos);
 await page.waitForTimeout(600);
 const v2 = (await lanc()).find((l) => l.conta === "venda_produtos" && l.id !== v1.id && l.itens?.length);
 ok(v2 && v2.cmv === v1.cmv && v2.value === v1.value, `Caixa: CMV igual ao do mesmo pedido no Vender (R$ ${v2?.cmv} = R$ ${v1.cmv})`);
@@ -75,6 +78,7 @@ ok(await page.getAttribute("#ff-valor", "readonly") === null && await page.isVis
 // 4. Venda rápida sem itens: CMV estimado = venda × (1 − 50%)
 await page.fill("#ff-valor", "1000"); await page.dispatchEvent("#ff-valor", "input");
 await page.click("#fin-form button[type=submit]");
+await fecharVias(page, dialogos);
 await page.waitForTimeout(600);
 const v3 = (await lanc()).find((l) => l.value === 1000 && l.conta === "venda_produtos");
 ok(v3 && v3.cmv == null && !v3.itens, "venda sem itens gravada sem custo (o DRE estima)");

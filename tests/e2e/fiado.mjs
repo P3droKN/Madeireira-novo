@@ -3,6 +3,7 @@
 import { createRequire } from "node:module";
 const require = createRequire("/opt/node-tools/node_modules/");
 const { chromium } = require("playwright");
+import { fecharVias } from "./janela.mjs";
 const URL = "http://localhost:4321";
 const H = { "content-type": "application/json", "x-senha": "pinho123" };
 const nb = (s) => (s || "").replace(/ /g, " ");
@@ -44,6 +45,7 @@ ok(dialogos.at(-1).includes("Informe o cliente"), "sem cliente, o fiado não é 
 await page.fill("#calc-pagamentos .pag-fiado-cliente", "Zé da Obra");
 respostas.push(""); // WhatsApp: em branco
 await page.click("#btn-registrar-venda");
+await fecharVias(page, dialogos);
 await page.waitForFunction(() => document.querySelectorAll("#items-body tr.linha-item").length === 0);
 ok(dialogos.some((d) => d.includes('"Zé da Obra" não está no cadastro')), "cliente novo: pergunta se quer cadastrar");
 const v1 = (await lanc()).find((l) => l.origem === "calculadora");
@@ -59,6 +61,7 @@ await page.fill("#ff-cliente", "ze da obra");
 await page.locator("#ff-pagamentos .pag-forma").first().selectOption("fiado");
 await page.fill("#ff-pagamentos .pag-fiado-venc", "2026-10-05"); await page.dispatchEvent("#ff-pagamentos .pag-fiado-venc", "change");
 await page.click("#fin-form button[type=submit]");
+await fecharVias(page, dialogos);
 await page.waitForTimeout(500);
 const v2 = (await lanc()).find((l) => l.value === 100 && l.conta === "venda_produtos");
 ok(v2 && v2.clienteId === "C1" && v2.pagamentos[0].fiado.vencimento === "2026-10-05", "Lançar: venda fiado acha o cliente pelo nome (sem acento/maiúsculas) e grava o vencimento combinado");

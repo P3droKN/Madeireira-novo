@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 const require = createRequire("/opt/node-tools/node_modules/");
 const { chromium } = require("playwright");
+import { fecharVias } from "./janela.mjs";
 const URL = "http://localhost:4321";
 const H = { "content-type": "application/json", "x-senha": "pinho123" };
 const nb = (s) => (s || "").replace(/ /g, " ");
@@ -41,6 +42,7 @@ await page.fill("#orc-tel", "(47) 99999-1234");
 await page.locator('label:has(input[name="orc-origem"][value="whatsapp"])').click();
 await page.fill("#orc-obs", "entrega na obra");
 await page.click("#orc-salvar-botao");
+await fecharVias(page, dialogos);
 await page.waitForFunction(() => document.getElementById("modal-orc-salvar").style.display === "none");
 for (let i = 0; i < 50 && !dialogos.some((d) => d.includes("ORC-0001")); i++) await page.waitForTimeout(100); // o aviso vem depois de recarregar a lista
 ok(dialogos.at(-1).includes("ORC-0001") && nb(dialogos.at(-1)).includes("R$ 275,00"), "salvo como ORC-0001 de R$ 275,00");
@@ -57,6 +59,7 @@ await page.click("#btn-salvar-orcamento");
 await page.fill("#orc-tel", "47999991234"); await page.dispatchEvent("#orc-tel", "input");
 ok(await page.inputValue("#orc-nome") === "Carlos Souza", "telefone já cadastrado preenche o nome");
 await page.click("#orc-salvar-botao");
+await fecharVias(page, dialogos);
 await page.waitForFunction(() => document.getElementById("modal-orc-salvar").style.display === "none");
 ok(Object.keys((await db()).madeireira_clientes).length === 1, "um cliente só no cadastro");
 
@@ -119,6 +122,7 @@ await page.click("#orc-converter-orcamento");
 await page.waitForSelector("#orc-vinculo:not([hidden])");
 ok(nb(await page.textContent("#orc-vinculo")).includes("Venda do orçamento ORC-0001") && nb(await page.textContent("#total-cobrar")) === "R$ 330,00", "pedido carregado na Calculadora com o vínculo e os preços do orçamento");
 await page.click("#btn-registrar-venda");
+await fecharVias(page, dialogos);
 await page.waitForFunction(() => document.querySelectorAll("#items-body tr.linha-item").length === 0);
 o1 = await orc("ORC-0001");
 const venda = Object.values((await db()).madeireira_lancamentos).map((x) => JSON.parse(x)).find((l) => l.orcamento === "ORC-0001");
@@ -164,6 +168,7 @@ await page.waitForSelector("#orc-vinculo:not([hidden])");
 await page.click("#btn-salvar-orcamento");
 ok(await page.inputValue("#orc-nome") === "Carlos Souza", "duplicar já traz o cliente");
 await page.click("#orc-salvar-botao");
+await fecharVias(page, dialogos);
 await page.waitForFunction(() => document.getElementById("modal-orc-salvar").style.display === "none");
 const o3 = await orc("ORC-0003");
 ok(o3.duplicadoDe === "ORC-0002" && o3.total === 90 && o3.status === "aberto", "duplicado como ORC-0003");
@@ -175,6 +180,7 @@ ok((await page.textContent("#btn-salvar-orcamento")).includes("Salvar alteraçõ
 await page.locator("#total-final").fill("100"); await page.locator("#total-final").dispatchEvent("change");
 await page.waitForTimeout(150);
 await page.click("#btn-salvar-orcamento"); await page.click("#orc-salvar-botao");
+await fecharVias(page, dialogos);
 await page.waitForFunction(() => document.getElementById("modal-orc-salvar").style.display === "none");
 ok((await orc("ORC-0003")).total === 100 && !(await db()).madeireira_orcamentos["ORC-0004"], "edição mantém o número (ORC-0003 com R$ 100,00)");
 
@@ -182,8 +188,10 @@ ok((await orc("ORC-0003")).total === 100 && !(await db()).madeireira_orcamentos[
 await page.click("#btn-tab-orcamentos"); await page.waitForSelector("#orc-body tr");
 await abaOrc("aberto");
 await menu("ORC-0003", "imprimir");
-const imp = nb(await page.textContent("#impressao-orcamento"));
-ok(imp.includes("Orçamento ORC-0003") && imp.includes("R$ 100,00") && !/custo|margem|tabela/i.test(imp), "impressão sem custo, margem nem tabela");
+await page.waitForSelector("#modal-impressao", { state: "visible" });
+const imp = nb(await page.textContent("#imp-previa-folha"));
+ok(imp.includes("ORÇAMENTO Nº ORC-0003") && imp.includes("R$ 100,00") && imp.includes("Válido até") && !/custo|margem|tabela|assinatura/i.test(imp), "menu ⋯ › 🖨 Imprimir 2 vias: prévia sem custo, margem, tabela nem assinatura");
+await page.click("#imp-fechar");
 await page.screenshot({ path: "orcamentos.png", fullPage: true });
 
 // 10. Excluir (lixeira) e restaurar

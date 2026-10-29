@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 const require = createRequire("/opt/node-tools/node_modules/");
 const { chromium } = require("playwright");
+import { fecharVias } from "./janela.mjs";
 const URL = "http://localhost:4321";
 const H = { "content-type": "application/json", "x-senha": "pinho123" };
 const db = async () => (await fetch(URL + "/__db")).json();
@@ -112,6 +113,7 @@ await page.waitForFunction(() => document.querySelectorAll("#items-body tr.linha
 ok((await page.inputValue("#total-final")) === "383.80", "pedido e ajustes mantidos ao recarregar");
 // forma padrão (dinheiro) no editor de pagamentos
 await page.click("#btn-registrar-venda");
+await fecharVias(page, dialogos);
 await page.waitForFunction(() => document.querySelectorAll("#items-body tr.linha-item").length === 0);
 const d = await db();
 const v = Object.values(d.madeireira_lancamentos).map((x) => JSON.parse(x)).find((l) => l.origem === "calculadora");

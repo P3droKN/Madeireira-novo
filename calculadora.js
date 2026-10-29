@@ -436,8 +436,11 @@ function renderVinculo() {
   const el = $("orc-vinculo");
   const v = estado.vinculo;
   $("btn-salvar-orcamento").textContent = v?.modo === "editar" ? `💾 Salvar alterações no ${v.id}` : "💾 Salvar como orçamento";
+  $("btn-salvar-orcamento").hidden = v?.modo === "corrigir";
+  $("btn-registrar-venda").textContent = v?.modo === "corrigir" ? `Salvar correção da ${v.numero || "venda"}` : "Registrar venda";
   if (!v || !estado.pedido.length) { el.hidden = true; return; }
   const textos = {
+    corrigir: `Corrigindo a venda <strong>${esc(v.numero || "")}</strong> (antes ${moeda(v.valorAntes)}). Ao salvar, o número continua o mesmo e o custo, o caixa e o fiado são recalculados.`,
     editar: `Editando o orçamento <strong>${esc(v.id)}</strong>. Ao salvar, o número continua o mesmo.`,
     converter: `Venda do orçamento <strong>${esc(v.id)}</strong>: ao registrar a venda, o orçamento é marcado como Fechado.`,
     duplicar: `Cópia do orçamento <strong>${esc(v.id)}</strong>: ao salvar, vira um orçamento novo.`,
@@ -649,6 +652,8 @@ window.Calculadora = {
     estado.pedido = [];
     estado.motivoGeral = "";
     estado.frete = null;
+    // Depois de corrigir uma venda antiga, a data volta para hoje
+    if (estado.vinculo?.modo === "corrigir" && $("direct-sale-date") && window.Caixa?.hoje) $("direct-sale-date").value = window.Caixa.hoje();
     estado.vinculo = null;
     editorPagamentos.reiniciar(0);
     $("calc-nfe").value = "";
@@ -702,6 +707,53 @@ window.Calculadora = {
     return true;
   },
 
+  // Corrigir uma venda registrada: volta os itens (com o preço vendido), o frete, a data, a NF-e e as formas
+  async carregarVenda(l) {
+    if (!estado.catalogo) await carregar();
+    if (estado.pedido.length && !confirm("O pedido atual será substituído pela venda a corrigir. Continuar?")) return false;
+    const fora = (l.itens || []).filter((i) => !estado.catalogo.itens.has(i.itemId));
+    estado.pedido = (l.itens || []).filter((i) => estado.catalogo.itens.has(i.itemId)).map((i) => {
+      const item = estado.catalogo.itens.get(i.itemId);
+      const livre = item.unidade === "valor_livre";
+      const linha = {
+        uid: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+        itemId: i.itemId, acabamento: i.acabamento || "UNICO", quantidade: i.quantidade, comprimento: i.comprimento,
+        descricao: i.descricaoLivre || "", precoManual: null, variacaoPct: null, totalManual: null, motivo: i.motivo || "",
+      };
+      // venda antiga, sem a quantidade pedida: usa a cobrada (metro linear vira 1 peça do comprimento total)
+      if (!livre && linha.quantidade == null) {
+        if (UNIDADES[item.unidade].pedeComprimento) { linha.quantidade = 1; linha.comprimento = i.quantidadeCobrada; } else linha.quantidade = i.quantidadeCobrada;
+      }
+      // o preço que foi vendido (não o da tabela de hoje)
+      if (livre) linha.totalManual = i.vendaTotal;
+      else if (Number(i.quantidadeCobrada) > 0 && i.vendaTotal != null) linha.precoManual = Number(i.vendaTotal) / Number(i.quantidadeCobrada);
+      return linha;
+    });
+    if (fora.length) alert(`${fora.length} item(ns) não estão mais no catálogo e ficaram de fora: ${fora.map((i) => i.descricao).join(", ")}.`);
+    estado.motivoGeral = l.motivo || "";
+    estado.frete = l.frete > 0 ? l.frete : null;
+    if ($("direct-sale-date")) $("direct-sale-date").value = l.competencia;
+    if ($("calc-nfe")) $("calc-nfe").value = l.nfe || "";
+    estado.vinculo = { modo: "corrigir", id: l.id, numero: l.numero, valorAntes: l.value, orcamento: l.orcamento || null, cliente: l.cliente ? { id: l.clienteId || null, nome: l.cliente } : null };
+    renderPedido();
+    editorPagamentos.carregar(l.pagamentos, l.value, l.cliente || "");
+    return true;
+  },
+
+  // Vender › 🖨 Imprimir 2 vias: o pedido que está na tela (rascunho, ainda sem número)
+  imprimirRascunho() {
+    if (!estado.pedido.length) return alert("O pedido está vazio. Adicione itens primeiro.");
+    const r = itensDaVenda(estado.pedido);
+    if (r.semPreco) return alert("Há item sem preço. Digite o preço na linha do item.");
+    let pagamentos = [];
+    try { pagamentos = editorPagamentos.ler(); } catch { /* formas ainda não fecham: a via sai sem elas */ }
+    const v = estado.vinculo;
+    window.Impressao.abrir({ venda: {
+      id: null, numero: v?.modo === "corrigir" ? v.numero : null, competencia: $("direct-sale-date")?.value || "", itens: r.itens, frete: valorFrete(),
+      value: arred(r.venda + valorFrete()), pagamentos, cliente: editorPagamentos.clienteDigitado() || v?.cliente?.nome || "", orcamento: v?.modo === "converter" ? v.id : null,
+    } });
+  },
+
   // Usado por registerDirectSale (script.js): tudo o que a venda grava
   resumo() {
     const r = itensDaVenda(estado.pedido);
@@ -732,6 +784,9 @@ function itensDaVenda(linhas) {
       itemId: l.itemId,
       descricao: item.unidade === "valor_livre" ? `${item.material}${l.descricao ? " - " + l.descricao : ""}` : `${item.material} ${item.rotuloDimensao}`,
       acabamento: l.acabamento,
+      // como foi pedido: para a via ("6 pç × 2,50 m") e para corrigir a venda depois
+      quantidade: l.quantidade ?? null, comprimento: l.comprimento ?? null, descricaoLivre: l.descricao || "",
+      precoManual: l.precoManual ?? null, totalManual: l.totalManual ?? null,
       quantidadeCobrada: r.quantidadeCobrada,
       unidade: r.unidadeCobranca,
       custoTotal: r.custoTotal,

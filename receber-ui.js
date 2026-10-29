@@ -115,7 +115,7 @@ function linhaCliente(c) {
 const textoAlerta = (c) => [c.alertaLimite != null ? `limite ${moeda(c.alertaLimite)}` : "", c.alertaDias != null ? `${c.alertaDias} dias sem pagar` : ""].filter(Boolean).join(" · ") || "sem alerta";
 
 // Venda com itens que dá para imprimir de novo (as 2 vias)
-const temVia = (d) => d.tipo === "fiado" && C().itens.some((l) => String(l.id) === String(d.origemId));
+const vendaDa = (d) => (d.tipo === "fiado" ? C().itens.find((l) => String(l.id) === String(d.origemId) && l.conta === "venda_produtos") : null);
 
 // Conta corrente e alertas, direto no detalhe do cliente (o mesmo que Clientes › Editar)
 function formAlerta(c) {
@@ -135,7 +135,7 @@ function detalheCliente(c) {
     ${formAlerta(c)}
     <table class="tabela-fin">
       <thead><tr><th>Data</th><th>O quê</th><th>Vencimento</th><th class="num">Valor</th><th class="num">Pago</th><th class="num">Em aberto</th><th>Situação</th></tr></thead>
-      <tbody>${c.dividas.map((d) => `<tr><td>${dataBR(d.data)}</td><td>${esc(d.descricao)}${temVia(d) ? ` <button class="btn-icon mini" data-rc-via="${esc(d.origemId)}" title="Imprimir as 2 vias (loja e cliente)">🖨 Via</button>` : ""}</td><td>${c.contaCorrente ? "conta corrente" : dataBR(d.vencimento)}</td>
+      <tbody>${c.dividas.map((d) => `<tr><td>${dataBR(d.data)}</td><td>${vendaDa(d)?.numero ? `<strong>${esc(vendaDa(d).numero)}</strong> · ` : ""}${esc(d.descricao)}${vendaDa(d) ? ` <button class="btn-icon mini" data-rc-via="${esc(d.origemId)}" title="Imprimir as vias desta venda">🖨 Vias</button> <button class="btn-icon mini" data-rc-corrigir="${esc(d.origemId)}" title="Abrir a venda de volta para corrigir (mantém o número)">Corrigir</button>` : ""}</td><td>${c.contaCorrente ? "conta corrente" : dataBR(d.vencimento)}</td>
         <td class="num">${moeda(d.valor)}</td><td class="num">${d.pago ? moeda(d.pago) : "—"}</td><td class="num"><strong>${moeda(d.aberto)}</strong></td><td>${situacaoTag(d)}</td></tr>`).join("")
         || '<tr><td colspan="7" class="texto-suave">Sem compras no fiado.</td></tr>'}</tbody>
     </table>
@@ -310,10 +310,11 @@ function relatorio(el) {
 // ---------- Eventos ----------
 
 document.addEventListener("click", (e) => {
-  const b = e.target.closest("[data-rc], [data-rc-estornar], [data-rc-editar], [data-rc-via]");
+  const b = e.target.closest("[data-rc], [data-rc-estornar], [data-rc-editar], [data-rc-via], [data-rc-corrigir]");
   if (!b || !estado.el?.contains(b)) return;
+  if (b.dataset.rcCorrigir) return window.Vendas?.corrigir(b.dataset.rcCorrigir);
   if (b.dataset.rcVia) {
-    window.Via?.imprimir(C().itens.find((l) => String(l.id) === String(b.dataset.rcVia)));
+    window.Vendas?.vias(b.dataset.rcVia);
     return;
   }
   if (b.dataset.rcEstornar) {

@@ -31,5 +31,6 @@ ALVO="${1:-todos}"
 [ "$ALVO" = todos -o "$ALVO" = fiado ] && rodar fiado X=1
 [ "$ALVO" = todos -o "$ALVO" = contacorrente ] && rodar contacorrente X=1
 [ "$ALVO" = todos -o "$ALVO" = caixaitens ] && rodar caixaitens VAZIO=1
+[ "$ALVO" = todos -o "$ALVO" = impressao ] && rodar impressao VAZIO=1 AGORA=2026-10-25T17:32:00Z
 [ "$ALVO" = todos -o "$ALVO" = virada ] && rodar virada SEED="$E/seed2a.json" BANCO_PRODUCAO_HOST=https://producao-antigo.upstash.io PERMITIR_ZERAR=sim
 parar; rm -rf "$TMP"

@@ -750,3 +750,39 @@ test("config financeira: interruptor das estimativas contábeis desligado por pa
   const off = await salvarConfigFinanceiro(kv, K, { ...c, estimativasContabeis: false });
   assert.deepEqual([off.estimativasContabeis, off.impostos.rbt12, off.pessoal.provisaoPct], [false, 600000, 20]); // nada é apagado ao desligar
 });
+
+test("numeração de vendas: dois aparelhos ao mesmo tempo, sem número repetido nem buraco", async () => {
+  const kv = kvFalso({ [K.finance]: [] });
+  await migrar(kv, K);
+  const venda = (id) => ({ id, v: 2, conta: "venda_produtos", value: 100, competencia: "2026-10-01", pagamentos: [{ forma: "dinheiro", valor: 100 }] });
+  const r = await Promise.all(Array.from({ length: 12 }, (_, i) => salvarLancamentos(kv, K, [venda(`A${i}`), venda(`B${i}`)])));
+  const numeros = r.flatMap((x) => Object.values(x.numeros)).sort();
+  assert.equal(new Set(numeros).size, 24);
+  assert.deepEqual(numeros, Array.from({ length: 24 }, (_, i) => `V-${String(i + 1).padStart(4, "0")}`));
+});
+
+test("corrigir venda: mesmo número, hora e marca de impressão; histórico 'antes R$ X'; estorno mantém o número", async () => {
+  const { marcarImpresso } = await import("../api/_dados.js");
+  const kv = kvFalso({ [K.finance]: [] });
+  await migrar(kv, K);
+  const venda = (value) => ({ id: "V1", v: 2, conta: "venda_produtos", value, competencia: "2026-10-01", pagamentos: [{ forma: "dinheiro", valor: value }],
+    itens: [{ itemId: "PINUS|2x4x3.00", descricao: "Pinus", acabamento: "BRUTO", quantidade: 4, comprimento: null, quantidadeCobrada: 4, unidade: "peça", vendaTotal: value, custoTotal: 50 }] });
+  await salvarLancamentos(kv, K, [venda(100)]);
+  const antes = await kv.hget(K.lancamentos, "V1");
+  assert.equal(antes.itens[0].quantidade, 4);
+  assert.ok(antes.criadoEm);
+  assert.deepEqual(await marcarImpresso(kv, K, "V1"), { impressoEm: (await kv.hget(K.lancamentos, "V1")).impressoEm, primeira: true });
+  assert.equal((await marcarImpresso(kv, K, "V1")).primeira, false);
+  await salvarLancamentos(kv, K, [venda(120)]);
+  const depois = await kv.hget(K.lancamentos, "V1");
+  assert.deepEqual([depois.numero, depois.criadoEm, depois.impressoEm], [antes.numero, antes.criadoEm, (await kv.hget(K.lancamentos, "V1")).impressoEm]);
+  assert.equal(depois.historico.length, 1);
+  assert.equal(depois.historico[0].valorAntes, 100);
+  await salvarLancamentos(kv, K, [venda(120)]); // salvar sem mudar nada não cria histórico
+  assert.equal((await kv.hget(K.lancamentos, "V1")).historico.length, 1);
+  await excluirLancamento(kv, K, "V1");
+  const est = await kv.hget(K.lancamentos, "V1");
+  assert.deepEqual([est.excluido, est.numero], [true, "V-0001"]);
+  // a próxima venda não reaproveita o número
+  assert.equal((await salvarLancamentos(kv, K, [{ ...venda(50), id: "V2" }])).numeros.V2, "V-0002");
+});

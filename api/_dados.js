@@ -74,6 +74,12 @@ function validarItemPedido(i) {
     itemId: texto(i.itemId, 120),
     descricao: texto(i.descricao, 200),
     acabamento: texto(i.acabamento, 20),
+    // como foi pedido (para corrigir a venda e para a via: "6 pç × 2,50 m"), além do cobrado
+    quantidade: num(i.quantidade),
+    comprimento: num(i.comprimento),
+    precoManual: num(i.precoManual),
+    totalManual: num(i.totalManual),
+    descricaoLivre: texto(i.descricaoLivre, 200),
     quantidadeCobrada: num(i.quantidadeCobrada),
     unidade: texto(i.unidade, 20),
     custoTotal: num(i.custoTotal),
@@ -228,16 +234,28 @@ export async function salvarLancamentos(kv, k, itens) {
   const cfg = mesclarConfigFinanceiro(desembrulhar(await kv.get(k.configFinanceiro)) || {});
   // Lançamento novo (v2) é validado pelo plano de contas; o antigo continua aceito
   const limpos = itens.map((i) => (i && i.v === 2 ? validarLancamentoV2(i, cfg) : validarLancamento(i)));
-  // Venda nova ganha um número curto e sequencial (V-0001…), usado na via; editar mantém o número
-  const vendas = limpos.filter((i) => i.v === 2 && i.conta === "venda_produtos");
+  // Venda nova ganha um número curto e sequencial (V-0001…), dado aqui (o contador é atômico: dois
+  // aparelhos ao mesmo tempo nunca recebem o mesmo número). Corrigir a venda mantém o número, a hora,
+  // a marca de impressão e guarda o histórico ("corrigida em …, antes R$ X").
+  const v2 = limpos.filter((i) => i.v === 2);
   const numeros = {};
-  if (vendas.length) {
-    const atuais = (await kv.hmget(k.lancamentos, ...vendas.map((i) => String(i.id)))) || {};
-    for (const i of vendas) {
+  const agora = new Date().toISOString();
+  if (v2.length) {
+    const atuais = (await kv.hmget(k.lancamentos, ...v2.map((i) => String(i.id)))) || {};
+    for (const i of v2) {
       const antes = desembrulhar(atuais[i.id]);
+      i.criadoEm = antes?.criadoEm || agora;
+      if (i.conta !== "venda_produtos") continue;
       i.numero = antes ? antes.numero : numeroVenda(Number(await kv.incr(k.vendaSeq)));
       if (!i.numero) delete i.numero;
       else numeros[i.id] = i.numero;
+      if (antes) {
+        if (antes.impressoEm) i.impressoEm = antes.impressoEm;
+        const mudou = centavosDe(antes.value) !== centavosDe(i.value) || JSON.stringify(antes.itens || null) !== JSON.stringify(i.itens || null)
+          || JSON.stringify((antes.pagamentos || []).map((p) => [p.forma, p.valor])) !== JSON.stringify((i.pagamentos || []).map((p) => [p.forma, p.valor]));
+        i.historico = [...(antes.historico || []), ...(mudou ? [{ em: agora, valorAntes: antes.value }] : [])].slice(-20);
+        if (!i.historico.length) delete i.historico;
+      }
     }
   }
   await kv.hset(k.lancamentos, Object.fromEntries(limpos.map((i) => [i.id, i])));
@@ -245,6 +263,16 @@ export async function salvarLancamentos(kv, k, itens) {
 }
 
 export const numeroVenda = (n) => `V-${String(n).padStart(4, "0")}`;
+
+// Primeira impressão das vias: a partir daí, a via reimpressa sai marcada "2ª impressão em DD/MM"
+export async function marcarImpresso(kv, k, id) {
+  const atual = desembrulhar(await kv.hget(k.lancamentos, String(id)));
+  if (!atual) throw erro(404, "Venda não encontrada.");
+  if (atual.impressoEm) return { impressoEm: atual.impressoEm, primeira: false };
+  const impressoEm = new Date().toISOString();
+  await kv.hset(k.lancamentos, { [atual.id]: { ...atual, impressoEm } });
+  return { impressoEm, primeira: true };
+}
 
 // Exclusão "suave": o lançamento fica guardado com a marca de excluído.
 export async function excluirLancamento(kv, k, id) {
@@ -766,6 +794,8 @@ export async function salvarConfigFinanceiro(kv, k, config) {
   }
   limpa.depreciacaoLigada = Boolean(c.depreciacaoLigada);
   limpa.estimativasContabeis = c.estimativasContabeis === true;
+  // Cabeçalho das vias (Ajustes › Impressão)
+  limpa.impressao = { nome: texto(c.impressao?.nome, 80).trim(), telefone: texto(c.impressao?.telefone, 60).trim(), endereco: texto(c.impressao?.endereco, 160).trim(), cnpj: texto(c.impressao?.cnpj, 25).trim() };
   limpa.estoque = {
     inicial: Number(c.estoque.inicial) || 0,
     dataInicial: dataOk(c.estoque.dataInicial) ? c.estoque.dataInicial : null,

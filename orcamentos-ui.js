@@ -110,7 +110,7 @@ function renderLista() {
     const mais = [
       s.emAberto ? `<button data-acao="editar" data-id="${o.id}">Editar</button>` : "",
       `<button data-acao="duplicar" data-id="${o.id}">Duplicar</button>`,
-      `<button data-acao="imprimir" data-id="${o.id}">Imprimir</button>`,
+      `<button data-acao="imprimir" data-id="${o.id}">🖨 Imprimir 2 vias</button>`,
       s.emAberto ? `<button data-acao="precos" data-id="${o.id}">Atualizar preços</button>` : "",
       s.emAberto ? `<button data-acao="perdido" data-id="${o.id}">Marcar como perdido</button>` : "",
       podeReabrir(o) ? `<button data-acao="reabrir" data-id="${o.id}">Reabrir</button>` : "",
@@ -271,23 +271,6 @@ async function carregarNaCalculadora(o, modo, precos) {
   ($(modo === "converter" ? "finalizar" : "btn-salvar-orcamento") || document.body).scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-function imprimir(o) {
-  $("impressao-orcamento").innerHTML = `
-    <h1>Orçamento ${o.id}</h1>
-    <p>Data: ${dataBR(o.data)} · Válido até ${dataBR(o.validoAte)}</p>
-    <p>Cliente: <strong>${esc(o.cliente?.nome)}</strong> · ${esc(o.cliente?.telefone)}</p>
-    <table><thead><tr><th>Item</th><th>Quantidade</th><th class="num">Preço</th><th class="num">Total</th></tr></thead>
-    <tbody>${o.itens.map((i) => `<tr><td>${esc(i.descricao)}</td><td>${esc(i.quantidadeTexto || "")}</td>
-      <td class="num">${i.unidade && i.unidade !== "un" && i.precoUnitario != null ? `${moeda(i.precoUnitario)}/${esc(i.unidade)}` : ""}</td><td class="num">${moeda(i.vendaTotal)}</td></tr>`).join("")}</tbody>
-    <tfoot>${o.frete ? `<tr><td colspan="3">Frete / entrega</td><td class="num">${moeda(o.frete)}</td></tr>` : ""}
-      <tr><td colspan="3"><strong>Total</strong></td><td class="num"><strong>${moeda(o.total)}</strong></td></tr></tfoot></table>
-    ${o.obs ? `<p>Obs.: ${esc(o.obs)}</p>` : ""}
-    <p class="rodape-orc">Preços válidos até ${dataBR(o.validoAte)}. Depois dessa data, consulte novamente.</p>`;
-  document.body.classList.add("imprimindo-orc");
-  window.print();
-  document.body.classList.remove("imprimindo-orc");
-}
-
 async function acao(nome, id) {
   const o = porId(id);
   if (!o) return;
@@ -295,7 +278,7 @@ async function acao(nome, id) {
   if (nome === "enviar" || nome === "cobrar") return abrirWhats(o, nome);
   if (nome === "perdido") return abrirPerdido(o);
   if (nome === "precos") return abrirPrecos(o);
-  if (nome === "imprimir") return imprimir(o);
+  if (nome === "imprimir") return window.Impressao.abrir({ orcamento: o });
   if (nome === "editar") return carregarNaCalculadora(o, "editar", "orcamento");
   if (nome === "duplicar") return carregarNaCalculadora(o, "duplicar", "orcamento");
   if (nome === "reabrir") return patch({ id, acao: "reabrir" }).catch((e) => alert(e.message));
@@ -370,7 +353,8 @@ async function salvar(e) {
     await carregar();
     renderTudo();
     window.Calculadora.limpar(false);
-    alert(`Orçamento ${r.orcamento.id} ${corpo.id ? "atualizado" : "salvo"}: ${moeda(r.orcamento.total)}, válido até ${dataBR(r.orcamento.validoAte)}.\n\nEle está na aba Orçamentos, em "Em aberto", com os botões Enviar e Cobrar no WhatsApp.`);
+    window.Impressao.abrir({ orcamento: r.orcamento, titulo: `Orçamento ${r.orcamento.id} ${corpo.id ? "atualizado" : "salvo"}`,
+      mensagem: `<div>${moeda(r.orcamento.total)}, válido até ${dataBR(r.orcamento.validoAte)}.</div><div>Ele está na aba Orçamentos, em "Em aberto", com os botões Enviar e Cobrar no WhatsApp.</div>` });
   } catch (err) {
     alert(`O orçamento não foi salvo: ${err.message}`);
   } finally {

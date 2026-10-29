@@ -6,7 +6,7 @@ import {
   lerTudo, salvarLancamentos, excluirLancamento, reclassificar, atualizarCheque, salvarAcumulado,
   montarBackup, salvarCopia, listarCopias, lerCopia, lerPrecosEConfig, salvarPrecos,
   salvarConfig, salvarConfigFinanceiro, salvarAbertura, registrarConferencia,
-  importar, migrar, migrarV2, restaurar,
+  importar, migrar, migrarV2, restaurar, marcarImpresso,
   listarOrcamentos, salvarOrcamento, atualizarOrcamento, salvarCliente, listarClientes, zerarMovimento,
 } from "./_dados.js";
 import { CEPILHADO_PADRAO, montarCatalogo, chavePrecoValida } from "../lib/catalogo.js";
@@ -51,6 +51,7 @@ export const ROTAS = {
     }
     if (request.method === "PATCH") {
       if (request.body?.acao === "cheque") return response.status(200).json({ lancamento: await atualizarCheque(kv(), chaves(), request.body) });
+      if (request.body?.acao === "impresso") return response.status(200).json(await marcarImpresso(kv(), chaves(), request.body.id));
       return response.status(200).json(await reclassificar(kv(), chaves(), request.body));
     }
     if (request.method === "DELETE") {

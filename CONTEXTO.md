@@ -258,6 +258,16 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - Rodapé do DRE (mês e ano, tela e impressão): "Estimativas contábeis ligadas/desligadas". O "quanto vender para empatar" usa o mesmo modo.
 - Motivo: a madeireira terá escritório de contabilidade novo cuidando da parte fiscal.
 
+**Seção B: impressão em vias (pedidos e orçamentos)**: layout aprovado pelo usuário (exemplo em PDF)
+- `lib/impressao.js` (puro): `documentoDaVenda`, `documentoDoOrcamento`, `linhasImpressas` (unitário final com 2 casas, linha = qtd × unitário, centavos de diferença na última linha para fechar com o total), `folhaHtml(doc, loja, { modo: "duas"|"loja"|"cliente", paginaInteira })` e `CSS_FOLHA`. Nunca entra custo, margem, tabela, %, motivo, conta corrente.
+- `impressao-ui.js`: janela única (`window.Impressao.abrir({ venda | orcamento, titulo, mensagem })`) com 2 vias / só loja / só cliente (lembrada no aparelho, `madeireira_vias_modo`), prévia, 🖨 Imprimir (A4, `@page { margin: 0 }` só durante a impressão: sem cabeçalho/rodapé do navegador) e ⬇ Baixar PDF (html2canvas + jsPDF guardados em `vendor/`, carregados só quando pedem o PDF). Pedido que não cabe em meia folha: uma via por página, com aviso. `window.Via.imprimir` continua (abre a janela).
+- Onde aparece: Vender (🖨 Imprimir 2 vias, rascunho sem número), depois de registrar venda (Vender e Caixa › Lançar: "Venda V-0012 registrada"), depois de salvar orçamento, menu ⋯ dos orçamentos, Caixa › Lançamentos (🖨 Vias), A receber › Ver (🖨 Vias).
+- Numeração: o servidor dá `numero` V-0001… a toda `venda_produtos` nova (contador atômico `madeireira_venda_seq`); corrigir mantém; estorno é exclusão suave (o número fica). Lançamentos novos ganham `criadoEm` (hora na via). Primeira impressão grava `impressoEm` (PATCH /api/lancamento `{acao:"impresso"}`); as seguintes saem "2ª impressão em DD/MM".
+- Corrigir venda: com itens, `Calculadora.carregarVenda` (itens com o preço vendido, frete, data, NF-e, formas) e o Registrar vira "Salvar correção da V-0001"; sem itens, o Caixa › Lançar volta preenchido. O servidor guarda `historico: [{ em, valorAntes }]`. Os itens gravados agora têm `quantidade`, `comprimento`, `precoManual`, `totalManual`, `descricaoLivre`.
+- Ajustes › Impressão: `configFinanceiro.impressao` { nome, telefone, endereco, cnpj }.
+- Lançamentos: coluna Nº, busca por "V-0012", "v12" ou "12", botões 🖨 Vias, Corrigir e Estornar nas vendas.
+- E2E: `tests/e2e/impressao.mjs` (PDF real no Chrome: 5 itens = 1 página; 15 itens = 2) e `tests/e2e/janela.mjs` (fecha a janela nas outras baterias).
+
 ## 7. Próximos passos
 1. **Virada** (antes da 2D): ensaio no preview e depois o dia, conforme `VIRADA.md` e o checklist. 2C testada (ok), prazo 30 dias, fiado da pasta em conta corrente (entregue). Pendentes do usuário: resultado do ensaio no preview, nome do endereço e as datas.
 2. ~~Fase 2C~~ (entregue).
