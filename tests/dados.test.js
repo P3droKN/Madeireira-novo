@@ -741,3 +741,12 @@ test("sugestão: despesas antigas com DAS/Simples/imposto/guia → Impostos (DAS
   assert.deepEqual([das.conta, das.competencia, das.competenciaOriginal, das.dataPagamento], ["das", "2026-08-31", "2026-09-20", "2026-09-20"]);
   assert.equal((await kv.hget(K.lancamentos, "D2")).conta, "fgts");
 });
+
+test("config financeira: interruptor das estimativas contábeis desligado por padrão e guardado como veio", async () => {
+  const kv = kvFalso({});
+  assert.equal((await salvarConfigFinanceiro(kv, K, {})).estimativasContabeis, false);
+  const c = await salvarConfigFinanceiro(kv, K, { estimativasContabeis: true, impostos: { rbt12: 600000 }, pessoal: { provisaoPct: 20 } });
+  assert.equal(c.estimativasContabeis, true);
+  const off = await salvarConfigFinanceiro(kv, K, { ...c, estimativasContabeis: false });
+  assert.deepEqual([off.estimativasContabeis, off.impostos.rbt12, off.pessoal.provisaoPct], [false, 600000, 20]); // nada é apagado ao desligar
+});

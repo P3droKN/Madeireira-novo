@@ -16,6 +16,8 @@ const pct = (v) => (v == null || !Number.isFinite(v) ? "—" : `${(v * 100).toFi
 const num = (v) => (v === "" || v == null ? null : Number(String(v).replace(",", ".")));
 const dataBR = (d) => (d ? d.split("-").reverse().join("/") : "");
 const C = () => window.Caixa;
+// Estimativas contábeis (Ajustes › Financeiro): desligadas, some o vínculo CLT/não CLT/pró-labore (o gravado fica)
+const estimativasLigadas = () => mesclarConfigFinanceiro(C()?.configFinanceiro).estimativasContabeis === true;
 
 const FORMAS = Object.fromEntries(FORMAS_PADRAO.map((f) => [f.id, f]));
 const NOME_PAGO = Object.fromEntries(PAGO_COM.map((p) => [p.id, p.nome]));
@@ -234,7 +236,7 @@ function renderFormulario() {
       const pc = document.querySelector('input[name="ff-pagocom"]:checked')?.value;
       $("ff-cheque") && ($("ff-cheque").hidden = pc !== "cheque_emitido");
       $("ff-vida-grupo").hidden = $("ff-conta").value !== "investimento";
-      $("ff-vinculo-grupo").hidden = $("ff-conta").value !== "salarios";
+      $("ff-vinculo-grupo").hidden = $("ff-conta").value !== "salarios" || !estimativasLigadas();
       if (pc === "cheque_emitido" && !$("ff-ch-favorecido").value && $("ff-fornecedor")) $("ff-ch-favorecido").value = $("ff-fornecedor").value;
     };
     $("ff-conta").addEventListener("change", atualizarSugestao);
@@ -342,6 +344,7 @@ function renderLista() {
   if (!$("fin-f-conta").options.length) {
     $("fin-f-conta").innerHTML = `<option value="">Todas</option>${opcoesContas(() => true)}<option value="transferencia">Transferência</option><option value="recebimento">Recebimento de fiado</option>`;
     $("fin-lote-conta").innerHTML = `<option value="" disabled selected>Nova conta…</option>${opcoesContas((c) => c.id !== "classificar_custo")}`;
+    $("fin-lote-vinculo").hidden = $("fin-lote-vinculo-aplicar").hidden = !estimativasLigadas();
     $("fin-lote-vinculo").innerHTML = `<option value="" disabled selected>Vínculo (salários)…</option>${VINCULOS.map((v) => `<option value="${v.id}">${v.nome}</option>`).join("")}`;
     $("fin-lote-forma").innerHTML = `<option value="" disabled selected>Nova forma (vendas)…</option>${FORMAS_PADRAO.filter((f) => !f.soMigracao && !f.fiado).map((f) => `<option value="${f.id}">${esc(f.nome)}</option>`).join("")}`;
   }
@@ -359,7 +362,7 @@ function renderLista() {
       <td><input type="checkbox" class="fin-sel" value="${esc(l.id)}" ${estado.selecionados.has(String(l.id)) ? "checked" : ""} aria-label="Selecionar"></td>
       <td>${dataBR(l.competencia)}</td>
       <td>${esc(l.description || "")}${l.cliente ? `<small>cliente: ${esc(l.cliente)}</small>` : ""}${l.fornecedor ? `<small>${esc(l.fornecedor)}</small>` : ""}${l.nfe ? `<small>NF-e ${esc(l.nfe)}</small>` : ""}${l.frete ? `<small>inclui frete ${moeda(l.frete)}</small>` : ""}</td>
-      <td>${esc(c?.nome || NOMES_ESPECIAIS[l.conta] || l.conta)}${l.conta === "salarios" ? ` <small class="texto-suave">(${esc(VINCULOS.find((v) => v.id === (l.vinculo || "clt"))?.nome || "CLT")})</small>` : ""} ${tags}${sug}</td>
+      <td>${esc(c?.nome || NOMES_ESPECIAIS[l.conta] || l.conta)}${l.conta === "salarios" && estimativasLigadas() ? ` <small class="texto-suave">(${esc(VINCULOS.find((v) => v.id === (l.vinculo || "clt"))?.nome || "CLT")})</small>` : ""} ${tags}${sug}</td>
       <td>${esc(descreverForma(l))}</td>
       <td class="num ${foraDoSaldo(l) ? "" : entrada ? "type-income" : "type-expense"}">${moeda(l.value)}</td>
       <td><button class="delete-btn" data-excluir="${esc(l.id)}" title="Excluir (estornar) este lançamento">Excluir</button></td>
@@ -423,7 +426,8 @@ function renderDRE() {
           ${a.meses.map((d) => `<td class="num">${fmtCurto(d.valores[id])}</td>`).join("")}
           <td class="num"><strong>${fmtCurto(a.total[id])}</strong></td>
           <td class="num">${a.total.receitaBruta ? pct(a.total[id] / a.total.receitaBruta) : "—"}</td></tr>`;
-      }).join("")}</tbody></table></div>`;
+      }).join("")}</tbody></table></div>
+      <p class="dre-modo" id="dre-modo">${estimativasLigadas() ? "Estimativas contábeis ligadas (DAS estimado, FGTS estimado e provisão de 13º/férias)" : "Estimativas contábeis desligadas: só os lançamentos reais (guias, salários, despesas)"} · Ajustes › Financeiro</p>`;
     return;
   }
 
@@ -466,6 +470,7 @@ function renderDRE() {
       ${doAnterior ? `<tfoot><tr class="dre-info-linha"><td><em>(i) Recebido de fiado anterior à virada</em><small class="texto-suave"> entrou no caixa; não é venda deste mês e não soma no lucro</small></td>
         <td class="num">${moeda(doAnterior)}</td><td colspan="5"></td></tr></tfoot>` : ""}
     </table></div>
+    <p class="dre-modo" id="dre-modo">${d.estimativasContabeis ? "Estimativas contábeis ligadas (DAS estimado, FGTS estimado e provisão de 13º/férias)" : "Estimativas contábeis desligadas: só os lançamentos reais (guias, salários, despesas)"} · Ajustes › Financeiro</p>
     ${cmvOrigemHtml(d.info.cmvOrigem)}
     <div class="dre-info">
       <div><span>Retiradas do dono (abaixo da linha)</span><strong>${moeda(d.info.retiradas)}</strong></div>
@@ -607,6 +612,11 @@ function renderConfig() {
     <div class="form-row">
       <div class="form-group"><label>Margem padrão para estimar o CMV (%)</label><input type="number" step="0.5" min="0" max="100" id="cfg-margem" value="${c.cmv.margemPadraoPct}">
         <small class="texto-suave">Usada nas vendas sem itens até haver ${c.cmv.mesesMedia} meses de vendas pela calculadora; depois vale a média real.</small></div>
+    </div>
+    <div class="form-group"><label class="check"><input type="checkbox" id="cfg-estimativas" ${c.estimativasContabeis ? "checked" : ""}> <strong>Estimativas contábeis</strong> (DAS estimado pelo RBT12, FGTS estimado e provisão de 13º/férias)</label>
+      <small class="texto-suave">Desligado: o DRE usa só o que foi lançado de verdade (guias de DAS e FGTS pagas, salários). Ligar de novo traz as configurações abaixo como estavam.</small></div>
+    <div id="cfg-estimativas-campos">
+    <div class="form-row">
       <div class="form-group"><label>FGTS (%)</label><input type="number" step="0.01" min="0" max="100" id="cfg-fgts" value="${c.pessoal.fgtsPct}">
         <label class="check"><input type="checkbox" id="cfg-fgts-estimar" ${c.pessoal.estimarFgts ? "checked" : ""}> Estimar FGTS até a guia ser lançada</label></div>
       <div class="form-group"><label>Provisão de 13º e férias (%)</label><input type="number" step="0.01" min="0" max="100" id="cfg-provisao" value="${c.pessoal.provisaoPct}">
@@ -617,6 +627,9 @@ function renderConfig() {
         ${[["simples_nacional", "Simples Nacional"], ["lucro_presumido", "Lucro presumido"], ["outro", "Outro"]].map(([v, n]) => `<option value="${v}" ${v === c.impostos.regime ? "selected" : ""}>${n}</option>`).join("")}</select></div>
       <div class="form-group"><label for="cfg-rbt12">RBT12 (receita bruta dos últimos 12 meses)</label><input type="number" step="0.01" min="0" id="cfg-rbt12" value="${c.impostos.rbt12 ?? ""}" placeholder="pergunte ao escritório">
         <small class="texto-suave">Enquanto a guia do DAS do mês não é lançada (conta "Impostos (DAS)", com a data do mês a que se refere), o DRE estima pelo Simples, Anexo I, e marca como "estimado".</small></div>
+    </div>
+    </div>
+    <div class="form-row">
       <div class="form-group"><label class="check"><input type="checkbox" id="cfg-depreciacao" ${c.depreciacaoLigada ? "checked" : ""}> Depreciação mensal dos investimentos</label></div>
     </div>
 
@@ -640,6 +653,9 @@ function renderConfig() {
     </div>
 
     <div class="export-actions"><button type="submit" class="btn-primary">Salvar configuração</button></div>`;
+  const mostrarEstimativas = () => { $("cfg-estimativas-campos").hidden = !$("cfg-estimativas").checked; };
+  $("cfg-estimativas").addEventListener("change", mostrarEstimativas);
+  mostrarEstimativas();
   $("orc-config-form").innerHTML = `
     <div class="form-row">
       <div class="form-group"><label for="cfg-orc-validade">Validade padrão (dias)</label><input type="number" min="1" max="90" step="1" id="cfg-orc-validade" value="${c.orcamentos.validadeDias}"></div>
@@ -664,10 +680,11 @@ async function salvarConfig(e) {
       credito: { taxaPct: num($("cfg-cred-taxa").value) || 0, prazoDias: num($("cfg-cred-prazo").value) || 0 },
       parcelado: { taxaPctPorParcelas, prazoDias: num($("cfg-parc-prazo").value) || 30 },
     },
-    cmv: { margemPadraoPct: num($("cfg-margem").value) ?? 30 },
+    cmv: { margemPadraoPct: num($("cfg-margem").value) ?? 50 },
     pessoal: { fgtsPct: num($("cfg-fgts").value) ?? 8, estimarFgts: $("cfg-fgts-estimar").checked, provisaoPct: num($("cfg-provisao").value) ?? 19.44, provisao13FeriasLigada: $("cfg-provisao-ligada").checked },
     impostos: { regime: $("cfg-regime").value, rbt12: num($("cfg-rbt12").value) },
     depreciacaoLigada: $("cfg-depreciacao").checked,
+    estimativasContabeis: $("cfg-estimativas").checked,
     estoque: { inicial: num($("cfg-estoque").value) || 0, dataInicial: $("cfg-estoque-data").value || null },
     cheques: { contaDeposito: $("cfg-cheque-deposito").value },
     fiado: { ligado: $("cfg-fiado-ligado").checked, prazoDias: num($("cfg-fiado-prazo").value) },

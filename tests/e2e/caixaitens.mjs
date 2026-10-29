@@ -90,5 +90,7 @@ ok(estTxt.includes("R$ 500,00"), "DRE: estimado R$ 500,00 (R$ 1.000 × 50%)");
 const total = v1.cmv * 2 + 500;
 ok(estTxt.includes(`(${Math.round(500 / total * 100)}%)`) && itensTxt.includes(`(${Math.round(v1.cmv * 2 / total * 100)}%)`), "DRE: percentuais de cada parte");
 ok(nb(await page.textContent("#fin-dre-conteudo")).includes("margem padrão de 50,0%"), "margem padrão inicial de 50%");
+ok(nb(await page.textContent("#dre-modo")).includes("Estimativas contábeis desligadas") && !(await page.locator("#fin-dre-conteudo tr", { hasText: "Provisão" }).count()) && !nb(await page.textContent("#fin-dre-conteudo")).includes("RBT12"),
+  "padrão: estimativas contábeis desligadas (sem provisão, sem pendência de RBT12) e dito no rodapé");
 await page.screenshot({ path: "caixaitens.png", fullPage: true });
 await browser.close();

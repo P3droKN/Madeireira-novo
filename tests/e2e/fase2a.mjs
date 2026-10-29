@@ -123,17 +123,11 @@ await page.click("#fin-form button[type=submit]");
 await page.waitForTimeout(500);
 const ch = (await lanc()).find((l) => l.chequeEmitido?.numero === "1002");
 ok(ch && ch.chequeEmitido.conta === "picpay" && ch.chequeEmitido.favorecido === "Madeiras do Sul" && ch.conta === "compra_material", "cheque emitido gravado (conta PicPay, favorecido)");
-// Salário do dono: vínculo pró-labore (sem FGTS e sem provisão)
+// Salário com as estimativas contábeis desligadas (padrão): sem o campo Vínculo
 await page.locator('label:has(input[name="fin-tipo"][value="saida"])').click();
-await page.fill("#ff-data", "2026-10-05");
 await page.selectOption("#ff-conta", "salarios"); await page.dispatchEvent("#ff-conta", "change");
-ok(await page.isVisible("#ff-vinculo") && await page.inputValue("#ff-vinculo") === "clt", "salário: campo Vínculo aparece, com CLT como padrão");
-await page.selectOption("#ff-vinculo", "pro_labore");
-await page.fill("#ff-valor", "2000");
-await page.locator('label:has(input[name="ff-pagocom"][value="bradesco"])').click();
-await page.click("#fin-form button[type=submit]");
-await page.waitForTimeout(500);
-ok((await lanc()).some((l) => l.conta === "salarios" && l.value === 2000 && l.vinculo === "pro_labore"), "salário gravado como pró-labore");
+ok(await page.isHidden("#ff-vinculo"), "estimativas desligadas: o campo Vínculo (CLT/não CLT/pró-labore) fica escondido");
+await page.locator('label:has(input[name="fin-tipo"][value="venda"])').click(); // limpa o formulário
 // Saída sem "Pago com" é recusada
 await page.locator('label:has(input[name="fin-tipo"][value="saida"])').click();
 await page.selectOption("#ff-conta", "agua"); await page.fill("#ff-valor", "40"); await page.fill("#ff-fornecedor", "Fornecedor Novo"); await page.dispatchEvent("#ff-fornecedor", "change");
@@ -167,8 +161,23 @@ ok(vc && vc.v === 2 && vc.cmv === 61.92 && vc.pagamentos.map((p) => `${p.forma}:
 await page.click("#btn-tab-ajustes");
 await page.click('.subtabs[data-grupo="ajustes"] .subtab[data-sub="financeiro"]');
 await page.fill("#cfg-deb-taxa", "2");
+ok(!(await page.isChecked("#cfg-estimativas")) && await page.isHidden("#cfg-fgts"), "estimativas contábeis vêm desligadas (FGTS, provisão e RBT12 escondidos)");
+await page.check("#cfg-estimativas");
+ok(await page.isVisible("#cfg-fgts"), "ligou: aparecem FGTS, provisão, regime e RBT12");
 await page.click("#fin-config-form button[type=submit]");
 await page.waitForTimeout(300);
+await page.click("#btn-tab-caixa"); await page.click('.subtabs[data-grupo="caixa"] .subtab[data-sub="lancar"]');
+// Estimativas ligadas: salário do dono com vínculo pró-labore (sem FGTS e sem provisão)
+await page.locator('label:has(input[name="fin-tipo"][value="saida"])').click();
+await page.fill("#ff-data", "2026-10-05");
+await page.selectOption("#ff-conta", "salarios"); await page.dispatchEvent("#ff-conta", "change");
+ok(await page.isVisible("#ff-vinculo") && await page.inputValue("#ff-vinculo") === "clt", "salário: campo Vínculo aparece, com CLT como padrão");
+await page.selectOption("#ff-vinculo", "pro_labore");
+await page.fill("#ff-valor", "2000");
+await page.locator('label:has(input[name="ff-pagocom"][value="bradesco"])').click();
+await page.click("#fin-form button[type=submit]");
+await page.waitForTimeout(500);
+ok((await lanc()).some((l) => l.conta === "salarios" && l.value === 2000 && l.vinculo === "pro_labore"), "salário gravado como pró-labore");
 await page.click("#btn-tab-relatorios");
 await page.click('.subtab[data-sub="dre"]');
 await page.fill("#rel-mes", "2026-10"); await page.dispatchEvent("#rel-mes", "change");
@@ -179,6 +188,7 @@ ok(dre.includes("−R$ 1,00") || dre.includes("-R$ 1,00"), "taxa de débito 2% s
 ok(dre.includes("CMV estimado") && dre.includes("estimado"), "venda manual sem custo: CMV estimado e marcado");
 ok(dre.includes("Compras do mês") && dre.includes("R$ 3.400,00"), "compras (900 + 2.500) aparecem como estoque, fora do resultado");
 const linhaDre = async (t) => nb(await page.locator("#fin-dre-conteudo tbody tr", { hasText: t }).first().textContent());
+ok(nb(await page.textContent("#dre-modo")).includes("Estimativas contábeis ligadas"), "rodapé do DRE diz que as estimativas estão ligadas");
 // outubro: João R$ 1.500 (CLT, veio do antigo) + pró-labore R$ 2.000
 ok((await linhaDre("Salários")).includes("R$ 3.500,00") && (await linhaDre("FGTS")).includes("R$ 120,00") && (await linhaDre("Provisão")).includes("R$ 291,60"),
   "FGTS (8%) e provisão (19,44%) só sobre o salário CLT de R$ 1.500; o pró-labore de R$ 2.000 não entra");

@@ -765,6 +765,7 @@ export async function salvarConfigFinanceiro(kv, k, config) {
     limpa.impostos.tabelaSimples = c.impostos.tabelaSimples.map((f) => f.map(Number));
   }
   limpa.depreciacaoLigada = Boolean(c.depreciacaoLigada);
+  limpa.estimativasContabeis = c.estimativasContabeis === true;
   limpa.estoque = {
     inicial: Number(c.estoque.inicial) || 0,
     dataInicial: dataOk(c.estoque.dataInicial) ? c.estoque.dataInicial : null,

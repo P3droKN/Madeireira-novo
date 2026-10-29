@@ -1085,3 +1085,5 @@ body.modo-balcao .sigilo { display: none !important; }
 .mini-input { width: 7rem !important; padding: 0.3rem 0.4rem !important; text-align: right; }
 .dre-cmv-origem { display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; margin: 0.75rem 0; padding: 0.6rem 0.9rem; border-radius: 8px; background: rgba(255, 255, 255, 0.04); font-size: 0.875rem; color: var(--text-muted); }
 .dre-cmv-origem strong { color: var(--text-main); }
+.dre-modo { font-size: 0.8rem; color: var(--text-muted); margin: 0.4rem 0 0; }
+@media print { body.imprimindo-rel .dre-modo { display: block !important; color: black !important; font-size: 8px !important; } }

@@ -17,7 +17,7 @@ test("Simples: RBT12 600.000 → alíquota efetiva 7,19%; DAS de 50.000 ≈ 3.59
 });
 
 test("DAS: sem guia no mês, estimado pelo Simples (RBT12 de Ajustes); a guia lançada substitui a estimativa", () => {
-  const cfg = { impostos: { rbt12: 600000 } };
+  const cfg = { estimativasContabeis: true, impostos: { rbt12: 600000 } };
   const est = montarDRE([venda(50000, { cmv: 30000 })], cfg, "2026-09");
   assert.equal(est.valores.dasEstimado, -3595);
   assert.ok(est.linhas.find((l) => l.id === "dasEstimado").estimado);
@@ -28,7 +28,7 @@ test("DAS: sem guia no mês, estimado pelo Simples (RBT12 de Ajustes); a guia la
   assert.ok(!guia.provisorio.some((p) => p.tipo === "das"));
   assert.equal(guia.valores.lucroLiquido - est.valores.lucroLiquido, 3595 - 3200);
   // Sem RBT12: não dá para estimar, vira pendência
-  const semRbt = montarDRE([venda(50000, { cmv: 30000 })], {}, "2026-09");
+  const semRbt = montarDRE([venda(50000, { cmv: 30000 })], { estimativasContabeis: true }, "2026-09");
   assert.equal(semRbt.valores.dasEstimado, undefined);
   assert.ok(semRbt.provisorio.some((p) => p.texto.includes("informe o RBT12")));
   // Mês sem receita: sem DAS e sem pendência
@@ -47,7 +47,7 @@ test("DRE completo de um mês: cada linha e o lucro líquido", () => {
     saida("retirada", 700),
     saida("compra_material", 4000),
   ];
-  const d = montarDRE(l, {}, "2026-09");
+  const d = montarDRE(l, { estimativasContabeis: true }, "2026-09");
   const v = d.valores;
   assert.equal(v.receitaBruta, 10000);
   assert.equal(v.receitaLiquida, 9500);
@@ -64,11 +64,11 @@ test("DRE completo de um mês: cada linha e o lucro líquido", () => {
 
 test("provisão de 13º e férias: 19,44% dos salários; 13º pago não entra no DRE com provisão ligada", () => {
   const l = [saida("salarios", 10000), saida("decimo_ferias_pagos", 5000), saida("fgts", 800)];
-  const ligada = montarDRE(l, {}, "2026-09");
+  const ligada = montarDRE(l, { estimativasContabeis: true }, "2026-09");
   assert.equal(ligada.valores.provisao, -1944);
   assert.equal(ligada.valores.decimoPago, undefined);
   assert.equal(ligada.valores.fgts, -800); // real lançado, sem estimar
-  const desligada = montarDRE(l, { pessoal: { provisao13FeriasLigada: false } }, "2026-09");
+  const desligada = montarDRE(l, { estimativasContabeis: true, pessoal: { provisao13FeriasLigada: false } }, "2026-09");
   assert.equal(desligada.valores.provisao, undefined);
   assert.equal(desligada.valores.decimoPago, -5000);
 });
@@ -214,7 +214,7 @@ const setembroAntigo = () => [
 ];
 
 test("setembro migrado: custos a classificar descontados uma vez só, sem CMV estimado em dobro", () => {
-  const d = montarDRE(setembroAntigo(), {}, "2026-09");
+  const d = montarDRE(setembroAntigo(), { estimativasContabeis: true }, "2026-09");
   assert.equal(d.valores.receitaBruta, 70000);
   assert.equal(d.valores.custoAClassificar, -35000);
   assert.equal(d.valores.cmvEstimado, 0); // o mês tem custo a classificar: a estimativa contaria em dobro
@@ -248,11 +248,11 @@ test("FGTS e provisão só sobre salários CLT; pró-labore e não CLT não gera
     saida("salarios", 1500, { vinculo: "nao_clt" }),
     saida("salarios", 5000, { vinculo: "pro_labore" }),
   ];
-  const d = montarDRE(l, {}, "2026-09");
+  const d = montarDRE(l, { estimativasContabeis: true }, "2026-09");
   assert.equal(d.valores.salarios, -11500);
   assert.equal(d.valores.fgts, -400); // 8% de 5.000
   assert.equal(d.valores.provisao, -972); // 19,44% de 5.000
-  const soDono = montarDRE([venda(50000, { cmv: 30000 }), saida("salarios", 5000, { vinculo: "pro_labore" })], {}, "2026-09");
+  const soDono = montarDRE([venda(50000, { cmv: 30000 }), saida("salarios", 5000, { vinculo: "pro_labore" })], { estimativasContabeis: true }, "2026-09");
   assert.equal(soDono.valores.fgts, 0);
   assert.equal(soDono.valores.provisao, undefined);
 });
@@ -327,4 +327,42 @@ test("DRE separa o CMV calculado pelos itens, informado à mão e estimado (R$ e
   // a venda com itens também conta para a margem média real (não só a origem "calculadora")
   const meses = ["2026-06", "2026-07", "2026-08"].map((m) => venda(1000, { cmv: 600, itens: [{ descricao: "x" }], competencia: `${m}-10`, date: `${m}-10` }));
   assert.equal(margemReferencia(normalizar(meses, {}), "2026-09", mesclarConfigFinanceiro({})).fonte, "media");
+});
+
+test("estimativas contábeis: desligadas por padrão (setembro sem FGTS estimado e sem provisão); ligadas = como antes", () => {
+  const des = montarDRE(setembroAntigo(), {}, "2026-09");
+  const lig = montarDRE(setembroAntigo(), { estimativasContabeis: true }, "2026-09");
+  assert.equal(des.estimativasContabeis, false);
+  assert.equal(des.valores.fgts, 0);
+  assert.equal(des.valores.provisao, undefined);
+  assert.equal(des.valores.lucroLiquido, 70000 - 35000 - 12000 - 10000); // = vendas − custos − despesas − funcionários
+  assert.equal(lig.valores.fgts, -800);
+  assert.equal(lig.valores.provisao, -1944);
+  assert.equal(lig.valores.lucroLiquido, des.valores.lucroLiquido - 800 - 1944);
+  // DAS: sem estimativa nem pendência de RBT12 com elas desligadas
+  const comRbt = { impostos: { rbt12: 600000 } };
+  assert.equal(montarDRE(setembroAntigo(), comRbt, "2026-09").valores.dasEstimado, undefined);
+  assert.ok(!des.provisorio.some((p) => p.tipo === "das"));
+  assert.ok(montarDRE(setembroAntigo(), { estimativasContabeis: true }, "2026-09").provisorio.some((p) => p.texto.includes("RBT12")));
+  // as outras configurações ficam guardadas: ligar de novo volta igual
+  assert.equal(montarDRE(setembroAntigo(), { ...comRbt, estimativasContabeis: true }, "2026-09").valores.dasEstimado, -Math.round(70000 * aliquotaEfetivaSimples(600000, CONFIG_FINANCEIRO_PADRAO.impostos.tabelaSimples) * 100) / 100);
+});
+
+test("lançamentos reais contam nos dois modos: guia de DAS, guia de FGTS, 13º pago (sem provisão)", () => {
+  const l = [venda(50000, { cmv: 30000 }), saida("das", 3200), saida("salarios", 4000), saida("fgts", 320), saida("decimo_ferias_pagos", 1000)];
+  for (const cfg of [{}, { estimativasContabeis: true, impostos: { rbt12: 600000 } }]) {
+    const d = montarDRE(l, cfg, "2026-09");
+    assert.equal(d.valores.dasReal, -3200);
+    assert.equal(d.valores.dasEstimado, undefined);
+    assert.equal(d.valores.fgts, -320);
+  }
+  assert.equal(montarDRE(l, {}, "2026-09").valores.decimoPago, -1000); // sem provisão, o 13º pago entra
+  assert.equal(montarDRE(l, { estimativasContabeis: true }, "2026-09").valores.decimoPago, undefined); // com provisão, não
+});
+
+test("quanto vender para empatar usa o mesmo modo do DRE", async () => {
+  const { pontoEquilibrioMedio } = await import("../lib/financeiro.js");
+  const l = [venda(10000, { cmv: 6000, competencia: "2026-09-10", date: "2026-09-10" }), saida("salarios", 2000, { competencia: "2026-09-30", date: "2026-09-30" })];
+  assert.equal(pontoEquilibrioMedio(l, {}, "2026-10").custosFixosMedia, 2000);
+  assert.equal(pontoEquilibrioMedio(l, { estimativasContabeis: true }, "2026-10").custosFixosMedia, 2000 + 160 + 388.8);
 });

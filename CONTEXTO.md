@@ -253,6 +253,11 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - **DRE:** linha "(−) CMV calculado pelos itens" (vendas com itens), "(−) CMV informado à mão" (com CMV sem itens) e quadro "Custo das vendas (CMV) do mês" com R$ e % de cada origem (`info.cmvOrigem`). A margem média real usa também as vendas do Caixa com itens.
 - E2E: `tests/e2e/caixaitens.mjs`.
 
+**Contabilidade simplificada (AJUSTES-B-C-CONTABIL, item 2)**
+- `estimativasContabeis` na config financeira, **desligado por padrão** (Ajustes › Financeiro › "Estimativas contábeis"). Desligado: sem DAS estimado (e sem pendência de RBT12), sem FGTS estimado e sem provisão de 13º/férias; o 13º/férias pago entra no mês em que foi pago; o campo Vínculo do salário e o "Aplicar vínculo" ficam escondidos (o gravado é mantido). Guias reais (DAS, FGTS), salários, despesas, CMV, taxas de cartão e custos a classificar contam sempre. Ligado: volta como antes, com a configuração guardada.
+- Rodapé do DRE (mês e ano, tela e impressão): "Estimativas contábeis ligadas/desligadas". O "quanto vender para empatar" usa o mesmo modo.
+- Motivo: a madeireira terá escritório de contabilidade novo cuidando da parte fiscal.
+
 ## 7. Próximos passos
 1. **Virada** (antes da 2D): ensaio no preview e depois o dia, conforme `VIRADA.md` e o checklist. 2C testada (ok), prazo 30 dias, fiado da pasta em conta corrente (entregue). Pendentes do usuário: resultado do ensaio no preview, nome do endereço e as datas.
 2. ~~Fase 2C~~ (entregue).
