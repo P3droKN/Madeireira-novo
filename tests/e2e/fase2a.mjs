@@ -27,6 +27,8 @@ await page.reload();
 
 // Relatórios › Resumo do mês (a antiga tela do Gestor de Caixa): total de agosto antes da migração v2
 await page.click("#btn-tab-relatorios");
+ok(await page.isVisible("#rel-dia-sec #dia-panorama") && await page.isHidden("#rel-barra"), "Relatórios abre no Resumo do dia (a barra do mês fica na sub-aba do mês)");
+await page.click('.subtabs[data-grupo="relatorios"] .subtab[data-sub="resumo"]');
 await page.fill("#rel-dia", "2026-08-31"); await page.dispatchEvent("#rel-dia", "change");
 const totAgoAntes = await page.textContent("#rel-tot-vendas");
 ok(nb(totAgoAntes) === "R$ 51.003,50", "resumo de agosto antes da migração = acumulado + vendas de agosto: " + nb(totAgoAntes));
@@ -47,6 +49,7 @@ ok(todos.filter((l) => l.abertura).length === 7, "7 lançamentos de abertura (ag
 
 // Resumo do mês não conta agosto em dobro
 await page.click("#btn-tab-relatorios");
+await page.click('.subtabs[data-grupo="relatorios"] .subtab[data-sub="resumo"]');
 await page.fill("#rel-dia", "2026-08-31"); await page.dispatchEvent("#rel-dia", "change");
 ok(await page.textContent("#rel-tot-vendas") === totAgoAntes, "resumo do mês: total de agosto igual antes e depois (" + nb(totAgoAntes) + ")");
 

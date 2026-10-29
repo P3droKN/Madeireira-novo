@@ -1076,3 +1076,39 @@ body.modo-balcao .sigilo { display: none !important; }
 .dre-cmv-origem strong { color: var(--text-main); }
 .dre-modo { font-size: 0.8rem; color: var(--text-muted); margin: 0.4rem 0 0; }
 @media print { body.imprimindo-rel .dre-modo { display: block !important; color: black !important; font-size: 8px !important; } }
+
+/* ---------- Relatórios › Resumo do dia ---------- */
+.dia-barra { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem !important; }
+.dia-nav, .dia-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.dia-nav input[type="date"] { width: auto; }
+.panorama { border: 1px solid var(--primary) !important; }
+.tabela-panorama td small { display: block; }
+.dia-quadros { grid-template-columns: repeat(3, 1fr); }
+.dia-frase { margin: -0.25rem 0 1rem; font-size: 0.85rem; }
+.dia-colunas { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start; }
+.tabela-fin tr.estornado td { text-decoration: line-through; opacity: 0.55; }
+#dia-lista tr[data-dia-venda] { cursor: pointer; }
+@media (max-width: 900px) { .dia-quadros { grid-template-columns: 1fr 1fr; } .dia-colunas { grid-template-columns: 1fr; } }
+/* Fechamento impresso (A4, 1 página; a lista longa vai na página seguinte) */
+.fech-folha { width: 210mm; color: #111; background: #fff; font-family: Arial, Helvetica, sans-serif; font-size: 8.5pt; }
+.fech-folha * { box-sizing: border-box; color: #111; }
+.fech-pagina { padding: 9mm 11mm; min-height: 297mm; display: flex; flex-direction: column; }
+.fech-pagina + .fech-pagina { break-before: page; }
+.fech-topo { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #111; padding-bottom: 2mm; margin-bottom: 3mm; }
+.fech-topo strong { font-size: 13pt; display: block; }
+.fech-topo span { font-size: 9pt; }
+.fech-quadros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2mm; margin-bottom: 3mm; }
+.fech-quadros div { border: 1px solid #999; padding: 1.5mm 2mm; }
+.fech-quadros span { display: block; font-size: 7.5pt; text-transform: uppercase; }
+.fech-quadros strong { font-size: 11pt; }
+.fech-quadros small { display: block; font-size: 7pt; }
+.fech-folha h3 { font-size: 9.5pt; margin: 3mm 0 1mm; }
+.fech-folha table { width: 100%; border-collapse: collapse; }
+.fech-folha th, .fech-folha td { text-align: left; padding: 0.8mm 1.2mm; border-bottom: 1px solid #ddd; font-size: 8pt; background: none; }
+.fech-folha th { border-bottom: 1px solid #111; font-size: 7.2pt; text-transform: uppercase; }
+.fech-folha .num { text-align: right; white-space: nowrap; }
+.fech-folha tfoot td, .fech-folha tr.fech-total td { font-weight: 700; border-top: 1px solid #111; }
+.fech-folha tr.estornado td { text-decoration: line-through; color: #777; }
+.fech-colunas { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
+.fech-gaveta, .fech-resultado { margin: 2mm 0; font-size: 9pt; }
+.fech-conferido { margin-top: auto; padding-top: 8mm; font-size: 9.5pt; }

@@ -112,15 +112,19 @@ export async function lerTudo(kv, k) {
   const migradoV2 = Boolean(await kv.get(k.migradoV2));
   const configFinanceiro = desembrulhar(await kv.get(k.configFinanceiro)) || {};
   const saldos = desembrulhar(await kv.get(k.saldos)) || { abertura: null, conferencias: [] };
-  let financeItems;
+  let financeItems, estornados = [];
   if (migrado) {
     const hash = (await kv.hgetall(k.lancamentos)) || {};
-    financeItems = Object.values(hash).map(desembrulhar).filter((i) => i && !i.excluido);
+    const todos = Object.values(hash).map(desembrulhar).filter(Boolean);
+    financeItems = todos.filter((i) => !i.excluido);
+    // Estornados dos últimos 120 dias: aparecem riscados no Resumo do dia (não somam em nada)
+    const limite = new Date(Date.now() - 120 * 86400000).toISOString().slice(0, 10);
+    estornados = todos.filter((i) => i.excluido && i.v === 2 && String(i.excluidoEm || i.competencia || "").slice(0, 10) >= limite);
   } else {
     financeItems = desembrulhar(await kv.get(k.finance)) || [];
   }
   const acumulado = desembrulhar(await kv.get(k.acumulado)) || null;
-  return { migrado, migradoV2, financeItems, acumulado, configFinanceiro, saldos };
+  return { migrado, migradoV2, financeItems, estornados, acumulado, configFinanceiro, saldos };
 }
 
 // Cópia exata de todas as chaves do sistema, com nomes sem prefixo

@@ -57,6 +57,7 @@ function renderSaldos(el) {
           <span>${NOMES_CONTAS[c]}</span><strong>${moeda(s.porConta[c])}</strong>
           ${u ? `<small class="${Math.abs(u.diferenca) >= 0.01 ? "texto-ruim" : "texto-ok"}">conferido em ${dataBR(u.data)}: ${Math.abs(u.diferenca) < 0.01 ? "bateu" : `diferença ${moeda(u.diferenca)}`}</small>` : '<small class="texto-suave">ainda não conferido</small>'}
           <button class="btn-icon mini" data-conferir="${c}">${c === "gaveta" ? "Fechar gaveta (contagem)" : c === "cheques_carteira" ? "Conferir cheques" : "Conferir com o extrato"}</button>
+          ${c === "gaveta" ? '<button class="btn-icon mini" id="cx-ver-resumo-dia">Ver resumo do dia</button>' : ""}
         </div>`;
       }).join("")}
       <div class="total-bloco destaque"><span>Total</span><strong>${moeda(s.total)}</strong></div>
@@ -83,6 +84,7 @@ function renderSaldos(el) {
     </table></div>
   </section>`;
   el.querySelectorAll("[data-conferir]").forEach((b) => b.addEventListener("click", () => conferir(b.dataset.conferir)));
+  $("cx-ver-resumo-dia")?.addEventListener("click", () => { window.ResumoDia?.irParaHoje(); window.Financeiro.irPara("relatorios", "dia"); });
 }
 
 // Relatórios › Fluxo de caixa do mês (consolidado ou por conta)

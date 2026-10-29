@@ -431,6 +431,7 @@ window.Orcamentos = {
   fecharModais,
   verCobrar() { verCobrar(true); },
   relatorio: renderRelatorio,
+  get lista() { return estado.orcamentos; },
   configMudou() { if (estado.carregado) renderTudo(); },
 };
 

@@ -23,12 +23,12 @@ const FORMAS = Object.fromEntries(FORMAS_PADRAO.map((f) => [f.id, f]));
 const NOME_PAGO = Object.fromEntries(PAGO_COM.map((p) => [p.id, p.nome]));
 const CONTAS_FIN = { gaveta: "Gaveta", bradesco: "Bradesco", picpay: "PicPay", cheques_carteira: "Cheques em carteira" };
 
-const estado = { aba: null, sub: { caixa: "lancar", relatorios: "resumo", ajustes: "precos" }, selecionados: new Set(), editor: null, visivel: [] };
+const estado = { aba: null, sub: { caixa: "lancar", relatorios: "dia", ajustes: "precos" }, selecionados: new Set(), editor: null, visivel: [] };
 
 // Sub-aba -> elemento da tela
 const TELAS = {
   caixa: { lancar: "fin-lancar", saldos: "fin-saldos", cheques: "fin-cheques", receber: "fin-receber", lista: "fin-lista" },
-  relatorios: { resumo: "rel-resumo", dre: "fin-dre", fluxo: "rel-fluxo", formas: "rel-formas", receber: "rel-receber", orcamentos: "rel-orcamentos" },
+  relatorios: { dia: "rel-dia-sec", resumo: "rel-resumo", dre: "fin-dre", fluxo: "rel-fluxo", formas: "rel-formas", receber: "rel-receber", orcamentos: "rel-orcamentos" },
   ajustes: { precos: "aj-precos", financeiro: "aj-financeiro", orcamentos: "aj-orcamentos", impressao: "aj-impressao", saldos: "aj-saldos", dados: "aj-dados" },
 };
 
@@ -68,6 +68,9 @@ function renderSub() {
   if (grupo === "relatorios") {
     if (!$("rel-mes").value) $("rel-mes").value = mesRelatorio();
     $("rel-visao-grupo").hidden = sub !== "dre";
+    // Resumo do dia tem os próprios controles (dia, período, imprimir fechamento): a barra do mês some
+    $("rel-barra").hidden = $("rel-equilibrio").hidden = sub === "dia";
+    if (sub === "dia") return window.ResumoDia?.render($("rel-dia-sec"));
     renderEquilibrio();
     if (sub === "resumo") renderResumo();
     if (sub === "dre") renderDRE();
@@ -839,6 +842,8 @@ window.Financeiro = {
   abrir(aba) {
     estado.aba = aba;
     if (aba === "caixa") estado.sub.caixa = "lancar";
+    // Relatórios abre no Resumo do dia, no dia de hoje
+    if (aba === "relatorios") { estado.sub.relatorios = "dia"; window.ResumoDia?.irParaHoje(); }
     mostrarSub(aba, estado.sub[aba]);
   },
   atualizar() {

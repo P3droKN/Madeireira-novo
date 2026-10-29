@@ -268,6 +268,13 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - Lançamentos: coluna Nº, busca por "V-0012", "v12" ou "12", botões 🖨 Vias, Corrigir e Estornar nas vendas.
 - E2E: `tests/e2e/impressao.mjs` (PDF real no Chrome: 5 itens = 1 página; 15 itens = 2) e `tests/e2e/janela.mjs` (fecha a janela nas outras baterias).
 
+**Seção C: Relatórios › Resumo do dia** (o fechamento do balcão)
+- Primeira sub-aba de Relatórios e a que abre por padrão, sempre no dia de hoje (o Resumo do mês fica ao lado). ◀ ▶, Hoje e "Período" (de/até). Atalho em Caixa › Saldos, no quadro da gaveta: "Ver resumo do dia".
+- `lib/resumoDia.js` (`resumoDoDia`), sobre as mesmas funções do DRE (`montarDRE` com `deDia`/`ateDia`; a regra do CMV estimado é decidida pelo mês inteiro) e do fluxo (`movimentos`): a soma dos dias fecha com o mês (testado).
+- Panorama do caixa por conta (início, entradas, saídas, transferências/compensação de cheque, fim; recebíveis de cartão; gaveta esperado × contado da última contagem do dia); quadros (vendido, entrou no caixa = dinheiro que entrou em gaveta/Bradesco/PicPay, saiu, saldo, fiado vendido, recebido de fiado e quanto foi de fiado anterior); entradas por forma (total = vendido + recebimentos); saídas pagas no dia por grupo, com "Pago com"; lista em ordem de hora (`criadoEm`) com Nº, filtros, 🖨 Vias e estornados riscados (o servidor manda `estornados` dos últimos 120 dias); cheques; orçamentos (criados, convertidos, perdidos); resultado (vendas − CMV), que some no modo balcão.
+- Imprimir fechamento: 1 página A4 (a lista vai junto até 8 lançamentos; mais que isso, numa página extra), com "Conferido por" e a opção "imprimir sem custo e margem".
+- E2E: `tests/e2e/resumodia.mjs`.
+
 ## 7. Próximos passos
 1. **Virada** (antes da 2D): ensaio no preview e depois o dia, conforme `VIRADA.md` e o checklist. 2C testada (ok), prazo 30 dias, fiado da pasta em conta corrente (entregue). Pendentes do usuário: resultado do ensaio no preview, nome do endereço e as datas.
 2. ~~Fase 2C~~ (entregue).

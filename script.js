@@ -85,6 +85,7 @@ function switchTab(tabId) {
 
 // --- DADOS DO CAIXA (lidos uma vez e usados por todas as abas) ---
 let financeItems = [];
+let estornados = [];
 const ACUMULADO_VAZIO = { venda: 0, pix: 0, credito: 0, debito: 0, custo: 0, despesa: 0, func: 0, dinheiroCaixa: 0 };
 let acumulado = { ...ACUMULADO_VAZIO };
 
@@ -104,6 +105,7 @@ async function carregarDados() {
     try {
         const data = await api('/api/getFinance');
         financeItems = data.financeItems || [];
+        estornados = data.estornados || [];
         acumulado = Object.assign({ ...ACUMULADO_VAZIO }, data.acumulado || {});
         migrado = data.migrado;
         statusBanco = data.status || null;
@@ -130,6 +132,7 @@ async function carregarDados() {
 // Acesso das abas Caixa, Relatórios e Ajustes (módulos) aos dados carregados aqui
 window.Caixa = {
     get itens() { return financeItems; },
+    get estornados() { return estornados; },
     get acumulado() { return acumulado; },
     get configFinanceiro() { return configFinanceiro; },
     set configFinanceiro(c) { configFinanceiro = c; },

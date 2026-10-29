@@ -294,14 +294,16 @@
             <!-- ABA: RELATÓRIOS (mês e ano) -->
             <div id="tab-relatorios" class="tab-content" style="display: none;">
                 <nav class="subtabs" data-grupo="relatorios" aria-label="Relatórios">
-                    <button class="subtab ativo" data-sub="resumo">Resumo do mês</button>
+                    <button class="subtab ativo" data-sub="dia">Resumo do dia</button>
+                    <button class="subtab" data-sub="resumo">Resumo do mês</button>
                     <button class="subtab" data-sub="dre">DRE</button>
                     <button class="subtab" data-sub="fluxo">Fluxo de caixa</button>
                     <button class="subtab" data-sub="formas">Formas de pagamento</button>
                     <button class="subtab" data-sub="receber">A receber</button>
                     <button class="subtab" data-sub="orcamentos">Orçamentos</button>
                 </nav>
-                <div class="rel-barra">
+                <div class="fin-sub" id="rel-dia-sec" data-sub-de="relatorios"></div>
+                <div class="rel-barra" id="rel-barra">
                     <div class="form-group"><label for="rel-mes">Mês</label><input type="month" id="rel-mes"></div>
                     <div class="form-group" id="rel-visao-grupo" hidden><label>Visão</label>
                         <div class="segmentado" id="rel-visao">
@@ -314,7 +316,7 @@
                 <div id="rel-equilibrio" class="so-tela-rel"></div>
                 <h3 class="so-impressao" id="rel-titulo-impressao"></h3>
 
-                <section class="glass-panel fin-sub rel-secao" id="rel-resumo" data-sub-de="relatorios">
+                <section class="glass-panel fin-sub rel-secao" id="rel-resumo" data-sub-de="relatorios" hidden>
                     <div class="painel-titulo"><h2>Resumo do mês</h2>
                         <div class="painel-acoes"><label for="rel-dia" class="texto-suave">Dia de referência</label><input type="date" id="rel-dia"></div></div>
                     <p class="texto-suave so-tela-rel">A antiga tabela "Monitoramento detalhado para declaração": o que foi lançado no dia, o acumulado do mês até o dia anterior e o total do mês até o dia.</p>
@@ -753,5 +755,6 @@
     <script type="module" src="clientes.js"></script>
     <script type="module" src="receber-ui.js"></script>
     <script type="module" src="impressao-ui.js"></script>
+    <script type="module" src="resumo-dia-ui.js"></script>
 </body>
 </html>

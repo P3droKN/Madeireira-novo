@@ -30,7 +30,7 @@ function rota(metodos, fn) {
 export const ROTAS = {
   // GET -> lançamentos, acumulado, config financeira, saldos e status do banco
   getFinance: rota(null, async (request, response) => {
-    const { migrado, migradoV2, financeItems, acumulado, configFinanceiro, saldos } = await lerTudo(kv(), chaves());
+    const { migrado, migradoV2, financeItems, estornados, acumulado, configFinanceiro, saldos } = await lerTudo(kv(), chaves());
     response.status(200).json({
       migrado,
       migradoV2,
@@ -39,6 +39,7 @@ export const ROTAS = {
       ambiente: chaves().ambiente,
       status: statusBanco(),
       financeItems,
+      estornados,
       acumulado: acumulado || { venda: 0, pix: 0, credito: 0, debito: 0, custo: 0, despesa: 0, func: 0, dinheiroCaixa: 0 },
     });
   }),

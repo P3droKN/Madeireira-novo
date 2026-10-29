@@ -63,7 +63,7 @@ ok(nb(await page.locator(".saldos-grid .destaque").first().textContent()).includ
 
 // Conferir gaveta
 respostas.push("240");
-await card("Gaveta").locator("button").click();
+await card("Gaveta").locator("[data-conferir]").click();
 await page.waitForTimeout(500);
 ok(nb(dialogos.at(-2) || "").includes("diferença de -R$ 10,00") || nb(dialogos.join("|")).includes("diferença de -R$ 10,00"), "conferência da gaveta mostra a diferença de −R$ 10,00");
 await page.waitForSelector(".saldo-conta");
