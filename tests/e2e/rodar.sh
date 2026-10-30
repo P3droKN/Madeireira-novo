@@ -17,7 +17,7 @@ rodar() { # nome, env...
   local arg=""; [ "$nome" = lotes ] && arg="$TMP/sintetico.json"
   local saida; saida=$(cd "$TMP" && timeout 300 node "$E/$nome.mjs" $arg 2>&1)
   echo "== $nome: $(echo "$saida" | grep -c '^OK') ok / $(echo "$saida" | grep -cE 'FALHA|ERRO JS|Error') falhas"
-  echo "$saida" | grep -E "FALHA|ERRO JS|Error|at |waiting" | head -12
+  echo "$saida" | grep -E "FALHA|ERRO JS|Error|at |waiting" | head -${LINHAS:-12}
 }
 ALVO="${1:-todos}"
 [ "$ALVO" = todos -o "$ALVO" = fluxo ] && rodar fluxo X=1

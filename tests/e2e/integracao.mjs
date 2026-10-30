@@ -46,7 +46,14 @@ await page.waitForFunction(() => document.getElementById("catalogo-status").text
 await page.waitForFunction(() => window.Caixa && window.Caixa.migradoV2);
 const saldoConta = async (nome) => { await page.click("#btn-tab-caixa"); await sub("caixa", "saldos"); await page.waitForSelector(".saldo-conta"); return nb(await page.locator(".saldo-conta", { hasText: nome }).locator("strong").textContent()); };
 const dia = async () => { await page.click("#btn-tab-relatorios"); await sub("relatorios", "dia"); await page.waitForSelector("#dia-panorama"); };
-const quadro = async (rot) => nb(await page.locator(`#dia-quadros .total-bloco:has(> span:text-is("${rot}"))`).locator("strong").textContent());
+const quadro = async (rot) => {
+  const num = /^Vendido/.test(rot) ? "vendeu" : /^Entrou/.test(rot) ? "entrou" : /^Saiu/.test(rot) ? "saiu" : null;
+  if (num) return nb(await page.locator(`#dia-numeros [data-numero="${num}"] strong`).textContent());
+  const linha = nb(await page.textContent("#dia-linha-fiado"));
+  const m = linha.match(/^Fiado vendido/.test(rot) ? /Fiado vendido (R\$ [\d.,]+)/ : /Recebido de fiado (R\$ [\d.,]+)/);
+  return m && m[1];
+};
+const abrir = (id) => page.evaluate((i) => { const d = document.getElementById(i); if (d) d.open = true; }, id);
 const dre = async (mes = "2026-10") => { await page.click("#btn-tab-relatorios"); await sub("relatorios", "dre"); await page.fill("#rel-mes", mes); await page.dispatchEvent("#rel-mes", "change"); await page.waitForSelector("#fin-dre-conteudo table"); };
 const linhaDre = async (t) => nb(await page.locator("#fin-dre-conteudo tbody tr", { hasText: t }).first().textContent());
 
@@ -171,7 +178,7 @@ const pic21 = await page.$$eval('#dia-panorama tr[data-conta="picpay"] td.num', 
 ok(pic21[1] === "R$ 98,00", `Dia 21: débito de 100 do dia 20 entra no PicPay líquido (R$ 98,00): ${pic21[1]}`);
 
 // 9. Modo balcão: o resultado some no Dia; estimativas desligadas no rodapé do DRE
-await page.click("#btn-tab-vender"); await page.click("#btn-balcao"); await dia();
+await page.click("#btn-tab-vender"); await page.click("#btn-balcao"); await dia(); await abrir("dia-detalhes");
 ok(await page.isHidden("#dia-resultado"), "modo balcão: resultado do dia escondido");
 await page.click("#btn-tab-vender"); await page.click("#btn-balcao");
 await dre();

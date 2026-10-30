@@ -77,13 +77,11 @@ ok(proj.includes("Cheques a compensarR$ 400,00"), "projeção: cheque de R$ 400 
 ok(proj.includes("Cheques emitidos (saem)R$ 1.000,00") && proj.includes("Contas a pagar lançadas (saem)R$ 800,00"), "projeção: cheque emitido −1.000 e aluguel −800");
 ok(proj.includes("R$ 6.100,00 → R$ 5.600,00"), "saldo hoje R$ 6.100 → em 30 dias R$ 5.600");
 
-// Fluxo de novembro (Relatórios › Fluxo de caixa)
-await page.click("#btn-tab-relatorios"); await sub("relatorios", "fluxo");
-const fluxo = nb(await page.locator("#rel-fluxo section", { hasText: "Fluxo de caixa" }).textContent());
-ok(fluxo.includes("Saldo inicialR$ 5.900,00") && fluxo.includes("Saldo finalR$ 5.500,00") && !fluxo.includes("Cheques compensados"), "fluxo de novembro (consolidado): 5.900 → 5.500, sem a compensação interna do cheque");
-await page.selectOption("#cx-fluxo-conta", "bradesco");
-const fb = nb(await page.locator("#rel-fluxo section", { hasText: "Fluxo de caixa" }).textContent());
-ok(fb.includes("Saldo inicialR$ 5.000,00") && fb.includes("Saldo finalR$ 3.850,00"), "fluxo do Bradesco: 5.000 + 150 + 100 + 400 − 1.000 − 800 = 3.850");
+// Novembro em Relatórios › Mês: o caixa por conta do mês até hoje (o futuro fica na projeção de 30 dias, acima)
+await page.click("#btn-tab-relatorios"); await sub("relatorios", "mes");
+await page.waitForSelector("#dia-panorama");
+const brad = await page.$$eval('#dia-panorama tr[data-conta="bradesco"] td.num', (t) => t.map((x) => x.textContent.replace(/\u00a0/g, " ")));
+ok(brad[0] === "R$ 5.000,00" && brad.at(-1) === "R$ 5.250,00", "Mês de novembro até hoje, Bradesco: 5.000 + 150 + 100 = 5.250 (o que vence depois fica na projeção do Caixa) (" + brad.join(" | ") + ")");
 await page.screenshot({ path: "caixa.png", fullPage: true });
 
 // Cheques

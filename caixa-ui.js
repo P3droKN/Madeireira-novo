@@ -1,9 +1,7 @@
 // Caixa › Saldos (saldo por conta, conferir com o extrato, fechar gaveta, projeção de 30 dias),
 // Caixa › Cheques (recebidos e emitidos), Relatórios › Fluxo de caixa e Ajustes › Saldos (abertura). Fase 2B.
-import { movimentos, saldos, projecao, fluxoMensal, cheques, chequesNaAbertura, CONTAS_CAIXA, NOMES_CONTAS, rotuloTipo } from "./lib/caixa.js";
-import { grupoPorId } from "./lib/planoContas.js";
+import { movimentos, saldos, projecao, cheques, chequesNaAbertura, CONTAS_CAIXA, NOMES_CONTAS, rotuloTipo } from "./lib/caixa.js";
 import { somarDias } from "./lib/orcamentos.js";
-import { recebidoDeFiadoAnterior } from "./lib/receber.js";
 import { hojeSP } from "./lib/datas.js";
 
 const $ = (id) => document.getElementById(id);
@@ -14,7 +12,7 @@ const num = (v) => (v === "" || v == null ? null : Number(String(v).replace(",",
 const C = () => window.Caixa;
 const hoje = () => C()?.hoje() || hojeSP();
 
-const estado = { refazer: false, mesFluxo: null, contaFluxo: "", filtroRecebidos: "a_compensar", filtroEmitidos: "a_compensar" };
+const estado = { refazer: false, filtroRecebidos: "a_compensar", filtroEmitidos: "a_compensar" };
 
 function dados() {
   const cfg = C().configFinanceiro;
@@ -27,7 +25,7 @@ async function postar(corpo) {
   return window.api("/api/config", { method: "POST", body: corpo });
 }
 
-let alvos = { saldos: null, fluxo: null, abertura: null, cheques: null };
+let alvos = { saldos: null, abertura: null, cheques: null };
 
 function semAbertura(el) {
   el.innerHTML = `<div class="aviso aviso-alerta"><strong>Faça a abertura de saldos.</strong> Os saldos, a projeção e o fluxo de caixa dependem dela: sem a abertura, o sistema não sabe quanto dinheiro já existia em cada conta.
@@ -88,44 +86,6 @@ function renderSaldos(el) {
   $("cx-ver-resumo-dia")?.addEventListener("click", () => { window.ResumoDia?.irParaHoje(); window.Financeiro.irPara("relatorios", "dia"); });
 }
 
-// Relatórios › Fluxo de caixa do mês (consolidado ou por conta)
-function renderFluxo(el, mes) {
-  alvos.fluxo = el;
-  estado.mesFluxo = mes || estado.mesFluxo || hoje().slice(0, 7);
-  if (!C()) return;
-  const { movs, ab } = dados();
-  if (!ab) return semAbertura(el);
-  const f = fluxoMensal(movs, ab, estado.mesFluxo, estado.contaFluxo || null);
-  const nomeSaida = (k) => grupoPorId[k]?.nome || rotuloTipo(k);
-  // Só informação: quanto das entradas do mês pagou fiado da pasta (anterior à virada), para não parecer que a venda caiu
-  const doAnterior = estado.contaFluxo ? 0 : recebidoDeFiadoAnterior(C().itens, C().configFinanceiro, estado.mesFluxo, hoje(), window.Clientes?.lista || []);
-  el.innerHTML = `
-  <section class="glass-panel">
-    <div class="painel-titulo"><h2>Fluxo de caixa</h2>
-      <div class="painel-acoes">
-        <select id="cx-fluxo-conta" aria-label="Conta"><option value="">Consolidado</option>${CONTAS_CAIXA.map((c) => `<option value="${c}" ${estado.contaFluxo === c ? "selected" : ""}>${NOMES_CONTAS[c]}</option>`).join("")}</select>
-      </div></div>
-    <div class="fluxo-grid">
-      <table class="tabela-dre">
-        <tbody>
-          <tr class="dre-total"><td>Saldo inicial</td><td class="num">${moeda(f.saldoInicial)}</td></tr>
-          ${Object.entries(f.entradas).map(([t, v]) => `<tr class="dre-sub"><td>(+) ${esc(rotuloTipo(t))}</td><td class="num type-income">${moeda(v)}</td></tr>`).join("")}
-          <tr class="dre-total"><td>(=) Entradas</td><td class="num">${moeda(f.totalEntradas)}</td></tr>
-          ${doAnterior ? `<tr class="dre-sub dre-info-linha"><td><em>(i) Recebido de fiado anterior à virada</em><small class="texto-suave"> já está nas entradas; não é venda deste mês</small></td><td class="num">${moeda(doAnterior)}</td></tr>` : ""}
-          ${Object.entries(f.saidas).map(([g, v]) => `<tr class="dre-sub"><td>(−) ${esc(nomeSaida(g))}</td><td class="num type-expense">${moeda(-v)}</td></tr>`).join("")}
-          <tr class="dre-total"><td>(=) Saídas</td><td class="num">${moeda(-f.totalSaidas)}</td></tr>
-          <tr class="dre-total dre-destaque"><td>Saldo final</td><td class="num">${moeda(f.saldoFinal)}</td></tr>
-        </tbody>
-      </table>
-      <div class="table-container"><table class="tabela-fin">
-        <thead><tr><th>Dia</th><th class="num">Entradas</th><th class="num">Saídas</th><th class="num">Saldo</th></tr></thead>
-        <tbody>${f.dias.map((d) => `<tr><td>${dataBR(d.data)}</td><td class="num type-income">${d.entradas ? moeda(d.entradas) : ""}</td><td class="num type-expense">${d.saidas ? moeda(d.saidas) : ""}</td><td class="num"><strong>${moeda(d.saldo)}</strong></td></tr>`).join("") || '<tr><td colspan="4" class="texto-suave">Sem movimentos no mês.</td></tr>'}</tbody>
-      </table></div>
-    </div>
-    ${estado.contaFluxo ? "" : '<p class="texto-suave">No consolidado, transferências entre contas não aparecem (saem de uma e entram na outra).</p>'}
-  </section>`;
-  $("cx-fluxo-conta").addEventListener("change", (e) => { estado.contaFluxo = e.target.value; renderFluxo(el, estado.mesFluxo); });
-}
 
 // Ajustes › Saldos: abertura de saldos (fazer ou refazer), com os cheques em carteira um por um
 // e o fiado da pasta (o que cada cliente já devia no dia da virada).
@@ -488,6 +448,5 @@ document.addEventListener("click", (e) => {
 window.CaixaUI = {
   saldos: renderSaldos,
   cheques: renderCheques,
-  fluxo: renderFluxo,
   abertura: renderAbertura,
 };

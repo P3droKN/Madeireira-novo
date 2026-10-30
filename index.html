@@ -295,13 +295,12 @@
             <!-- ABA: RELATÓRIOS (mês e ano) -->
             <div id="tab-relatorios" class="tab-content" style="display: none;">
                 <nav class="subtabs" data-grupo="relatorios" aria-label="Relatórios">
-                    <button class="subtab ativo" data-sub="dia">Resumo do dia</button>
-                    <button class="subtab" data-sub="resumo">Resumo do mês</button>
+                    <button class="subtab ativo" data-sub="dia">Dia</button>
+                    <button class="subtab" data-sub="mes">Mês</button>
                     <button class="subtab" data-sub="dre">DRE</button>
-                    <button class="subtab" data-sub="fluxo">Fluxo de caixa</button>
-                    <button class="subtab" data-sub="formas">Formas de pagamento</button>
                     <button class="subtab" data-sub="receber">A receber</button>
                     <button class="subtab" data-sub="orcamentos">Orçamentos</button>
+                    <button class="subtab" data-sub="formas">Formas de pagamento</button>
                 </nav>
                 <div class="fin-sub" id="rel-dia-sec" data-sub-de="relatorios"></div>
                 <div class="rel-barra" id="rel-barra">
@@ -314,15 +313,8 @@
                     </div>
                     <button class="btn-icon" id="rel-imprimir">🖨 Imprimir relatório</button>
                 </div>
-                <div id="rel-equilibrio" class="so-tela-rel"></div>
                 <h3 class="so-impressao" id="rel-titulo-impressao"></h3>
 
-                <section class="glass-panel fin-sub rel-secao" id="rel-resumo" data-sub-de="relatorios" hidden>
-                    <div class="painel-titulo"><h2>Resumo do mês</h2>
-                        <div class="painel-acoes"><label for="rel-dia" class="texto-suave">Dia de referência</label><input type="date" id="rel-dia"></div></div>
-                    <p class="texto-suave so-tela-rel">A antiga tabela "Monitoramento detalhado para declaração": o que foi lançado no dia, o acumulado do mês até o dia anterior e o total do mês até o dia.</p>
-                    <div class="table-container" id="rel-resumo-conteudo"></div>
-                </section>
 
                 <section class="glass-panel fin-sub rel-secao" id="fin-dre" data-sub-de="relatorios" hidden>
                     <div class="painel-titulo">
@@ -333,7 +325,6 @@
                     <p class="nota-gerencial">Relatório gerencial de controle interno. Não substitui a contabilidade oficial do escritório.</p>
                 </section>
 
-                <div class="fin-sub rel-secao" id="rel-fluxo" data-sub-de="relatorios" hidden></div>
 
                 <section class="glass-panel fin-sub rel-secao" id="rel-formas" data-sub-de="relatorios" hidden>
                     <div class="painel-titulo"><h2>Vendas por forma de pagamento</h2></div>

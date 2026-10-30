@@ -2,8 +2,8 @@
 // Caixa › Lançar e Lançamentos; Relatórios › Resumo do mês, DRE e Formas de pagamento; Ajustes › Financeiro e Orçamentos.
 // Saldos, Cheques, Fluxo de caixa e Abertura de saldos ficam em caixa-ui.js.
 import { CONTAS, GRUPOS, contaPorId, grupoPorId, naturezaDaConta, FORMAS_PADRAO, PAGO_COM, mesclarConfigFinanceiro } from "./lib/planoContas.js";
-import { montarDRE, montarDREAnual, normalizar, mesDe, estoqueEstimado, VINCULOS, pontoEquilibrioMedio } from "./lib/financeiro.js";
-import { resumoDoMes, vendasPorForma } from "./lib/relatorios.js";
+import { montarDRE, montarDREAnual, normalizar, mesDe, estoqueEstimado, VINCULOS } from "./lib/financeiro.js";
+import { vendasPorForma } from "./lib/relatorios.js";
 import { criarEditorPagamentos } from "./pagamentos.js";
 import { recebidoDeFiadoAnterior } from "./lib/receber.js";
 import { sugestaoDe } from "./lib/migracaoV2.js";
@@ -29,7 +29,7 @@ const estado = { aba: null, sub: { caixa: "lancar", relatorios: "dia", ajustes: 
 // Sub-aba -> elemento da tela
 const TELAS = {
   caixa: { lancar: "fin-lancar", saldos: "fin-saldos", cheques: "fin-cheques", receber: "fin-receber", lista: "fin-lista" },
-  relatorios: { dia: "rel-dia-sec", resumo: "rel-resumo", dre: "fin-dre", fluxo: "rel-fluxo", formas: "rel-formas", receber: "rel-receber", orcamentos: "rel-orcamentos" },
+  relatorios: { dia: "rel-dia-sec", mes: "rel-dia-sec", dre: "fin-dre", formas: "rel-formas", receber: "rel-receber", orcamentos: "rel-orcamentos" },
   ajustes: { precos: "aj-precos", financeiro: "aj-financeiro", orcamentos: "aj-orcamentos", impressao: "aj-impressao", saldos: "aj-saldos", dados: "aj-dados" },
 };
 
@@ -49,7 +49,9 @@ const ehReceitaVenda = (c) => ["venda_produtos", "frete_cobrado", "servicos"].in
 function mostrarSub(grupo, sub) {
   estado.sub[grupo] = sub;
   document.querySelectorAll(`.subtabs[data-grupo="${grupo}"] .subtab`).forEach((b) => b.classList.toggle("ativo", b.dataset.sub === sub));
-  for (const [s, id] of Object.entries(TELAS[grupo])) $(id).hidden = s !== sub;
+  // Dia e Mês dividem a mesma tela: esconde as outras e só depois mostra a escolhida
+  for (const id of Object.values(TELAS[grupo])) $(id).hidden = true;
+  $(TELAS[grupo][sub]).hidden = false;
   renderSub();
 }
 
@@ -69,14 +71,11 @@ function renderSub() {
   if (grupo === "relatorios") {
     if (!$("rel-mes").value) $("rel-mes").value = mesRelatorio();
     $("rel-visao-grupo").hidden = sub !== "dre";
-    // Resumo do dia tem os próprios controles (dia, período, imprimir fechamento): a barra do mês some
-    $("rel-barra").hidden = $("rel-equilibrio").hidden = sub === "dia";
-    if (sub === "dia") return window.ResumoDia?.render($("rel-dia-sec"));
-    renderEquilibrio();
-    if (sub === "resumo") renderResumo();
+    // Dia e Mês têm os próprios controles (data ou mês, imprimir): a barra de mês do DRE e afins some
+    $("rel-barra").hidden = sub === "dia" || sub === "mes";
+    if (sub === "dia" || sub === "mes") return window.ResumoDia?.render($("rel-dia-sec"), sub);
     if (sub === "dre") renderDRE();
     const mesBR = mesRelatorio().split("-").reverse().join("/");
-    if (sub === "fluxo") { $("rel-titulo-impressao").textContent = `Fluxo de caixa · ${mesBR}`; window.CaixaUI?.fluxo($("rel-fluxo"), mesRelatorio()); }
     if (sub === "formas") renderFormas();
     if (sub === "receber") { $("rel-titulo-impressao").textContent = `A receber · ${(C()?.hoje() || "").split("-").reverse().join("/")}`; window.ReceberUI?.relatorio($("rel-receber")); }
     if (sub === "orcamentos") { $("rel-titulo-impressao").textContent = `Orçamentos · ${mesBR}`; window.Orcamentos?.relatorio($("rel-orcamentos-conteudo"), mesRelatorio()); }
@@ -520,7 +519,9 @@ function renderDRE() {
     const va = ant.valores[l.id] ?? 0, vb = anoAnt.valores[l.id] ?? 0;
     const dv = variacao(l.valor, va), dy = variacao(l.valor, vb);
     const seta = (x) => (x == null ? "—" : `${x > 0 ? "▲" : x < 0 ? "▼" : ""} ${pct(Math.abs(x))}`);
-    return `<tr class="dre-${l.tipo}${l.destaque ? " dre-destaque" : ""}${l.alerta ? " dre-alerta" : ""}">
+    // Linha zerada no mês e nas comparações fica recolhida ("mostrar linhas zeradas")
+    const zerada = l.tipo !== "total" && !Math.round(l.valor * 100) && !Math.round(va * 100) && !Math.round(vb * 100);
+    return `<tr class="dre-${l.tipo}${l.destaque ? " dre-destaque" : ""}${l.alerta ? " dre-alerta" : ""}${zerada ? " dre-zerada" : ""}">
       <td>${esc(l.rotulo)}${l.estimado ? ' <span class="tag">estimado</span>' : ""}</td>
       <td class="num">${moeda(l.valor)}</td>
       <td class="num">${rb ? pct(l.valor / rb) : "—"}</td>
@@ -533,10 +534,10 @@ function renderDRE() {
   const doAnterior = recebidoDeFiadoAnterior(C().itens, cfg, mes, C().hoje(), window.Clientes?.lista || []);
   alvo.innerHTML = `
     ${emAndamento ? `<div class="aviso dre-andamento"><strong>Mês em andamento (até ${ddmm(mes)})</strong>: as comparações usam o mesmo período (1 a ${ddmm(mesAnterior(mes))} no mês anterior). Salários e contas do fim do mês ainda podem entrar.</div>` : ""}
-    ${d.provisorio.length ? `<div class="aviso aviso-alerta dre-provisorio"><strong>Resultado provisório: ${d.provisorio.length} pendência${d.provisorio.length > 1 ? "s" : ""}</strong>
-      <ul>${d.provisorio.map((p) => `<li>${esc(p.texto)}</li>`).join("")}</ul></div>` : ""}
-    ${d.avisos.length ? `<ul class="pendencias">${d.avisos.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}
-    <div class="table-container"><table class="tabela-dre">
+    ${d.provisorio.length || d.avisos.length ? `<div class="aviso aviso-alerta dre-provisorio" id="dre-avisos"><strong>${d.provisorio.length ? `Resultado provisório: ${d.provisorio.length} pendência${d.provisorio.length > 1 ? "s" : ""}` : "Atenção"}</strong>
+      <ul>${[...d.provisorio.map((p) => p.texto), ...d.avisos].map((t) => `<li>${esc(t)}</li>`).join("")}</ul></div>` : ""}
+    <label class="check texto-suave dre-zeradas-opcao"><input type="checkbox" id="dre-zeradas" ${estado.dreZeradas ? "checked" : ""}> mostrar linhas zeradas</label>
+    <div class="table-container"><table class="tabela-dre${estado.dreZeradas ? "" : " sem-zeradas"}" id="dre-tabela">
       <thead><tr><th></th><th class="num">${mes.split("-").reverse().join("/")}${emAndamento ? ` <small>(até ${ddmm(mes)})</small>` : ""}</th><th class="num">% receita</th>
         <th class="num so-tela-dre">Mês anterior${emAndamento ? ` <small>(até ${ddmm(mesAnterior(mes))})</small>` : ""}</th><th class="num so-tela-dre">Δ</th>
         <th class="num so-tela-dre">Mesmo mês ${Number(mes.slice(0, 4)) - 1}${emAndamento ? ` <small>(até ${ddmm(mesAnterior(mes, 12))})</small>` : ""}</th><th class="num so-tela-dre">Δ</th></tr></thead>
@@ -555,6 +556,7 @@ function renderDRE() {
       <div><span>Ponto de equilíbrio</span><strong>${moeda(d.info.pontoEquilibrio)}</strong></div>
             ${d.info.aportes ? `<div><span>Aportes do dono</span><strong>${moeda(d.info.aportes)}</strong></div>` : ""}
     </div>`;
+  $("dre-zeradas").addEventListener("change", (e) => { estado.dreZeradas = e.target.checked; $("dre-tabela").classList.toggle("sem-zeradas", !e.target.checked); });
 }
 
 // De onde vem o custo das vendas do mês: o quanto o lucro é confiável
@@ -582,61 +584,7 @@ function ultimoDia(mes) {
 }
 
 // Dia de referência do resumo: hoje, se for o mês escolhido; senão o último dia do mês
-function diaDoMes(mes) {
-  const h = C()?.hoje() || "";
-  return h.startsWith(mes) ? h : ultimoDia(mes);
-}
 
-// Relatórios: "Quanto preciso vender por mês para empatar" (média dos últimos 3 meses completos)
-function renderEquilibrio() {
-  const el = $("rel-equilibrio");
-  if (!el || !C()) return;
-  const hoje = C().hoje();
-  const mes = hoje.slice(0, 7);
-  const pe = pontoEquilibrioMedio(C().itens, C().configFinanceiro, mes, 3);
-  if (!pe) { el.innerHTML = ""; return; }
-  const nomes = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
-  const meses = pe.meses.map((m) => `${nomes[Number(m.slice(5, 7)) - 1]}/${m.slice(2, 4)}`).join(", ");
-  const doMes = montarDRE(C().itens, C().configFinanceiro, mes).valores.receitaBruta;
-  const pct = (pe.margemContribuicaoPct * 100).toFixed(1).replace(".", ",");
-  el.innerHTML = pe.pontoEquilibrio == null
-    ? `<div class="equilibrio aviso aviso-alerta"><span>Quanto preciso vender por mês para empatar</span>
-        <strong>Sem ponto de equilíbrio</strong><small>A margem de contribuição de ${meses} ficou negativa (${pct}%): vender mais não cobre os custos. Verifique o CMV e os preços.</small></div>`
-    : `<div class="equilibrio">
-        <span>Quanto preciso vender por mês para empatar</span>
-        <strong id="rel-equilibrio-valor">${moeda(pe.pontoEquilibrio)}</strong>
-        <small>Custos fixos médios ${moeda(pe.custosFixosMedia)} ÷ margem de contribuição de ${pct}% · média de ${meses}</small>
-        <small>Vendas médias nesses meses: ${moeda(pe.vendasMedia)} (${pe.vendasMedia >= pe.pontoEquilibrio ? `${moeda(pe.vendasMedia - pe.pontoEquilibrio)} acima` : `${moeda(pe.pontoEquilibrio - pe.vendasMedia)} abaixo`} do empate)
-          · este mês até ${hoje.slice(8, 10)}/${hoje.slice(5, 7)}: ${moeda(doMes)}${doMes < pe.pontoEquilibrio ? ` (faltam ${moeda(pe.pontoEquilibrio - doMes)})` : " (já empatou)"}</small>
-      </div>`;
-}
-
-function renderResumo() {
-  if (!C()) return;
-  const mes = mesRelatorio();
-  if (!$("rel-dia").value.startsWith(mes)) $("rel-dia").value = diaDoMes(mes);
-  const dia = $("rel-dia").value;
-  const r = resumoDoMes(C().itens, C().acumulado, dia);
-  const linhas = [
-    ["vendas", "Vendas no geral (bruto)", "font-bold"],
-    ["pix", "↳ em PIX / transferência", "sub-row"],
-    ["cred", "↳ em Crédito", "sub-row"],
-    ["deb", "↳ em Débito", "sub-row"],
-    ["custos", "Custo de material", "text-danger"],
-    ["despesas", "Despesas gerais", "text-danger"],
-    ["funcionarios", "Funcionários", "text-danger"],
-  ];
-  const t = r.total.resultado;
-  const rotuloRes = t > 0 ? "LUCRO BRUTO DO MÊS" : t < 0 ? "PREJUÍZO BRUTO DO MÊS" : "RESULTADO BRUTO DO MÊS";
-  $("rel-titulo-impressao").textContent = `Resumo do mês · ${dataBR(dia)}`;
-  $("rel-resumo-conteudo").innerHTML = `<table class="summary-table">
-    <thead><tr><th>Indicador</th><th class="num">Lançado no dia (${dataBR(dia)})</th><th class="num">Acumulado (mês + passado)</th><th class="num">Total do mês</th></tr></thead>
-    <tbody>${linhas.map(([k, rot, cls]) => `<tr class="${cls}"><td>${rot}</td><td class="num">${moeda(r.doDia[k])}</td><td class="num">${moeda(r.acumulado[k])}</td><td class="num" id="rel-tot-${k}">${moeda(r.total[k])}</td></tr>`).join("")}
-      <tr class="result-row"><td>${rotuloRes}<small class="texto-suave">vendas − custo de material − despesas gerais (como na tela antiga)</small></td>
-        <td class="num">${moeda(r.doDia.resultado)}</td><td class="num">${moeda(r.acumulado.resultado)}</td>
-        <td class="num ${t > 0 ? "text-success" : t < 0 ? "text-danger" : ""} font-bold">${moeda(t)}</td></tr>
-    </tbody></table>`;
-}
 
 function renderFormas() {
   if (!C()) return;
@@ -844,13 +792,8 @@ $("fin-lote-forma-aplicar").addEventListener("click", () => {
   if (!forma) return alert("Escolha a nova forma.");
   if (confirm(`Trocar a forma de pagamento para "${FORMAS[forma].nome}" nas vendas selecionadas?`)) aplicarLote({ forma });
 });
-$("rel-mes").addEventListener("change", () => { $("rel-dia").value = ""; renderSub(); });
+$("rel-mes").addEventListener("change", renderSub);
 $("rel-visao").addEventListener("change", renderSub);
-$("rel-dia").addEventListener("change", () => {
-  const d = $("rel-dia").value;
-  if (d) $("rel-mes").value = d.slice(0, 7);
-  renderResumo();
-});
 // Imprimir A4: só a seção aberta de Relatórios
 $("rel-imprimir").addEventListener("click", () => {
   const sub = estado.sub.relatorios;

@@ -47,15 +47,15 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
   - **Vender:** pedido, Registrar venda / Salvar como orçamento, botão **👁 Modo balcão** (esconde tudo com classe `sigilo`; escolha em `localStorage` `madeireira_modo_balcao`).
   - **Orçamentos:** 3 indicadores (em aberto, conversão do mês, 🔔 para cobrar), abas Em aberto · Fechados · Perdidos, busca, "Mais filtros", ações Enviar/Cobrar/Converter e menu ⋯, Lixeira.
   - **Caixa:** sub-abas Lançar · Saldos · Cheques · **A receber** (2C) · Lançamentos (formulário único; a lista tem Excluir/estornar por linha e o filtro "Fiado e recebimentos").
-  - **Relatórios:** barra de mês (Mês/Ano só no DRE) e Imprimir A4; Resumo do mês (a antiga tabela do Gestor de Caixa), DRE, Fluxo de caixa, Formas de pagamento, Orçamentos.
+  - **Relatórios:** barra de mês (Mês/Ano só no DRE) e Imprimir A4; sub-abas Dia · Mês · DRE · A receber · Orçamentos · Formas de pagamento (Dia e Mês têm controles próprios; a barra de mês serve ao DRE e demais).
   - **Ajustes:** Preços · Financeiro · Orçamentos · Saldos (abertura + saldos passados) · Dados (exportar, importar, restaurar, conferir, linha do banco).
 - **`script.js`** (clássico): senha, `api()`, `switchTab`, carga dos dados (`window.Caixa`, inclusive `excluir(id)`), backup/importar/restaurar, saldos passados, `registerDirectSale`.
 - **Módulos de tela:**
   - `calculadora.js`: aba Vender (pedido, modo balcão) e Ajustes › Preços;
   - `pagamentos.js`: editor de várias formas de pagamento;
   - `orcamentos-ui.js`: aba Orçamentos e Relatórios › Orçamentos;
-  - `financeiro-ui.js`: **navegação das sub-abas** (Caixa, Relatórios, Ajustes), Lançar, Lançamentos, Resumo do mês, DRE, Formas de pagamento, configuração (Financeiro e Orçamentos);
-  - `caixa-ui.js`: Saldos, Cheques, Fluxo de caixa e Abertura de saldos;
+  - `financeiro-ui.js`: **navegação das sub-abas** (Caixa, Relatórios, Ajustes), Lançar, Lançamentos, DRE, Formas de pagamento, configuração (Financeiro e Orçamentos);
+  - `caixa-ui.js`: Saldos, Cheques e Abertura de saldos;
   - `receber-ui.js`: Caixa › A receber (por cliente, Receber, Cobrar, Estornar, cadastro de clientes) e Relatórios › A receber;
   - `clientes.js`: `window.Clientes` (lista, `<datalist id="clientes-lista">`, `garantir(nome)` acha ou cadastra);
   - `conferencia.js`: conferência arquivo × banco.
@@ -269,7 +269,7 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - E2E: `tests/e2e/impressao.mjs` (PDF real no Chrome: 5 itens = 1 página; 15 itens = 2) e `tests/e2e/janela.mjs` (fecha a janela nas outras baterias).
 
 **Seção C: Relatórios › Resumo do dia** (o fechamento do balcão)
-- Primeira sub-aba de Relatórios e a que abre por padrão, sempre no dia de hoje (o Resumo do mês fica ao lado). ◀ ▶, Hoje e "Período" (de/até). Atalho em Caixa › Saldos, no quadro da gaveta: "Ver resumo do dia".
+- Primeira sub-aba de Relatórios e a que abre por padrão, sempre no dia de hoje (o Mês fica ao lado). ◀ ▶, Hoje e "Período" (de/até). Atalho em Caixa › Saldos, no quadro da gaveta: "Ver resumo do dia".
 - `lib/resumoDia.js` (`resumoDoDia`), sobre as mesmas funções do DRE (`montarDRE` com `deDia`/`ateDia`; a regra do CMV estimado é decidida pelo mês inteiro) e do fluxo (`movimentos`): a soma dos dias fecha com o mês (testado).
 - Panorama do caixa por conta (início, entradas, saídas, transferências/compensação de cheque, fim; recebíveis de cartão; gaveta esperado × contado da última contagem do dia); quadros (vendido, entrou no caixa = dinheiro que entrou em gaveta/Bradesco/PicPay, saiu, saldo, fiado vendido, recebido de fiado e quanto foi de fiado anterior); entradas por forma (total = vendido + recebimentos); saídas pagas no dia por grupo, com "Pago com"; lista em ordem de hora (`criadoEm`) com Nº, filtros, 🖨 Vias e estornados riscados (o servidor manda `estornados` dos últimos 120 dias); cheques; orçamentos (criados, convertidos, perdidos); resultado (vendas − CMV), que some no modo balcão.
 - Imprimir fechamento: 1 página A4 (a lista vai junto até 8 lançamentos; mais que isso, numa página extra), com "Conferido por" e a opção "imprimir sem custo e margem".
@@ -327,4 +327,11 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - **RBT12** para o DAS estimado: pedir ao escritório e preencher em Ajustes › Financeiro.
 - **Fiado:** prazo padrão de 30 dias confirmado. Clientes da pasta usam conta corrente (sem vencimento).
 - **A virada (A ou B)** ainda não foi decidida.
-- **Resumo do mês (antiga tela do Gestor de Caixa, agora em Relatórios):** mesmos números de antes (provado em `tests/relatorios.test.js`), ignorando abertura e transferências. O "resultado" dele é vendas − custos − despesas, **sem funcionários** (sempre foi assim); perguntar ao usuário se quer incluir.
+- **Resumo do mês e Fluxo de caixa antigos:** removidos na etapa 2 da entrega final; Relatórios › Mês (mesmo layout do Dia, período = mês) e a projeção de 30 dias em Caixa › Saldos ocupam o lugar.
+
+**Entrega final, etapa 2: Relatórios**
+- Sub-abas: Dia · Mês · DRE · A receber · Orçamentos · Formas de pagamento. Dia e Mês usam a mesma tela (`#rel-dia-sec`, `resumo-dia-ui.js`); `mostrarSub` esconde todas e depois mostra a escolhida (por isso Dia e Mês podem dividir a seção).
+- Ordem da tela: 3 números (Vendeu N pedidos · Entrou no caixa ⓘ · Saiu) + linha "Fiado vendido · Recebido de fiado" → Caixa por conta (gaveta: contado/faltou/sobrou ou botão Fechar gaveta) → Entradas por forma | Saídas por conta → "Ver os N movimentos" (recolhido) → Mês: "Dia a dia do mês" (recolhido) → "Mais detalhes" (cheques, orçamentos, resultado; o resultado some no modo balcão).
+- Mês: quadro "Quanto preciso vender por mês para empatar" no topo; caixa por conta do mês até hoje (o que vence depois fica na projeção de 30 dias de Caixa › Saldos).
+- DRE: linhas zeradas escondidas ("mostrar linhas zeradas"), um só bloco amarelo de avisos.
+- Imprimir: "Imprimir fechamento" (Dia) / "Imprimir relatório do mês" na mesma ordem da tela.

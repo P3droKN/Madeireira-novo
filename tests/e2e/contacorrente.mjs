@@ -178,22 +178,22 @@ await page.click("#btn-tab-relatorios"); await sub("relatorios", "dre");
 await page.waitForSelector("#fin-dre-conteudo .dre-info");
 ok(nb(await page.textContent("#fin-dre-conteudo .dre-andamento")).includes("Mês em andamento (até 10/10)") && nb(await page.textContent("#fin-dre-conteudo thead")).includes("Mês anterior (até 10/09)"),
   "DRE de outubro: mês em andamento, comparado com 1 a 10/09");
-// Quanto preciso vender para empatar: média de ago e set (julho sem venda; outubro em andamento fica fora)
-const { pontoEquilibrioMedio } = await import("../../lib/financeiro.js");
-const peEsperado = pontoEquilibrioMedio(await lanc(), {}, "2026-10");
-const brl = (v) => nb(new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v));
-const eq = nb(await page.textContent("#rel-equilibrio"));
-ok(eq.includes("Quanto preciso vender por mês para empatar") && nb(await page.textContent("#rel-equilibrio-valor")) === brl(peEsperado.pontoEquilibrio) && eq.includes("média de ago/26, set/26"),
-  `quadro do ponto de equilíbrio: ${brl(peEsperado.pontoEquilibrio)} (média de ago e set)`);
-ok(eq.includes("este mês até 10/10: R$ 250,00"), "quadro mostra quanto já vendeu no mês");
 const dre = nb(await page.textContent("#fin-dre-conteudo"));
 ok(dre.includes("Recebido de fiado anterior à virada") && dre.includes("R$ 300,00"), "DRE: linha informativa \"Recebido de fiado anterior à virada\" R$ 300");
 ok(nb(await page.textContent("#fin-dre-conteudo tfoot .dre-info-linha")).includes("Recebido de fiado anterior à virada") && nb(await page.textContent("#fin-dre-conteudo tfoot")).includes("R$ 300,00"),
   "DRE: também como linha informativa no fim da tabela (não soma no lucro)");
-await sub("relatorios", "fluxo");
-await page.waitForSelector("#rel-fluxo .tabela-dre");
-const fl = nb(await page.textContent("#rel-fluxo .tabela-dre"));
-ok(fl.includes("Recebido de fiado anterior à virada") && fl.includes("R$ 300,00"), "Fluxo de caixa: mesma linha informativa");
+// Quanto preciso vender para empatar: agora no topo de Relatórios › Mês (média de ago e set; outubro em andamento fica fora)
+const { pontoEquilibrioMedio } = await import("../../lib/financeiro.js");
+const peEsperado = pontoEquilibrioMedio(await lanc(), {}, "2026-10");
+const brl = (v) => nb(new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v));
+await sub("relatorios", "mes");
+await page.waitForSelector("#rel-equilibrio");
+const eq = nb(await page.textContent("#rel-equilibrio"));
+ok(eq.includes("Quanto preciso vender por mês para empatar") && nb(await page.textContent("#rel-equilibrio-valor")) === brl(peEsperado.pontoEquilibrio) && eq.includes("média de ago/26, set/26"),
+  `Mês: quadro do ponto de equilíbrio ${brl(peEsperado.pontoEquilibrio)} (média de ago e set)`);
+ok(eq.includes("Este mês até 10/10: R$ 250,00"), "quadro mostra quanto já vendeu no mês");
+const linhaMes = nb(await page.textContent("#dia-linha-fiado"));
+ok(linhaMes.includes("R$ 300,00 da pasta, anterior à virada"), "Mês: recebido de fiado anterior à virada (R$ 300) na linha do fiado");
 
 // 7. Relatórios › A receber dividido
 await sub("relatorios", "receber");

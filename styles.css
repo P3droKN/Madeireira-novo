@@ -358,6 +358,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .sugestao { color: #93c5fd !important; }
 
 .tabela-dre td, .tabela-dre th { padding: 0.45rem 0.6rem; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.tabela-dre td:first-child { min-width: 13rem; }
 .tabela-dre tr.dre-sub td:first-child { padding-left: 1.5rem; color: var(--text-muted); }
 .tabela-dre tr.dre-total td { font-weight: 700; border-top: 1px solid var(--input-border); }
 .tabela-dre tr.dre-destaque td { font-size: 1.05rem; background: rgba(16, 185, 129, 0.08); }
@@ -1146,3 +1147,32 @@ body.modo-balcao .sigilo { display: none !important; }
     #fin-lista-body td:nth-child(7) { grid-column: 3; grid-row: 2; text-align: right; font-weight: 600; }
     #fin-lista-body td:nth-child(8) { grid-column: 2 / span 2; display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.3rem; }
 }
+.tabela-dre.sem-zeradas tr.dre-zerada { display: none; }
+.dre-zeradas-opcao { display: block; margin: 0.25rem 0 0.5rem; font-size: 0.85rem; }
+
+/* ---------- Relatórios › Dia e Mês (entrega final): a resposta em três números, cada número uma vez só ---------- */
+.dia-resposta { display: flex; flex-direction: column; gap: 0.5rem; margin: 0 0 1.25rem; }
+.dia-titulo { margin: 0; font-size: 1.15rem; color: var(--text-muted); font-weight: 600; }
+.dia-tres { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+.dia-tres > div { background: var(--glass-bg, rgba(255, 255, 255, 0.04)); border: 1px solid var(--input-border); border-radius: 12px; padding: 0.9rem 1.1rem; display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.dia-tres span { color: var(--text-muted); font-size: 0.9rem; display: flex; align-items: center; gap: 0.35rem; }
+.dia-tres strong { font-size: 1.9rem; font-variant-numeric: tabular-nums; line-height: 1.15; overflow-wrap: anywhere; }
+.dia-tres small { color: var(--text-muted); font-size: 0.8rem; }
+.dia-tres .ent, .tabela-panorama .ent { color: #34d399; }
+.dia-tres .sai, .tabela-panorama .sai, .dia-resultado .sai { color: #f87171; }
+.dia-linha { margin: 0; color: var(--text-muted); font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+.dia-explica { margin: 0; font-size: 0.85rem; color: var(--text-muted); background: var(--input-bg); border-radius: 8px; padding: 0.5rem 0.75rem; }
+.info { background: none; border: 1px solid var(--input-border); color: var(--text-muted); border-radius: 999px; width: 1.4rem; height: 1.4rem; font-size: 0.8rem; line-height: 1; cursor: pointer; padding: 0; }
+.info[aria-expanded="true"] { color: var(--text-main); border-color: var(--primary); }
+.tabela-panorama td.num, .tabela-panorama th.num, #dia-entradas td.num, #dia-saidas td.num { font-variant-numeric: tabular-nums; }
+.dia-recolhido { padding: 0.75rem 1.25rem !important; }
+.dia-recolhido > summary { cursor: pointer; font-weight: 600; padding: 0.25rem 0; }
+.dia-recolhido[open] > summary { margin-bottom: 0.75rem; }
+.dia-recolhido h3 { font-size: 0.95rem; margin: 0.5rem 0; }
+.dia-resultado { max-width: 420px; }
+#dia-filtro { margin-bottom: 0.5rem; }
+@media (max-width: 640px) {
+    .dia-tres { grid-template-columns: minmax(0, 1fr); }
+    .dia-tres strong { font-size: 1.6rem; }
+}
+.fech-linha { margin: 0 0 2mm; font-size: 9pt; }

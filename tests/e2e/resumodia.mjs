@@ -42,7 +42,14 @@ page.on("pageerror", (e) => console.log("ERRO JS:", e.message));
 const sub = (g, s) => page.click(`.subtabs[data-grupo="${g}"] .subtab[data-sub="${s}"]`);
 const txt = async (sel) => nb(await page.textContent(sel));
 const linhaConta = async (c) => (await page.$$eval(`#dia-panorama tr[data-conta="${c}"] td.num`, (tds) => tds.map((t) => t.textContent.replace(/ /g, " "))));
-const quadro = async (rot) => nb(await page.locator(`#dia-quadros .total-bloco:has(> span:text-is("${rot}"))`).locator("strong").textContent());
+const quadro = async (rot) => {
+  const num = /^Vendido/.test(rot) ? "vendeu" : /^Entrou/.test(rot) ? "entrou" : /^Saiu/.test(rot) ? "saiu" : null;
+  if (num) return nb(await page.locator(`#dia-numeros [data-numero="${num}"] strong`).textContent());
+  const linha = nb(await page.textContent("#dia-linha-fiado"));
+  const m = linha.match(/^Fiado vendido/.test(rot) ? /Fiado vendido (R\$ [\d.,]+)/ : /Recebido de fiado (R\$ [\d.,]+)/);
+  return m && m[1];
+};
+const abrir = (id) => page.evaluate((i) => { const d = document.getElementById(i); if (d) d.open = true; }, id);
 
 await page.goto(URL);
 await page.fill("#senha-input", "pinho123"); await page.click("#senha-form button");
@@ -63,24 +70,26 @@ ok(await page.isVisible("#rel-dia-sec") && (await page.getAttribute('.subtabs[da
 // 2. Relatórios abre no dia de hoje
 await page.click("#btn-tab-vender"); await page.click("#btn-tab-relatorios");
 await page.waitForSelector("#dia-panorama");
-ok(await page.inputValue("#dia-data") === "2026-10-20" && (await txt("#dia-panorama h2")).includes("hoje, 20/10/2026"), "Relatórios abre no Resumo do dia, hoje (20/10/2026)");
-ok(nb((await page.locator('.subtabs[data-grupo="relatorios"] .subtab').first().textContent())) === "Resumo do dia", "\"Resumo do dia\" é a primeira sub-aba; o mês fica ao lado");
+ok(await page.inputValue("#dia-data") === "2026-10-20" && (await txt("#dia-numeros h2")).includes("hoje, 20/10/2026"), "Relatórios abre no Resumo do dia, hoje (20/10/2026)");
+ok(nb((await page.locator('.subtabs[data-grupo="relatorios"] .subtab').first().textContent())) === "Dia" && nb(await page.locator('.subtabs[data-grupo="relatorios"]').textContent()).includes("Mês"), "\"Dia\" é a primeira sub-aba; \"Mês\" fica ao lado");
 
 // 3. Panorama do caixa por conta
 ok((await linhaConta("gaveta")).join("|") === "R$ 300,00|R$ 200,00|—|-R$ 100,00|R$ 400,00", "Gaveta: início 300 + 200 − 0 − 100 (transferência) = 400");
 ok((await linhaConta("bradesco")).join("|") === "R$ 1.000,00|R$ 250,00|R$ 500,00|R$ 100,00|R$ 850,00", "Bradesco: 1.000 + 250 (PIX do fiado) − 500 (aluguel) + 100 = 850");
-ok((await linhaConta("picpay")).join("|") === "R$ 0,00|R$ 100,00|—|—|R$ 100,00" && (await txt('#dia-panorama tr[data-conta="picpay"]')).includes("recebíveis de cartão"), "PicPay: débito de ontem cai hoje (recebíveis de cartão)");
+ok((await linhaConta("picpay")).join("|") === "R$ 0,00|R$ 100,00|—|—|R$ 100,00" && (await txt('#dia-panorama tr[data-conta="picpay"]')).includes("de cartão de vendas anteriores"), "PicPay: débito de ontem cai hoje (cartão de vendas anteriores)");
 ok((await txt("#dia-total-contas")).includes("R$ 1.350,00"), "total no fim do dia: R$ 1.350,00");
-ok((await txt("#dia-gaveta")).includes("esperado R$ 400,00 × contado R$ 395,00 · faltou R$ 5,00") && (await page.getAttribute("#dia-gaveta", "class")).includes("texto-ruim"), "gaveta: esperado × contado × diferença, em vermelho");
+ok((await txt("#dia-gaveta")).includes("contado R$ 395,00 · faltou R$ 5,00 (esperado R$ 400,00)") && (await page.getAttribute("#dia-gaveta", "class")).includes("texto-ruim"), "gaveta: esperado × contado × diferença, em vermelho");
 
 // 4. Quadros, entradas por forma, saídas por conta
-ok(await quadro("Vendido hoje") === "R$ 1.100,00" && (await txt("#dia-quadros")).includes("3 pedido(s)"), "vendido hoje R$ 1.100 em 3 pedidos (o estorno não conta)");
-ok(await quadro("Entrou no caixa hoje") === "R$ 550,00" && await quadro("Saiu do caixa hoje") === "R$ 500,00" && await quadro("Saldo do dia") === "R$ 50,00", "entrou R$ 550 (200 + 250 + 100 do débito), saiu R$ 500, saldo R$ 50");
-ok(await quadro("Fiado vendido hoje") === "R$ 300,00" && await quadro("Recebido de fiado hoje") === "R$ 250,00" && (await txt("#dia-quadros")).includes("de fiado anterior à virada"), "fiado vendido R$ 300; recebido de fiado R$ 250 (fiado anterior à virada)");
+ok(await quadro("Vendido hoje") === "R$ 1.100,00" && (await txt("#dia-numeros")).includes("3 pedidos"), "vendido hoje R$ 1.100 em 3 pedidos (o estorno não conta)");
+ok(await quadro("Entrou no caixa hoje") === "R$ 550,00" && await quadro("Saiu do caixa hoje") === "R$ 500,00", "entrou R$ 550 (200 + 250 + 100 do débito), saiu R$ 500");
+ok(await quadro("Fiado vendido hoje") === "R$ 300,00" && await quadro("Recebido de fiado hoje") === "R$ 250,00" && (await txt("#dia-linha-fiado")).includes("anterior à virada"), "fiado vendido R$ 300; recebido de fiado R$ 250 (fiado anterior à virada)");
 ok((await txt("#dia-entradas-total")) === "R$ 1.350,00" && (await txt("#dia-entradas")).includes("Crédito parcelado 3x") && (await txt("#dia-entradas")).includes("não entra no caixa"), "entradas por forma: total = vendido + recebimentos (R$ 1.350)");
 ok((await txt("#dia-saidas")).includes("Despesas fixas") && (await txt("#dia-saidas")).includes("Bradesco"), "saídas por conta, com o \"Pago com\"");
 
 // 5. Lista detalhada: ordem de hora, número, estornada riscada, filtros, 🖨 Vias
+ok(!(await page.getAttribute("#dia-movimentos", "open")) && (await txt("#dia-movimentos summary")).includes("movimentos"), "movimentos começam recolhidos (\"Ver os N movimentos\")");
+await abrir("dia-movimentos");
 ok((await page.locator("#dia-lista tbody tr.estornado").count()) === 1 && (await txt("#dia-lista tbody tr.estornado")).includes("estornada"), "estornada aparece riscada, sem somar");
 ok((await txt("#dia-lista tbody")).includes("V-0002"), "vendas com o número V-000X");
 await page.locator('label:has(input[name="dia-filtro"][value="vendas"])').click();
@@ -94,6 +103,7 @@ ok((await txt("#imp-previa-folha")).includes("PEDIDO Nº V-0002"), "🖨 Vias na
 await page.click("#imp-fechar");
 
 // 6. Resultado do dia (controle interno) e modo balcão
+await abrir("dia-detalhes");
 ok(await page.isVisible("#dia-resultado") && (await txt("#dia-resultado")).includes("R$ 1.100,00") && (await txt("#dia-resultado")).includes("R$ 550,00"), "resultado: vendas R$ 1.100 − CMV R$ 550 (itens 250 + estimado 300)");
 await page.click("#btn-tab-vender"); await page.click("#btn-balcao"); await page.click("#btn-tab-relatorios");
 await page.waitForSelector("#dia-panorama");
@@ -106,7 +116,7 @@ await page.click("#dia-ant");
 ok(await page.inputValue("#dia-data") === "2026-10-19" && await quadro("Vendido no dia") === "R$ 100,00", "◀ dia anterior: 19/10, vendido R$ 100");
 await page.click("#dia-periodo");
 await page.fill("#dia-ate", "2026-10-20"); await page.dispatchEvent("#dia-ate", "change");
-ok(await quadro("Vendido no período") === "R$ 1.200,00" && (await txt("#dia-panorama h2")).includes("de 19/10/2026 a 20/10/2026"), "período 19 a 20/10: vendido R$ 1.200");
+ok(await quadro("Vendido no período") === "R$ 1.200,00" && (await txt("#dia-numeros h2")).includes("de 19/10/2026 a 20/10/2026"), "período 19 a 20/10: vendido R$ 1.200");
 await page.click("#dia-hoje");
 
 // 8. Imprimir fechamento: 1 página A4, com conferido por; sem custo quando pedido
@@ -126,7 +136,7 @@ const paginas = (pdf.toString("latin1").match(/\/Type\s*\/Page[^s]/g) || []).len
 let texto = "";
 try { texto = nb(execFileSync("pdftotext", ["fechamento.pdf", "-"], { encoding: "utf8" })); } catch { texto = nb(fech.replace(/<[^>]+>/g, " ")); }
 ok(paginas === 1, `fechamento do dia em 1 página A4 (${paginas})`);
-ok(texto.includes("Conferido por") && texto.includes("faltou R$ 5,00") && texto.includes("Movimento por conta") && /lucro bruto/i.test(texto), "fechamento: quadros, movimento por conta, gaveta, resultado e \"Conferido por\"");
+ok(texto.includes("Conferido por") && texto.includes("faltou R$ 5,00") && texto.includes("Caixa por conta") && /lucro bruto/i.test(texto), "fechamento: quadros, movimento por conta, gaveta, resultado e \"Conferido por\"");
 await page.click("#dia-sem-custo");
 await page.click("#dia-imprimir");
 await page.waitForFunction(() => window.__impressoes.length === 2);
