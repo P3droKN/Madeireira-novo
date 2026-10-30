@@ -275,6 +275,17 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - Imprimir fechamento: 1 página A4 (a lista vai junto até 8 lançamentos; mais que isso, numa página extra), com "Conferido por" e a opção "imprimir sem custo e margem".
 - E2E: `tests/e2e/resumodia.mjs`.
 
+**Entrega final, etapa 1a: correções críticas da varredura** (plano aprovado: página "Entrega final da virada")
+- Lançamentos v2 têm `versao` (sobe a cada gravação), `criadoEm`, `atualizadoEm`. Correção de venda manda `versaoBase`: se mudou em outro aparelho, 409. Venda estornada não volta por correção (409). Venda não troca de tipo numa correção.
+- Telas travam o botão durante a gravação; a nova tentativa usa o mesmo id (Vender: só se for o mesmo pedido). Mesmo id sem `versaoBase` = nova tentativa (não duplica).
+- Venda com `orcamento`: o servidor confere o orçamento antes e fecha na mesma gravação (`orcamentosFechados`); o PATCH separado saiu. Estornar a venda reabre o orçamento (`orcamentoReaberto`).
+- `salvarConfigFinanceiro` junta a alteração com a configuração salva (`juntarConfig`): salvar Financeiro não apaga Impressão.
+- Cheque: data de compensação obrigatória (tela e servidor). Transferência de/para `cheques_carteira` recusada.
+- Taxa de cartão: `taxaCartaoCentavos` (planoContas) usada pelo caixa e pelo DRE, em todo pagamento em cartão (vendas, serviços, frete, recebimento de fiado), arredondada por pagamento. CMV estimado arredondado por venda: soma dos dias = mês ao centavo.
+- Conferências (fechar gaveta, extrato) num hash próprio (`madeireira_conferencias`): duas ao mesmo tempo não se apagam (backup, restaurar e Zerar incluem a chave).
+- "Selecionar todos" em Lançamentos marca só o que está na tela; a busca limpa a seleção. A cópia local no aparelho não derruba mais a conexão se a memória encher. Abertura refeita não soma cheques já compensados.
+- E2E: `tests/e2e/criticos.mjs`.
+
 ## 7. Próximos passos
 1. **Virada** (antes da 2D): ensaio no preview e depois o dia, conforme `VIRADA.md` e o checklist. 2C testada (ok), prazo 30 dias, fiado da pasta em conta corrente (entregue). Pendentes do usuário: resultado do ensaio no preview, nome do endereço e as datas.
 2. ~~Fase 2C~~ (entregue).

@@ -163,7 +163,10 @@ export function criarEditorPagamentos(el, { total = 0, semFiado = false, cliente
       return linhas.filter((l) => centavos(l.valor) > 0).map((l) => {
         const p = { forma: l.forma, valor: Math.round(Number(l.valor) * 100) / 100 };
         if (l.forma === "credito_parcelado") p.parcelas = Number(l.parcelas) || 2;
-        if (l.forma === "cheque") p.cheque = { ...l.cheque };
+        if (l.forma === "cheque") {
+          if (!l.cheque.compensacao) throw new Error("Informe a data de compensação do cheque (Compensa em).");
+          p.cheque = { ...l.cheque };
+        }
         if (l.forma === "fiado") {
           if (ehContaCorrente()) p.fiado = { contaCorrente: true };
           else {

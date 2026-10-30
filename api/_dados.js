@@ -1,7 +1,7 @@
 // Regras de leitura e gravação no KV. Recebe o cliente `kv` e as `chaves` como parâmetro
 // para poder ser testado sem banco (ver tests/dados.test.js).
 
-import { contaPorId, naturezaDaConta, PAGO_COM, mesclarConfigFinanceiro, CONFIG_FINANCEIRO_PADRAO } from "../lib/planoContas.js";
+import { contaPorId, naturezaDaConta, PAGO_COM, mesclarConfigFinanceiro, juntarConfig, CONFIG_FINANCEIRO_PADRAO } from "../lib/planoContas.js";
 import { converterLancamento, lancamentosDeAbertura, categoriaLegada, sugestaoDe } from "../lib/migracaoV2.js";
 import { numeroOrcamento, normalizarTelefone, somarDias, ORIGENS, MOTIVOS_PERDA } from "../lib/orcamentos.js";
 
@@ -111,7 +111,7 @@ export async function lerTudo(kv, k) {
   const migrado = await estaMigrado(kv, k);
   const migradoV2 = Boolean(await kv.get(k.migradoV2));
   const configFinanceiro = desembrulhar(await kv.get(k.configFinanceiro)) || {};
-  const saldos = desembrulhar(await kv.get(k.saldos)) || { abertura: null, conferencias: [] };
+  const saldos = await lerSaldos(kv, k);
   let financeItems, estornados = [];
   if (migrado) {
     const hash = (await kv.hgetall(k.lancamentos)) || {};
@@ -150,6 +150,7 @@ export async function montarBackup(kv, k) {
       madeireira_cli_seq: (await kv.get(k.cliSeq)) ?? null,
       madeireira_venda_seq: (await kv.get(k.vendaSeq)) ?? null,
       madeireira_saldos: desembrulhar(await kv.get(k.saldos)) ?? null,
+      madeireira_conferencias: (await kv.hgetall(k.conferencias)) ?? null,
     },
   };
 }
@@ -171,7 +172,7 @@ export async function salvarCopia(kv, k, motivo) {
 
 // Zerar banco (só para a virada): apaga o movimento e mantém os ajustes.
 // Só funciona com PERMITIR_ZERAR=sim e com a trava de produção configurada (statusBanco().zerarPermitido).
-export const CHAVES_ZERAR = ["finance", "acumulado", "lancamentos", "migrado", "trava", "migradoV2", "orcamentos", "orcSeq", "clientes", "cliSeq", "vendaSeq", "saldos"];
+export const CHAVES_ZERAR = ["finance", "acumulado", "lancamentos", "migrado", "trava", "migradoV2", "orcamentos", "orcSeq", "clientes", "cliSeq", "vendaSeq", "saldos", "conferencias"];
 export const CHAVES_MANTIDAS = ["precos", "config", "configFinanceiro", "backups"];
 
 export async function zerarMovimento(kv, k, pedido, permitido) {
@@ -238,17 +239,43 @@ export async function salvarLancamentos(kv, k, itens) {
   const cfg = mesclarConfigFinanceiro(desembrulhar(await kv.get(k.configFinanceiro)) || {});
   // Lançamento novo (v2) é validado pelo plano de contas; o antigo continua aceito
   const limpos = itens.map((i) => (i && i.v === 2 ? validarLancamentoV2(i, cfg) : validarLancamento(i)));
+  // O que o aparelho mandou além do lançamento: a versão que ele tinha na tela (correção)
+  const brutos = Object.fromEntries(itens.filter(Boolean).map((i) => [String(i.id), i]));
   // Venda nova ganha um número curto e sequencial (V-0001…), dado aqui (o contador é atômico: dois
   // aparelhos ao mesmo tempo nunca recebem o mesmo número). Corrigir a venda mantém o número, a hora,
   // a marca de impressão e guarda o histórico ("corrigida em …, antes R$ X").
   const v2 = limpos.filter((i) => i.v === 2);
   const numeros = {};
   const agora = new Date().toISOString();
+  const orcamentosAFechar = [];
   if (v2.length) {
     const atuais = (await kv.hmget(k.lancamentos, ...v2.map((i) => String(i.id)))) || {};
+    // Conferências antes de gravar qualquer coisa (nada fica gravado pela metade)
+    for (const i of v2) {
+      const antes = desembrulhar(atuais[i.id]);
+      if (!antes) continue;
+      if (antes.excluido) throw erro(409, `Essa ${antes.numero ? `venda ${antes.numero}` : "lançamento"} foi estornada${antes.excluidoEm ? " (talvez em outro aparelho)" : ""}. Recarregue a tela; para refazer, lance de novo.`);
+      const base = brutos[i.id]?.versaoBase;
+      if (base !== undefined && Number(base) !== Number(antes.versao || 0)) {
+        throw erro(409, "Esse lançamento foi alterado em outro aparelho depois que você abriu a correção. Recarregue e corrija de novo.");
+      }
+      if (antes.conta === "venda_produtos" && i.conta !== "venda_produtos") throw erro(400, "Para trocar o tipo de receita de uma venda, estorne e lance de novo.");
+    }
+    for (const i of v2) {
+      if (i.conta === "venda_produtos" && i.orcamento && !desembrulhar(atuais[i.id])) {
+        const orc = desembrulhar(await kv.hget(k.orcamentos, i.orcamento));
+        if (orc && orc.status === "fechado" && orc.vendaId && orc.vendaId !== i.id) {
+          const outra = desembrulhar(await kv.hget(k.lancamentos, String(orc.vendaId)));
+          if (outra && !outra.excluido) throw erro(409, `O orçamento ${i.orcamento} já virou a venda ${outra.numero || outra.id}. Nada foi gravado.`);
+        }
+        if (orc && !orc.excluidoEm) orcamentosAFechar.push({ orc, vendaId: i.id, data: i.competencia });
+      }
+    }
     for (const i of v2) {
       const antes = desembrulhar(atuais[i.id]);
       i.criadoEm = antes?.criadoEm || agora;
+      i.atualizadoEm = agora;
+      i.versao = Number(antes?.versao || 0) + 1; // sobe a cada gravação: a correção manda a versão que tinha na tela
       if (i.conta !== "venda_produtos") continue;
       i.numero = antes ? antes.numero : numeroVenda(Number(await kv.incr(k.vendaSeq)));
       if (!i.numero) delete i.numero;
@@ -263,7 +290,16 @@ export async function salvarLancamentos(kv, k, itens) {
     }
   }
   await kv.hset(k.lancamentos, Object.fromEntries(limpos.map((i) => [i.id, i])));
-  return { salvos: limpos.length, numeros };
+  // Venda de um orçamento: o orçamento fecha aqui mesmo, junto com a venda
+  const fechados = [];
+  for (const { orc, vendaId, data } of orcamentosAFechar) {
+    const novo = { ...orc, status: "fechado", vendaId, fechadoEm: data, atualizadoEm: agora,
+      historico: [...(orc.historico || []), { em: agora, evento: "fechado", vendaId }].slice(-50) };
+    for (const c of ["motivoPerda", "motivoPerdaTexto", "perdidoEm"]) delete novo[c];
+    await kv.hset(k.orcamentos, { [orc.id]: novo });
+    fechados.push(orc.id);
+  }
+  return { salvos: limpos.length, numeros, orcamentosFechados: fechados };
 }
 
 export const numeroVenda = (n) => `V-${String(n).padStart(4, "0")}`;
@@ -283,8 +319,21 @@ export async function excluirLancamento(kv, k, id) {
   await exigirMigracao(kv, k);
   const atual = desembrulhar(await kv.hget(k.lancamentos, String(id)));
   if (!atual) throw erro(404, "Lançamento não encontrado.");
-  await kv.hset(k.lancamentos, { [atual.id]: { ...atual, excluido: true, excluidoEm: new Date().toISOString() } });
-  return { excluido: atual.id };
+  const agora = new Date().toISOString();
+  await kv.hset(k.lancamentos, { [atual.id]: { ...atual, excluido: true, excluidoEm: agora, atualizadoEm: agora, versao: Number(atual.versao || 0) + 1 } });
+  // Venda que veio de um orçamento: o orçamento volta para "Em aberto" (não conta mais como convertido)
+  let orcamentoReaberto = null;
+  if (atual.orcamento) {
+    const orc = desembrulhar(await kv.hget(k.orcamentos, String(atual.orcamento)));
+    if (orc && orc.status === "fechado" && String(orc.vendaId) === String(atual.id)) {
+      const novo = { ...orc, status: "aberto", vendaIdAnterior: orc.vendaId, atualizadoEm: agora,
+        historico: [...(orc.historico || []), { em: agora, evento: "reaberto (venda estornada)", vendaId: atual.id }].slice(-50) };
+      delete novo.vendaId; delete novo.fechadoEm;
+      await kv.hset(k.orcamentos, { [orc.id]: novo });
+      orcamentoReaberto = orc.id;
+    }
+  }
+  return { excluido: atual.id, orcamentoReaberto };
 }
 
 // Junta os lançamentos de um arquivo: só adiciona ids que ainda não existem. Não apaga nem altera nada.
@@ -400,6 +449,10 @@ export async function restaurar(kv, k, arquivo) {
   if ("madeireira_cli_seq" in alvo) await gravar(k.cliSeq, alvo.madeireira_cli_seq);
   if ("madeireira_venda_seq" in alvo) await gravar(k.vendaSeq, alvo.madeireira_venda_seq);
   if ("madeireira_saldos" in alvo) await gravar(k.saldos, alvo.madeireira_saldos);
+  if ("madeireira_conferencias" in alvo) {
+    await kv.del(k.conferencias);
+    if (alvo.madeireira_conferencias && Object.keys(alvo.madeireira_conferencias).length) await kv.hset(k.conferencias, alvo.madeireira_conferencias);
+  }
 
   return {
     copia,
@@ -492,7 +545,9 @@ function validarPagamento(p, cfg, permitirMigracao) {
   }
   if (forma === "cheque") {
     const c = p.cheque || {};
-    limpo.cheque = { numero: texto(c.numero, 40), emissor: texto(c.emissor, 120), banco: texto(c.banco, 60), compensacao: dataOk(c.compensacao) ? c.compensacao : "" };
+    // Sem a data, o cheque entraria no banco no dia da venda: a data de compensação é obrigatória
+    if (!dataOk(c.compensacao)) throw erro(400, "Informe a data de compensação do cheque (Compensa em).");
+    limpo.cheque = { numero: texto(c.numero, 40), emissor: texto(c.emissor, 120), banco: texto(c.banco, 60), compensacao: c.compensacao };
     if (["bradesco", "picpay"].includes(c.contaDeposito)) limpo.cheque.contaDeposito = c.contaDeposito;
     if (dataOk(c.devolvidoEm)) limpo.cheque.devolvidoEm = c.devolvidoEm;
   }
@@ -534,6 +589,8 @@ export function validarLancamentoV2(item, cfgSalva) {
   if (item.conta === "transferencia") {
     const contas = ["gaveta", "bradesco", "picpay", "cheques_carteira"];
     if (!contas.includes(item.de) || !contas.includes(item.para) || item.de === item.para) throw erro(400, "Transferência: escolha duas contas diferentes.");
+    // O cheque sai da carteira e entra no banco sozinho, na data de compensação: transferir contaria duas vezes
+    if (item.de === "cheques_carteira" || item.para === "cheques_carteira") throw erro(400, "Cheque em carteira não se transfere: ele entra no banco sozinho na data de compensação (Caixa › Cheques).");
     return { ...base, conta: "transferencia", de: item.de, para: item.para, category: "transferencia", type: "transfer", method: "" };
   }
 
@@ -766,7 +823,8 @@ const dias = (v, nome) => {
 };
 
 export async function salvarConfigFinanceiro(kv, k, config) {
-  const c = mesclarConfigFinanceiro(config);
+  // Parte da configuração (ex.: só Financeiro ou só Impressão): o resto continua como está salvo
+  const c = juntarConfig(desembrulhar(await kv.get(k.configFinanceiro)) || {}, config || {});
   const limpa = structuredClone(CONFIG_FINANCEIRO_PADRAO);
   const contasValidas = ["gaveta", "bradesco", "picpay", "cheques_carteira", null];
   for (const id of Object.keys(limpa.formas)) {
@@ -981,6 +1039,10 @@ export async function atualizarOrcamento(kv, k, p) {
     }
     case "fechar":
       if (!ID.test(String(p.vendaId || ""))) throw erro(400, "Venda inválida.");
+      if (orc.status === "fechado" && orc.vendaId && orc.vendaId !== String(p.vendaId)) {
+        const outra = desembrulhar(await kv.hget(k.lancamentos, String(orc.vendaId)));
+        if (outra && !outra.excluido) throw erro(409, `Orçamento já virou a venda ${outra.numero || outra.id}.`);
+      }
       novo.status = "fechado";
       novo.vendaId = String(p.vendaId);
       novo.fechadoEm = dataDe(p.hoje);
@@ -1050,8 +1112,13 @@ export async function listarClientes(kv, k) {
 
 const CONTAS_SALDO = ["gaveta", "bradesco", "picpay", "cheques_carteira"];
 
+// Saldos: a abertura fica numa chave; cada conferência (fechar gaveta, extrato) num campo do hash próprio,
+// para duas conferências ao mesmo tempo, em aparelhos diferentes, não apagarem uma à outra
 async function lerSaldos(kv, k) {
-  return desembrulhar(await kv.get(k.saldos)) || { abertura: null, conferencias: [], aberturasAnteriores: [] };
+  const s = desembrulhar(await kv.get(k.saldos)) || { abertura: null, conferencias: [], aberturasAnteriores: [] };
+  const confs = Object.values((await kv.hgetall(k.conferencias)) || {}).map(desembrulhar).filter(Boolean);
+  const todas = [...(s.conferencias || []), ...confs].sort((a, b) => String(a.em).localeCompare(String(b.em)));
+  return { ...s, conferencias: todas };
 }
 
 // Abertura de saldos: saldo de cada conta no início do dia da troca (extratos e contagem da gaveta)
@@ -1063,7 +1130,7 @@ export async function salvarAbertura(kv, k, a) {
     if (!Number.isFinite(v) || Math.abs(v) > 1e9) throw erro(400, `Saldo inválido: ${c}.`);
     contas[c] = Math.round(v * 100) / 100;
   }
-  const atual = await lerSaldos(kv, k);
+  const atual = desembrulhar(await kv.get(k.saldos)) || { abertura: null, conferencias: [], aberturasAnteriores: [] };
   const nova = { data: a.data, contas, obs: texto(a.obs, 300), em: new Date().toISOString() };
   const salvo = {
     ...atual,
@@ -1080,14 +1147,12 @@ export async function registrarConferencia(kv, k, c) {
   if (!dataOk(c.data)) throw erro(400, "Data inválida.");
   const informado = Number(c.informado), calculado = Number(c.calculado);
   if (!Number.isFinite(informado) || !Number.isFinite(calculado)) throw erro(400, "Informe o saldo real.");
-  const atual = await lerSaldos(kv, k);
   const conf = {
-    id: `conf-${Date.now().toString(36)}`, data: c.data, conta: c.conta,
+    id: `conf-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, data: c.data, conta: c.conta,
     informado: Math.round(informado * 100) / 100, calculado: Math.round(calculado * 100) / 100,
     diferenca: Math.round((informado - calculado) * 100) / 100, obs: texto(c.obs, 300), em: new Date().toISOString(),
   };
-  const salvo = { ...atual, conferencias: [...(atual.conferencias || []), conf].slice(-500) };
-  await kv.set(k.saldos, salvo);
+  await kv.hset(k.conferencias, { [conf.id]: conf });
   return conf;
 }
 
@@ -1104,11 +1169,11 @@ export async function atualizarCheque(kv, k, p) {
     const ch = { ...(pag.cheque || {}) };
     if ("devolvidoEm" in p) {
       if (p.devolvidoEm === null) delete ch.devolvidoEm;
-      else if (dataOk(p.devolvidoEm)) ch.devolvidoEm = p.devolvidoEm;
-      else throw erro(400, "Data de devolução inválida.");
+      else if (dataOk(p.devolvidoEm) && p.devolvidoEm >= l.competencia) ch.devolvidoEm = p.devolvidoEm;
+      else throw erro(400, "Data de devolução inválida (não pode ser antes do recebimento do cheque).");
     }
     if (p.compensacao !== undefined) {
-      if (!dataOk(p.compensacao)) throw erro(400, "Data de compensação inválida.");
+      if (!dataOk(p.compensacao) || p.compensacao < l.competencia) throw erro(400, "Data de compensação inválida (não pode ser antes do recebimento do cheque).");
       ch.compensacao = p.compensacao;
     }
     if (p.contaDeposito !== undefined) {
@@ -1134,6 +1199,8 @@ export async function atualizarCheque(kv, k, p) {
     throw erro(400, "Tipo de cheque inválido.");
   }
   novo.historicoCheque = [...(l.historicoCheque || []), { em: agora, ...Object.fromEntries(Object.entries(p).filter(([key]) => !["id"].includes(key))) }].slice(-20);
+  novo.atualizadoEm = agora;
+  novo.versao = Number(l.versao || 0) + 1;
   await kv.hset(k.lancamentos, { [novo.id]: novo });
   return novo;
 }

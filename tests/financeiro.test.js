@@ -366,3 +366,26 @@ test("quanto vender para empatar usa o mesmo modo do DRE", async () => {
   assert.equal(pontoEquilibrioMedio(l, {}, "2026-10").custosFixosMedia, 2000);
   assert.equal(pontoEquilibrioMedio(l, { estimativasContabeis: true }, "2026-10").custosFixosMedia, 2000 + 160 + 388.8);
 });
+
+test("taxa de cartão: a mesma no DRE e no caixa, também em recebimento de fiado e serviço no cartão", async () => {
+  const { movimentos } = await import("../lib/caixa.js");
+  const cfg = { cartao: { debito: { taxaPct: 2 }, credito: { taxaPct: 1.99 } } };
+  const l = [
+    { id: "r1", v: 2, conta: "recebimento", value: 1000, competencia: "2026-09-10", cliente: "Zé", pagamentos: [{ forma: "debito", conta: "picpay", valor: 1000 }] },
+    { id: "s1", v: 2, conta: "servicos", value: 50, competencia: "2026-09-10", pagamentos: [{ forma: "credito", conta: "picpay", valor: 50 }] },
+  ];
+  const d = montarDRE(l, cfg, "2026-09");
+  const liquido = movimentos(l, cfg).filter((m) => m.tipo === "recebivel_cartao").reduce((s, m) => s + Math.round(m.valor * 100), 0);
+  assert.equal(d.valores.taxaCartao, -20.99); // 2% de 1.000 + 1,99% de 50 (o caixa recebe 49,01: taxa 0,99)
+  assert.equal(liquido, 105000 - 2099);
+});
+
+test("soma dos dias = mês, centavo por centavo (taxa e CMV estimado arredondados por venda)", () => {
+  const cfg = { cartao: { debito: { taxaPct: 1.99 } } };
+  const l = [10, 11, 12].map((d) => venda(10.25, { competencia: `2026-09-${d}`, date: `2026-09-${d}`, pagamentos: [{ forma: "debito", conta: "picpay", valor: 10.25 }] }));
+  const mes = montarDRE(l, cfg, "2026-09");
+  const dias = [10, 11, 12].map((d) => montarDRE(l, cfg, "2026-09", { deDia: d, ateDia: d }));
+  const soma = (k) => Math.round(dias.reduce((s, x) => s + Math.round(x.valores[k] * 100), 0)) / 100;
+  assert.equal(soma("taxaCartao"), mes.valores.taxaCartao);
+  assert.equal(soma("cmvEstimado"), mes.valores.cmvEstimado);
+});

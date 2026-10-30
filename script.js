@@ -114,15 +114,23 @@ async function carregarDados() {
         migradoV2 = Boolean(data.migradoV2);
         somenteLeitura = false;
         erroConexao = '';
-        // Cópia local só para leitura quando estiver sem conexão
-        localStorage.setItem('madeireira_finance', JSON.stringify(financeItems));
-        localStorage.setItem('madeireira_acumulado', JSON.stringify(acumulado));
+        // Cópia local só para leitura quando estiver sem conexão. Se a memória do aparelho encher,
+        // o sistema continua normal (só fica sem a cópia)
+        try {
+            localStorage.setItem('madeireira_finance', JSON.stringify(financeItems));
+            localStorage.setItem('madeireira_acumulado', JSON.stringify(acumulado));
+        } catch (e) {
+            console.warn('Cópia local não coube na memória do aparelho:', e.message);
+            try { localStorage.removeItem('madeireira_finance'); } catch { /* sem armazenamento */ }
+        }
     } catch (e) {
         console.warn('Sem conexão com a nuvem. Mostrando a última cópia local, sem gravar.', e);
         somenteLeitura = true;
         erroConexao = e.message || String(e);
-        financeItems = JSON.parse(localStorage.getItem('madeireira_finance')) || [];
-        acumulado = JSON.parse(localStorage.getItem('madeireira_acumulado')) || { ...ACUMULADO_VAZIO };
+        try {
+            financeItems = JSON.parse(localStorage.getItem('madeireira_finance')) || [];
+            acumulado = JSON.parse(localStorage.getItem('madeireira_acumulado')) || { ...ACUMULADO_VAZIO };
+        } catch { financeItems = []; acumulado = { ...ACUMULADO_VAZIO }; }
     }
     atualizarAviso();
     atualizarStatusBanco();
@@ -144,7 +152,7 @@ window.Caixa = {
     gravar: (itens) => gravarLancamentos(itens),
     recarregar: () => carregarDados(),
     baixarBackup: () => baixarBackup(),
-    excluir: (id) => deleteFinanceItem(id),
+    excluir: (id, opcoes) => deleteFinanceItem(id, opcoes),
     novoId: (s) => novoId(s),
     hoje: () => getLocalDateString(),
 };
@@ -264,25 +272,45 @@ function getLocalDateString() {
 const directSaleDateEl = document.getElementById('direct-sale-date');
 if (directSaleDateEl) directSaleDateEl.value = getLocalDateString();
 
-async function deleteFinanceItem(id) {
+async function deleteFinanceItem(id, { confirmado = false } = {}) {
     if (!podeGravar()) return;
     const item = financeItems.find(i => i.id === id);
     if (!item) return;
     const data = item.competencia || item.date || '';
-    const resumo = `${data.split('-').reverse().join('/')} - ${formatCurrency(item.value)}${item.description ? ' - ' + item.description : ''}`;
-    if (!confirm(`Excluir este lançamento?\n\n${resumo}`)) return;
+    const resumo = `${item.numero ? item.numero + ' · ' : ''}${data.split('-').reverse().join('/')} - ${formatCurrency(item.value)}${item.description ? ' - ' + item.description : ''}`;
+    if (!confirmado && !confirm(`Estornar este lançamento? Ele sai de todos os totais e fica riscado na lista do dia${item.numero ? ' (o número continua reservado)' : ''}.\n\n${resumo}`)) return;
+    let r;
     try {
-        await api(`/api/lancamento?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+        r = await api(`/api/lancamento?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
     } catch (e) {
-        alert(`Não foi excluído: ${e.message}`);
+        alert(`Não foi estornado: ${e.message}`);
         return;
     }
     await carregarDados();
+    if (r && r.orcamentoReaberto) {
+        alert(`O orçamento ${r.orcamentoReaberto} voltou para "Em aberto".`);
+        if (window.Orcamentos) window.Orcamentos.recarregar();
+    }
 }
 
 // Registra a venda do pedido da calculadora: um lançamento só, com o custo dos itens (CMV)
 // e, por item e no total, preço de tabela, preço final, variação e motivo.
-async function registerDirectSale() {
+// Trava o botão enquanto grava (clique duplo não duplica a venda) e, se a gravação falhar, a nova
+// tentativa usa o mesmo identificador: o servidor reconhece que é a mesma venda.
+let vendaPendenteId = null;
+let gravandoVenda = false;
+async function registerDirectSale(opcoes) {
+    if (gravandoVenda) return;
+    gravandoVenda = true;
+    const botoes = ['btn-registrar-venda', 'btn-registrar-imprimir'].map((id) => document.getElementById(id)).filter(Boolean);
+    botoes.forEach((b) => { b.disabled = true; });
+    try { await registrarVendaAgora(opcoes); } finally {
+        gravandoVenda = false;
+        botoes.forEach((b) => { b.disabled = false; });
+    }
+}
+
+async function registrarVendaAgora() {
     const pedido = window.Calculadora && window.Calculadora.resumo();
     if (!pedido || pedido.itens.length === 0) {
         alert("O pedido está vazio. Adicione itens primeiro.");
@@ -308,8 +336,11 @@ async function registerDirectSale() {
     // Venda no formato novo (v2): conta, competência e formas de pagamento.
     // O frete (opcional) soma no valor e fica separado no campo "frete".
     const frete = pedido.frete || 0;
+    // Mesmo pedido de uma tentativa que falhou: mesmo identificador. Pedido diferente: identificador novo
+    const assinatura = JSON.stringify([pedido.itens.map((i) => [i.itemId, i.quantidadeCobrada, i.vendaTotal]), pedido.frete || 0]);
+    if (!vendaPendenteId || vendaPendenteId.assinatura !== assinatura) vendaPendenteId = { id: novoId('V'), assinatura };
     const vendaItem = {
-        id: novoId('V'),
+        id: vendaPendenteId.id,
         v: 2,
         conta: 'venda_produtos',
         value: Math.round((pedido.venda + frete) * 100) / 100,
@@ -331,6 +362,7 @@ async function registerDirectSale() {
     const corrigindo = vinculo && vinculo.modo === 'corrigir' ? vinculo : null;
     if (corrigindo) {
         vendaItem.id = corrigindo.id;
+        vendaItem.versaoBase = Number(corrigindo.versaoBase || 0);
         if (corrigindo.orcamento) vendaItem.orcamento = corrigindo.orcamento;
     }
     // Cliente: obrigatório (e cadastrado) no fiado; numa venda de orçamento, vem do orçamento
@@ -344,18 +376,12 @@ async function registerDirectSale() {
         if (vinculo.cliente.id) vendaItem.clienteId = vinculo.cliente.id;
     }
     if (!(await gravarLancamentos([vendaItem]))) return;
+    vendaPendenteId = null;
 
     const margem = ((pedido.venda - pedido.custo) / pedido.venda * 100).toFixed(1).replace('.', ',');
     const fiadoTotal = pagamentos.filter((p) => p.forma === 'fiado').reduce((s, p) => s + p.valor, 0);
-    // Venda veio de um orçamento: marca como Fechado, com vínculo para a venda
-    if (vendaItem.orcamento && !corrigindo) {
-        try {
-            await api('/api/orcamentos', { method: 'PATCH', body: { id: vendaItem.orcamento, acao: 'fechar', vendaId: vendaItem.id, hoje: vendaItem.competencia } });
-        } catch (e) {
-            alert(`A venda foi registrada, mas o orçamento ${vendaItem.orcamento} não foi marcado como Fechado: ${e.message}. Marque na aba Orçamentos.`);
-        }
-        if (window.Orcamentos) window.Orcamentos.recarregar();
-    }
+    // O orçamento de origem já foi marcado como Fechado pelo servidor, na mesma gravação da venda
+    if (vendaItem.orcamento && !corrigindo && window.Orcamentos) window.Orcamentos.recarregar();
     // Janela "Venda V-0012 registrada" com as vias (qualquer forma de pagamento)
     const salva = (window.Caixa?.itens || []).find((l) => String(l.id) === String(vendaItem.id)) || vendaItem;
     const num = salva.numero || '';

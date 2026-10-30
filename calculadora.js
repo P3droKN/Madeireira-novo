@@ -734,7 +734,7 @@ window.Calculadora = {
     estado.frete = l.frete > 0 ? l.frete : null;
     if ($("direct-sale-date")) $("direct-sale-date").value = l.competencia;
     if ($("calc-nfe")) $("calc-nfe").value = l.nfe || "";
-    estado.vinculo = { modo: "corrigir", id: l.id, numero: l.numero, valorAntes: l.value, orcamento: l.orcamento || null, cliente: l.cliente ? { id: l.clienteId || null, nome: l.cliente } : null };
+    estado.vinculo = { modo: "corrigir", id: l.id, numero: l.numero, valorAntes: l.value, versaoBase: Number(l.versao || 0), orcamento: l.orcamento || null, cliente: l.cliente ? { id: l.clienteId || null, nome: l.cliente } : null };
     renderPedido();
     editorPagamentos.carregar(l.pagamentos, l.value, l.cliente || "");
     return true;

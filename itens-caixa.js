@@ -25,6 +25,7 @@ export function criarItensCaixa(el, aoMudar) {
   }
 
   function render() {
+    if (!el.isConnected) return; // o formulário mudou (ex.: virou Saída) enquanto o catálogo carregava
     if (!K()?.pronta()) {
       el.innerHTML = '<p class="texto-suave">Carregando o catálogo… (o mesmo da aba Vender)</p>';
       setTimeout(render, 500);

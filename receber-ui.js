@@ -27,6 +27,16 @@ const situacaoTag = (d) => d.situacao === "pago" ? '<span class="tag tag-mais">p
   : d.situacao === "em_aberto" ? `<span class="tag tag-cc">em aberto há ${d.diasEmAberto} dia(s)</span>`
   : d.situacao === "atrasado" ? `<span class="tag tag-menos">${d.diasAtraso} dia(s) de atraso</span>` : '<span class="tag">a vencer</span>';
 
+
+// Trava o botão do formulário enquanto grava: clique duplo não lança duas vezes
+const travar = (fn) => async (e) => {
+  e.preventDefault();
+  const botao = e.target.querySelector("button[type=submit]");
+  if (botao?.disabled) return;
+  if (botao) botao.disabled = true;
+  try { await fn(e); } finally { if (botao) botao.disabled = false; }
+};
+
 // ---------- Caixa › A receber ----------
 
 function render(el) {
@@ -216,6 +226,7 @@ async function salvarClienteForm(e) {
 function abrirReceber(c) {
   if (C().somenteLeitura) return alert("Sem conexão com a nuvem. Nada pode ser lançado.");
   estado.atual = c;
+  estado.idReceb = null; // recebimento novo; numa nova tentativa (falha de internet) o mesmo identificador
   const abertas = c.dividas.filter((d) => d.aberto > 0);
   $("rc-receber-titulo").textContent = `Receber de ${c.cliente}`;
   $("rc-receber-info").innerHTML = `Em aberto: <strong>${moeda(c.aberto)}</strong>${c.atrasado ? ` · atrasado ${moeda(c.atrasado)}` : ""}${c.contaCorrente && c.aberto ? ` · conta corrente, em aberto há ${c.diasEmAberto} dia(s)` : ""}`;
@@ -241,11 +252,12 @@ async function salvarRecebimento(e) {
   if (!C().podeGravar()) return;
   if (valor > c.aberto + 0.005 && !confirm(`O valor (${moeda(valor)}) é maior que o que ${c.cliente} deve (${moeda(c.aberto)}). A diferença fica de crédito. Continuar?`)) return;
   const item = {
-    id: C().novoId("R"), v: 2, conta: "recebimento", value: Math.round(valor * 100) / 100, competencia: $("rc-data").value || hoje(),
+    id: (estado.idReceb ||= C().novoId("R")), v: 2, conta: "recebimento", value: Math.round(valor * 100) / 100, competencia: $("rc-data").value || hoje(),
     clienteId: c.clienteId, cliente: c.cliente, pagamentos, description: $("rc-desc").value.trim() || `Recebimento de ${c.cliente}`,
   };
   if ($("rc-abater").value) item.vendaIds = [$("rc-abater").value];
   if (await C().gravar([item])) {
+    estado.idReceb = null;
     fecharReceber();
     const resta = Math.max(0, Math.round((c.aberto - valor) * 100) / 100);
     alert(`Recebido ${moeda(valor)} de ${c.cliente}.${resta ? `\nAinda em aberto: ${moeda(resta)}.` : "\nQuitado!"}${pagamentos.some((p) => p.forma === "cheque") ? "\nO cheque foi para a carteira (Caixa › Cheques)." : ""}`);
@@ -318,7 +330,7 @@ document.addEventListener("click", (e) => {
     return;
   }
   if (b.dataset.rcEstornar) {
-    if (confirm("Estornar este recebimento? O valor volta a ficar em aberto para o cliente.")) C().excluir(b.dataset.rcEstornar);
+    if (confirm("Estornar este recebimento? O valor volta a ficar em aberto para o cliente.")) C().excluir(b.dataset.rcEstornar, { confirmado: true });
     return;
   }
   if (b.dataset.rcEditar) {
@@ -359,7 +371,7 @@ document.addEventListener("submit", async (e) => {
   }
   renderConteudo();
 });
-$("rc-receber-form").addEventListener("submit", salvarRecebimento);
+$("rc-receber-form").addEventListener("submit", travar(salvarRecebimento));
 $("rc-receber-cancelar").addEventListener("click", fecharReceber);
 $("rc-valor").addEventListener("input", (e) => estado.editor?.definirTotal(num(e.target.value) || 0));
 

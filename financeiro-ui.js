@@ -133,6 +133,7 @@ function sugerirPagoCom(conta, fornecedor) {
 }
 
 function renderFormulario() {
+  estado.idPendente = null; // formulário novo, lançamento novo
   const tipo = tipoAtual();
   const hoje = C()?.hoje() || new Date().toISOString().slice(0, 10);
   const form = $("fin-form");
@@ -159,13 +160,14 @@ function renderFormulario() {
       <input type="number" id="ff-cmv" step="0.01" min="0" inputmode="decimal" placeholder="vazio = estimado pela margem padrão">
       <small class="texto-suave">Sem itens e sem custo, o DRE estima pela margem padrão e marca como "estimado".</small></div>`;
   } else if (tipo === "transferencia") {
-    const op = (sel) => Object.entries(CONTAS_FIN).map(([id, n]) => `<option value="${id}" ${id === sel ? "selected" : ""}>${n}</option>`).join("");
+    // Cheques em carteira ficam de fora: o cheque entra no banco sozinho, na data de compensação (Caixa › Cheques)
+    const op = (sel) => Object.entries(CONTAS_FIN).filter(([id]) => id !== "cheques_carteira").map(([id, n]) => `<option value="${id}" ${id === sel ? "selected" : ""}>${n}</option>`).join("");
     html += `
       <div class="form-group"><label for="ff-de">De</label><select id="ff-de">${op("picpay")}</select></div>
       <div class="form-group"><label for="ff-para">Para</label><select id="ff-para">${op("bradesco")}</select></div>
       <div class="form-group"><label for="ff-valor">Valor (R$)</label><input type="number" id="ff-valor" step="0.01" min="0.01" inputmode="decimal" required></div>
     </div>
-    <div class="form-group"><label for="ff-desc">Descrição</label><input type="text" id="ff-desc" maxlength="200" placeholder="Ex: repasse PicPay → Bradesco, depósito de cheque"></div>
+    <div class="form-group"><label for="ff-desc">Descrição</label><input type="text" id="ff-desc" maxlength="200" placeholder="Ex: repasse PicPay → Bradesco"><small class="texto-suave">Depósito de cheque não é transferência: ele cai no banco sozinho na data de compensação (Caixa › Cheques).</small></div>
     <p class="texto-suave">Transferência não é receita nem despesa: só muda o dinheiro de lugar.</p>`;
   } else {
     const entrada = tipo === "entrada";
@@ -267,15 +269,25 @@ function renderFormulario() {
   }
 }
 
+// Trava o botão enquanto grava (clique duplo não duplica) e usa o mesmo identificador numa nova tentativa
 async function enviarFormulario(e) {
   e.preventDefault();
+  const botao = $("fin-form").querySelector("button[type=submit]");
+  if (botao.disabled) return;
+  botao.disabled = true;
+  try { await enviarFormularioAgora(); } finally { botao.disabled = false; }
+}
+
+async function enviarFormularioAgora() {
   if (!C().podeGravar()) return;
   const tipo = tipoAtual();
   const valor = num($("ff-valor").value);
   const data = $("ff-data").value;
   if (!(valor > 0)) return alert("Informe o valor.");
   const corrigindo = tipo === "venda" ? estado.corrigindo : null;
-  const item = { id: corrigindo ? corrigindo.id : C().novoId(tipo === "venda" ? "V" : tipo === "transferencia" ? "T" : "S"), v: 2, value: valor, competencia: data, description: $("ff-desc").value.trim() };
+  if (!corrigindo) estado.idPendente ||= C().novoId(tipo === "venda" ? "V" : tipo === "transferencia" ? "T" : "S");
+  const item = { id: corrigindo ? corrigindo.id : estado.idPendente, v: 2, value: valor, competencia: data, description: $("ff-desc").value.trim() };
+  if (corrigindo) item.versaoBase = Number(corrigindo.origem.versao || 0);
   if (tipo === "venda") {
     try { item.pagamentos = estado.editor.ler(); } catch (err) { return alert(err.message); }
     item.conta = $("ff-conta").value;
@@ -407,6 +419,7 @@ function renderLista() {
   const lista = filtrarLista();
   estado.visivel = lista;
   const LIMITE = 400;
+  estado.mostrados = lista.slice(0, LIMITE);
   $("fin-lista-body").innerHTML = lista.slice(0, LIMITE).map((l) => {
     const c = contaPorId[l.conta];
     const entrada = naturezaDaConta(l.conta) === "entrada";
@@ -427,7 +440,7 @@ function renderLista() {
   }).join("") || '<tr><td colspan="8" class="texto-suave">Nenhum lançamento com esse filtro.</td></tr>';
   const total = lista.reduce((s, l) => s + (foraDoSaldo(l) ? 0 : (naturezaDaConta(l.conta) === "entrada" ? 1 : -1) * Math.round(l.value * 100)), 0) / 100;
   $("fin-lista-contagem").textContent = `${lista.length} lançamentos${lista.length > LIMITE ? ` (mostrando ${LIMITE})` : ""} · saldo do filtro ${moeda(total)}`;
-  $("fin-sel-todos").checked = lista.length > 0 && lista.every((l) => estado.selecionados.has(String(l.id)));
+  $("fin-sel-todos").checked = estado.mostrados.length > 0 && estado.mostrados.every((l) => estado.selecionados.has(String(l.id)));
   atualizarLote();
 }
 
@@ -785,7 +798,7 @@ $("aj-impressao-form").addEventListener("submit", async (e) => {
 });
 $("orc-config-form").addEventListener("submit", salvarConfig);
 for (const id of ["fin-f-mes", "fin-f-tipo", "fin-f-conta"]) $(id).addEventListener("change", () => { estado.selecionados.clear(); renderLista(); });
-$("fin-f-busca").addEventListener("input", () => renderLista());
+$("fin-f-busca").addEventListener("input", () => { estado.selecionados.clear(); renderLista(); });
 $("fin-lista-body").addEventListener("change", (e) => {
   if (!e.target.classList.contains("fin-sel")) return;
   if (e.target.checked) estado.selecionados.add(e.target.value); else estado.selecionados.delete(e.target.value);
@@ -799,8 +812,9 @@ $("fin-lista-body").addEventListener("click", (e) => {
   if (b.dataset.vias) viasDaVenda(b.dataset.vias);
   if (b.dataset.corrigir) corrigirVenda(b.dataset.corrigir);
 });
+// "Selecionar todos" marca só o que está na tela (nunca lançamentos que ninguém viu)
 $("fin-sel-todos").addEventListener("change", (e) => {
-  for (const l of estado.visivel) { if (e.target.checked) estado.selecionados.add(String(l.id)); else estado.selecionados.delete(String(l.id)); }
+  for (const l of estado.mostrados || []) { if (e.target.checked) estado.selecionados.add(String(l.id)); else estado.selecionados.delete(String(l.id)); }
   renderLista();
 });
 $("fin-lote-aplicar").addEventListener("click", () => {

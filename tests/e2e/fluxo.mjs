@@ -87,7 +87,7 @@ ok((await linhas()) === 13, "lançamento do outro aparelho aparece e nenhum some
 const antes = dialogos.length;
 await page.locator("#fin-lista-body tr", { hasText: "celular 2" }).locator("[data-excluir]").click();
 await page.waitForFunction(() => document.querySelectorAll("#fin-lista-body tr .fin-sel").length === 12);
-ok(dialogos.slice(antes).some((m) => m.startsWith("Excluir este lançamento?")), "pede confirmação ao excluir");
+ok(dialogos.slice(antes).some((m) => m.startsWith("Estornar este lançamento?")), "pede confirmação ao estornar");
 d = await db();
 ok(JSON.parse(d.madeireira_lancamentos.outroaparelho1).excluido === true, "excluído continua guardado com marca");
 

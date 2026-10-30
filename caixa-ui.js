@@ -233,11 +233,11 @@ function renderAbertura(el) {
     $("cx-abertura").addEventListener("input", lerRascunho);
     $("cx-ab-cancelar")?.addEventListener("click", () => { estado.refazer = false; limparRascunho(); renderAbertura(el); });
     $("cx-ab-data").addEventListener("change", () => { lerRascunho(); renderAbertura(el); });
-    $("cx-ab-cheque").addEventListener("submit", lancarCheque);
+    $("cx-ab-cheque").addEventListener("submit", travar(lancarCheque));
   } else {
     $("cx-refazer").addEventListener("click", () => { estado.refazer = true; renderAbertura(el); });
   }
-  $("cx-ab-fiado").addEventListener("submit", lancarFiado);
+  $("cx-ab-fiado").addEventListener("submit", travar(lancarFiado));
   // Conta corrente esconde o vencimento; cliente já marcado no cadastro vem marcado
   const mostrarVenc = () => { $("cx-fa-venc-grupo").hidden = $("cx-fa-cc").checked; };
   $("cx-fa-cc").addEventListener("change", mostrarVenc);
@@ -252,6 +252,18 @@ function lerRascunho() {
 }
 function limparRascunho() { for (const k of Object.keys(rascunho)) delete rascunho[k]; }
 
+
+// Trava o botão do formulário enquanto grava: clique duplo não lança duas vezes
+const travar = (fn) => async (e) => {
+  e.preventDefault();
+  const botao = e.target.querySelector("button[type=submit]");
+  if (botao?.disabled) return;
+  if (botao) botao.disabled = true;
+  try { await fn(e); } finally { if (botao) botao.disabled = false; }
+};
+// Identificador do lançamento em andamento: a nova tentativa (falha de internet) usa o mesmo
+const pendentes = { cheque: null, fiado: null };
+
 async function lancarCheque(e) {
   e.preventDefault();
   if (!C().podeGravar()) return;
@@ -264,12 +276,12 @@ async function lancarCheque(e) {
   const nomeCli = $("cx-ch-cliente").value.trim();
   const cli = nomeCli ? (window.Clientes?.lista || []).find((c) => c.nome.trim().toLowerCase() === nomeCli.toLowerCase()) : null;
   const item = {
-    id: C().novoId("CA"), v: 2, conta: "cheque_anterior", value: valor, competencia: data,
+    id: (pendentes.cheque ||= C().novoId("CA")), v: 2, conta: "cheque_anterior", value: valor, competencia: data,
     pagamentos: [{ forma: "cheque", valor, cheque: { numero: $("cx-ch-numero").value.trim(), emissor: $("cx-ch-emissor").value.trim(), banco: $("cx-ch-banco").value.trim(), compensacao: comp } }],
   };
   if (nomeCli) item.cliente = cli?.nome || nomeCli;
   if (cli) item.clienteId = cli.id;
-  await C().gravar([item]);
+  if (await C().gravar([item])) pendentes.cheque = null;
 }
 
 async function lancarFiado(e) {
@@ -303,11 +315,11 @@ async function lancarFiado(e) {
       return alert(`O cliente não foi marcado como conta corrente: ${err.message}`);
     }
   }
-  const item = { id: C().novoId("FA"), v: 2, conta: "fiado_anterior", value: valor, competencia: data, clienteId: cli.id, cliente: cli.nome,
+  const item = { id: (pendentes.fiado ||= C().novoId("FA")), v: 2, conta: "fiado_anterior", value: valor, competencia: data, clienteId: cli.id, cliente: cli.nome,
     description: obs ? `Fiado anterior (pasta): ${obs}` : "Fiado anterior (pasta)" };
   if (contaCorrente) item.contaCorrente = true; else item.vencimento = venc;
   if (desde) item.desde = desde;
-  await C().gravar([item]);
+  if (await C().gravar([item])) pendentes.fiado = null;
 }
 
 async function salvarAbertura(e) {

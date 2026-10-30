@@ -634,7 +634,8 @@ test("2C: configuração do fiado (ligado e prazo) é salva", async () => {
   const kv = kvFalso({});
   const c = await salvarConfigFinanceiro(kv, K, { fiado: { ligado: false, prazoDias: 45 } });
   assert.deepEqual(c.fiado, { ligado: false, prazoDias: 45 });
-  assert.deepEqual((await salvarConfigFinanceiro(kv, K, {})).fiado, { ligado: true, prazoDias: 30 });
+  // salvar outra parte da configuração não mexe no que já estava salvo
+  assert.deepEqual((await salvarConfigFinanceiro(kv, K, {})).fiado, { ligado: false, prazoDias: 45 });
   await assert.rejects(salvarConfigFinanceiro(kv, K, { fiado: { prazoDias: 0 } }), /prazo do fiado/);
 });
 
@@ -785,4 +786,78 @@ test("corrigir venda: mesmo número, hora e marca de impressão; histórico 'ant
   assert.deepEqual([est.excluido, est.numero], [true, "V-0001"]);
   // a próxima venda não reaproveita o número
   assert.equal((await salvarLancamentos(kv, K, [{ ...venda(50), id: "V2" }])).numeros.V2, "V-0002");
+});
+
+test("salvar Ajustes › Financeiro não apaga o cabeçalho de Ajustes › Impressão (nem o resto)", async () => {
+  const kv = kvFalso({});
+  await salvarConfigFinanceiro(kv, K, { impressao: { nome: "Mercado da Madeira", telefone: "41 3273-4849" }, cmv: { margemPadraoPct: 45, mesesMedia: 6 } });
+  const c = await salvarConfigFinanceiro(kv, K, { cartao: { debito: { taxaPct: 1.5 } } });
+  assert.deepEqual([c.impressao.nome, c.impressao.telefone, c.cmv.margemPadraoPct, c.cmv.mesesMedia, c.cartao.debito.taxaPct], ["Mercado da Madeira", "41 3273-4849", 45, 6, 1.5]);
+});
+
+// ---- Etapa 1 (varredura): correções críticas ----
+const vendaV2 = (id, extra = {}) => ({ id, v: 2, conta: "venda_produtos", value: 100, competencia: "2026-10-01", pagamentos: [{ forma: "dinheiro", valor: 100 }], ...extra });
+
+test("cheque sem data de compensação é recusado (não entra no banco no dia da venda)", () => {
+  assert.throws(() => validarLancamentoV2(vendaV2("c1", { pagamentos: [{ forma: "cheque", valor: 100, cheque: { numero: "1" } }] }), {}), /data de compensação/);
+  assert.equal(validarLancamentoV2(vendaV2("c2", { pagamentos: [{ forma: "cheque", valor: 100, cheque: { numero: "1", compensacao: "2026-10-20" } }] }), {}).pagamentos[0].cheque.compensacao, "2026-10-20");
+});
+
+test("transferência saindo ou entrando em Cheques em carteira é recusada (o cheque compensa sozinho)", () => {
+  const t = (de, para) => ({ id: "t", v: 2, conta: "transferencia", value: 500, competencia: "2026-10-01", de, para });
+  assert.throws(() => validarLancamentoV2(t("cheques_carteira", "bradesco"), {}), /compensação/);
+  assert.throws(() => validarLancamentoV2(t("gaveta", "cheques_carteira"), {}), /compensação/);
+  assert.equal(validarLancamentoV2(t("gaveta", "bradesco"), {}).para, "bradesco");
+});
+
+test("venda estornada não volta por uma correção; correção com versão antiga é recusada; tipo não troca", async () => {
+  const kv = kvFalso({ [K.finance]: [] });
+  await migrar(kv, K);
+  await salvarLancamentos(kv, K, [vendaV2("V1")]);
+  const v = await kv.hget(K.lancamentos, "V1");
+  // outro aparelho corrige primeiro…
+  await salvarLancamentos(kv, K, [vendaV2("V1", { value: 120, pagamentos: [{ forma: "dinheiro", valor: 120 }], versaoBase: v.versao })]);
+  // …e este, com a versão antiga na tela, é recusado
+  await assert.rejects(salvarLancamentos(kv, K, [vendaV2("V1", { value: 130, pagamentos: [{ forma: "dinheiro", valor: 130 }], versaoBase: v.versao })]), { status: 409 });
+  assert.equal((await kv.hget(K.lancamentos, "V1")).value, 120);
+  await assert.rejects(salvarLancamentos(kv, K, [vendaV2("V1", { conta: "servicos" })]), /estorne e lance de novo/);
+  await excluirLancamento(kv, K, "V1");
+  await assert.rejects(salvarLancamentos(kv, K, [vendaV2("V1", { value: 150, pagamentos: [{ forma: "dinheiro", valor: 150 }] })]), /estornada/);
+  assert.equal((await kv.hget(K.lancamentos, "V1")).excluido, true);
+  // nova tentativa da mesma venda (sem versão: internet caiu depois de gravar) não duplica
+  await salvarLancamentos(kv, K, [vendaV2("V2")]);
+  await salvarLancamentos(kv, K, [vendaV2("V2")]);
+  assert.equal((await kv.hget(K.lancamentos, "V2")).numero, "V-0002");
+  assert.equal(Number(kv.dados.get(K.vendaSeq)), 2);
+});
+
+test("venda de orçamento fecha o orçamento na mesma gravação; estornar reabre; não converte duas vezes", async () => {
+  const kv = kvFalso({ [K.finance]: [] });
+  await migrar(kv, K);
+  await kv.hset(K.orcamentos, { "ORC-0001": { id: "ORC-0001", status: "aberto", total: 100, historico: [] } });
+  const r = await salvarLancamentos(kv, K, [vendaV2("V1", { orcamento: "ORC-0001" })]);
+  assert.deepEqual(r.orcamentosFechados, ["ORC-0001"]);
+  const o = await kv.hget(K.orcamentos, "ORC-0001");
+  assert.deepEqual([o.status, o.vendaId, o.fechadoEm], ["fechado", "V1", "2026-10-01"]);
+  await assert.rejects(salvarLancamentos(kv, K, [vendaV2("V9", { orcamento: "ORC-0001" })]), /já virou a venda V-0001/);
+  assert.equal(await kv.hget(K.lancamentos, "V9"), null);
+  const e = await excluirLancamento(kv, K, "V1");
+  assert.equal(e.orcamentoReaberto, "ORC-0001");
+  const o2 = await kv.hget(K.orcamentos, "ORC-0001");
+  assert.deepEqual([o2.status, o2.vendaId, o2.vendaIdAnterior], ["aberto", undefined, "V1"]);
+});
+
+test("duas conferências (fechar gaveta) ao mesmo tempo não se apagam; abertura não apaga conferências", async () => {
+  const { registrarConferencia, salvarAbertura } = await import("../api/_dados.js");
+  const kv = kvFalso({});
+  await Promise.all([
+    registrarConferencia(kv, K, { conta: "gaveta", data: "2026-10-01", informado: 100, calculado: 100 }),
+    registrarConferencia(kv, K, { conta: "bradesco", data: "2026-10-01", informado: 500, calculado: 490 }),
+    salvarAbertura(kv, K, { data: "2026-10-01", contas: { gaveta: 100 } }),
+  ]);
+  const t = await lerTudo(kv, K);
+  assert.equal(t.saldos.conferencias.length, 2);
+  assert.equal(t.saldos.abertura.contas.gaveta, 100);
+  assert.ok(CHAVES_ZERAR.includes("conferencias"));
+  assert.ok("madeireira_conferencias" in (await montarBackup(kv, K)).chaves);
 });

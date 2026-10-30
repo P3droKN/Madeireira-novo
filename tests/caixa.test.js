@@ -123,3 +123,11 @@ test("fluxo consolidado: compensação de cheque e transferência não aparecem 
   const banco = fluxoMensal(movs, { data: "2026-11-01", contas: { picpay: 100 } }, "2026-11", "bradesco");
   assert.deepEqual(banco.entradas, { transferencia: 100, cheque_compensado: 400 });
 });
+
+test("abertura refeita depois: cheques da abertura já compensados ou devolvidos não contam na carteira", async () => {
+  const { chequesNaAbertura } = await import("../lib/caixa.js");
+  const ch = (id, comp, dev) => ({ id, v: 2, conta: "cheque_anterior", value: 300, competencia: "2026-10-01", pagamentos: [{ forma: "cheque", valor: 300, cheque: { numero: id, compensacao: comp, ...(dev ? { devolvidoEm: dev } : {}) } }] });
+  const l = [ch("A", "2026-10-05"), ch("B", "2026-10-20"), ch("C", "2026-10-25", "2026-10-08")];
+  assert.equal(chequesNaAbertura(l, {}, "2026-10-01").totalAbertura, 900);
+  assert.equal(chequesNaAbertura(l, {}, "2026-10-10").totalAbertura, 300); // só o B ainda está na gaveta
+});
