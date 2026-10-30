@@ -34,6 +34,16 @@ function pedirSenha(mensagem) {
     return pedidoDeSenha;
 }
 
+// Sair deste aparelho (ex.: computador do balcão): apaga a senha e a cópia local dos dados
+function sairDoAparelho() {
+    if (!confirm('Sair deste aparelho? A senha e a cópia dos dados guardadas aqui serão apagadas. Para entrar de novo, é preciso digitar a senha.')) return;
+    for (const k of [SENHA_KEY, 'madeireira_finance', 'madeireira_acumulado', 'madeireira_pedido']) {
+        try { localStorage.removeItem(k); } catch { /* sem armazenamento */ }
+    }
+    location.reload();
+}
+document.getElementById('btn-sair')?.addEventListener('click', sairDoAparelho);
+
 async function api(caminho, { method = 'GET', body, timeoutMs = 60000 } = {}) {
     const senha = localStorage.getItem(SENHA_KEY) || await pedirSenha();
     const controle = new AbortController();
@@ -52,6 +62,11 @@ async function api(caminho, { method = 'GET', body, timeoutMs = 60000 } = {}) {
             : `sem conexão com o servidor (${e.message})`);
     } finally {
         clearTimeout(relogio);
+    }
+    if (res.status === 429) {
+        const d = await res.json().catch(() => null);
+        localStorage.removeItem(SENHA_KEY);
+        throw new Error(d?.error || 'Muitas tentativas de senha erradas. Espere alguns minutos.');
     }
     if (res.status === 401) {
         localStorage.removeItem(SENHA_KEY);
@@ -260,12 +275,9 @@ async function ativarSalvamentoSeguro() {
     await carregarDados();
 }
 
+// Hoje em Brasília (America/Sao_Paulo), mesmo com o relógio do aparelho em outro fuso
 function getLocalDateString() {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 
 // A data da venda começa com hoje (YYYY-MM-DD local)

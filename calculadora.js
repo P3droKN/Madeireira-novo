@@ -178,9 +178,19 @@ function calcularLinha(l) {
     const base = calcularItem({ ...l, item, precoTabela: null, precoManual: l.precoBase, totalManual: null, variacaoPct: null });
     const total = arred(base.vendaTotal * (1 + l.variacaoPct / 100));
     const r = calcularItem({ ...l, item, precoTabela: null, precoManual: null, totalManual: total, variacaoPct: null });
-    return { ...r, base: { precoUnitario: l.precoBase, vendaTotal: base.vendaTotal, pct: l.variacaoPct, valor: arred(total - base.vendaTotal) } };
+    return comCustoGravado(l, { ...r, base: { precoUnitario: l.precoBase, vendaTotal: base.vendaTotal, pct: l.variacaoPct, valor: arred(total - base.vendaTotal) } });
   }
-  return calcularItem({ ...l, item, precoTabela: tabela });
+  const r = calcularItem({ ...l, item, precoTabela: tabela });
+  return comCustoGravado(l, r);
+}
+
+// Venda corrigida: cada item mantém o custo por unidade com que foi vendido (o custo de hoje pode ser outro)
+function comCustoGravado(l, r) {
+  if (l.custoUnitarioGravado == null || r.quantidadeCobrada == null) return r;
+  const custoTotal = arred(l.custoUnitarioGravado * r.quantidadeCobrada);
+  const lucro = r.vendaTotal != null ? arred(r.vendaTotal - custoTotal) : null;
+  return { ...r, custoUnitario: l.custoUnitarioGravado, custoTotal, lucro, margem: lucro != null && r.vendaTotal > 0 ? lucro / r.vendaTotal : null,
+    pendencias: r.pendencias.filter((p) => p !== "sem_custo") };
 }
 
 // Linha sem tabela com preço digitado: guarda esse preço como base do % (precoBase)
@@ -724,6 +734,7 @@ window.Calculadora = {
       if (!livre && linha.quantidade == null) {
         if (UNIDADES[item.unidade].pedeComprimento) { linha.quantidade = 1; linha.comprimento = i.quantidadeCobrada; } else linha.quantidade = i.quantidadeCobrada;
       }
+      if (i.custoTotal != null && Number(i.quantidadeCobrada) > 0) linha.custoUnitarioGravado = Number(i.custoTotal) / Number(i.quantidadeCobrada);
       // o preço que foi vendido (não o da tabela de hoje)
       if (livre) linha.totalManual = i.vendaTotal;
       else if (Number(i.quantidadeCobrada) > 0 && i.vendaTotal != null) linha.precoManual = Number(i.vendaTotal) / Number(i.quantidadeCobrada);

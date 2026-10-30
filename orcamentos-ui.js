@@ -6,13 +6,14 @@ import {
   textoParaCliente, situacao, indicadores, ordenar, atualizarPrecos, grupoDaLista, naLixeira, visivelNaLixeira,
 } from "./lib/orcamentos.js";
 import { mesclarConfigFinanceiro } from "./lib/planoContas.js";
+import { hojeSP } from "./lib/datas.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const moeda = (v) => (v == null ? "—" : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v));
 const dataBR = (d) => (d ? d.slice(0, 10).split("-").reverse().join("/") : "");
 const dataHora = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
-const hoje = () => window.Caixa?.hoje() || new Date().toISOString().slice(0, 10);
+const hoje = () => window.Caixa?.hoje() || hojeSP();
 const cfgOrc = () => mesclarConfigFinanceiro(window.Caixa?.configFinanceiro).orcamentos || CONFIG_ORCAMENTOS_PADRAO;
 
 const estado = { orcamentos: [], clientes: [], carregado: false, atual: null, soSino: false, lixeira: false };
@@ -103,33 +104,33 @@ function renderLista() {
     const s = situacao(o, h, cfg);
     const acoes = [];
     if (s.emAberto) {
-      acoes.push(`<button class="btn-icon mini" data-acao="enviar" data-id="${o.id}">Enviar</button>`);
-      acoes.push(`<button class="btn-icon mini" data-acao="cobrar" data-id="${o.id}">Cobrar</button>`);
-      acoes.push(`<button class="btn-icon mini destaque-verde" data-acao="converter" data-id="${o.id}">Converter em venda</button>`);
+      acoes.push(`<button class="btn-icon mini" data-acao="enviar" data-id="${esc(o.id)}">Enviar</button>`);
+      acoes.push(`<button class="btn-icon mini" data-acao="cobrar" data-id="${esc(o.id)}">Cobrar</button>`);
+      acoes.push(`<button class="btn-icon mini destaque-verde" data-acao="converter" data-id="${esc(o.id)}">Converter em venda</button>`);
     }
     const mais = [
-      s.emAberto ? `<button data-acao="editar" data-id="${o.id}">Editar</button>` : "",
-      `<button data-acao="duplicar" data-id="${o.id}">Duplicar</button>`,
-      `<button data-acao="imprimir" data-id="${o.id}">🖨 Imprimir 2 vias</button>`,
-      s.emAberto ? `<button data-acao="precos" data-id="${o.id}">Atualizar preços</button>` : "",
-      s.emAberto ? `<button data-acao="perdido" data-id="${o.id}">Marcar como perdido</button>` : "",
-      podeReabrir(o) ? `<button data-acao="reabrir" data-id="${o.id}">Reabrir</button>` : "",
+      s.emAberto ? `<button data-acao="editar" data-id="${esc(o.id)}">Editar</button>` : "",
+      `<button data-acao="duplicar" data-id="${esc(o.id)}">Duplicar</button>`,
+      `<button data-acao="imprimir" data-id="${esc(o.id)}">🖨 Imprimir vias</button>`,
+      s.emAberto ? `<button data-acao="precos" data-id="${esc(o.id)}">Atualizar preços</button>` : "",
+      s.emAberto ? `<button data-acao="perdido" data-id="${esc(o.id)}">Marcar como perdido</button>` : "",
+      podeReabrir(o) ? `<button data-acao="reabrir" data-id="${esc(o.id)}">Reabrir</button>` : "",
       o.status === "fechado"
         ? '<small class="menu-nota">Excluir: não dá, virou venda. Para desfazer, estorne a venda no Caixa.</small>'
-        : `<button data-acao="excluir" data-id="${o.id}" class="item-perigo">Excluir</button>`,
+        : `<button data-acao="excluir" data-id="${esc(o.id)}" class="item-perigo">Excluir</button>`,
     ].filter(Boolean).join("");
     acoes.push(`<details class="menu-mais"><summary class="btn-icon mini" aria-label="Mais ações">⋯</summary><div class="menu-itens">${mais}</div></details>`);
     const selo = o.status === "perdido"
       ? `<small class="texto-ruim">perdido: ${esc(o.motivoPerda || "")}${o.motivoPerdaTexto ? " – " + esc(o.motivoPerdaTexto) : ""}</small>`
-      : o.status === "fechado" ? `<small class="texto-ok">fechado${o.vendaId ? ` · venda ${esc(o.vendaId)}` : ""}</small>` : "";
+      : o.status === "fechado" ? `<small class="texto-ok">fechado${o.vendaId ? ` · venda ${esc(window.Caixa?.itens?.find((l) => String(l.id) === String(o.vendaId))?.numero || "")}` : ""}</small>` : "";
     return `<tr class="${s.cor ? "cor-" + s.cor : ""}">
-      <td><strong>${o.id}</strong>${s.cobrarHoje ? ` <span class="sino" title="${s.diasSemContato} dias sem contato: cobrar hoje">🔔</span>` : ""}</td>
+      <td><strong>${esc(o.id)}</strong>${s.cobrarHoje ? ` <span class="sino" title="${s.diasSemContato} dias sem contato: cobrar hoje">🔔</span>` : ""}</td>
       <td>${esc(o.cliente?.nome)}<small>${esc(o.cliente?.telefone)} · ${ORIGENS[o.origem] || esc(o.origem)}</small>${o.obs ? `<small class="texto-suave">${esc(o.obs)}</small>` : ""}${selo}</td>
       <td>${dataBR(o.data)}${s.vencido && s.emAberto ? '<small class="selo-vencido">vencido – preços podem ter mudado</small>' : `<small>vale até ${dataBR(o.validoAte)}</small>`}</td>
       <td class="num">${s.emAberto ? s.diasAberto : "—"}</td>
       <td class="num"><strong>${moeda(o.total)}</strong>${o.frete ? `<small>com frete ${moeda(o.frete)}</small>` : ""}</td>
       <td>${dataHora(o.ultimoContato)}${s.emAberto && o.ultimoContato ? `<small>${s.diasSemContato} dia(s)</small>` : ""}</td>
-      <td class="orc-acoes">${s.vencido && s.emAberto ? `<button class="btn-icon mini destaque-vermelho" data-acao="precos" data-id="${o.id}">Atualizar preços</button>` : ""}${acoes.join("")}</td>
+      <td class="orc-acoes">${s.vencido && s.emAberto ? `<button class="btn-icon mini destaque-vermelho" data-acao="precos" data-id="${esc(o.id)}">Atualizar preços</button>` : ""}${acoes.join("")}</td>
     </tr>`;
   }).join("") || `<tr><td colspan="7" class="texto-suave">${estado.soSino ? "Nenhum orçamento para cobrar hoje." : "Nenhum orçamento aqui."}</td></tr>`;
   const cont = { aberto: 0, fechado: 0, perdido: 0 };
@@ -145,9 +146,9 @@ function renderLixeira() {
   const h = hoje();
   const lista = estado.orcamentos.filter((o) => visivelNaLixeira(o, h)).sort((a, b) => b.excluidoEm.localeCompare(a.excluidoEm));
   $("orc-lixeira-body").innerHTML = lista.map((o) => `<tr>
-      <td><strong>${o.id}</strong></td><td>${esc(o.cliente?.nome)}<small>${esc(o.cliente?.telefone)}</small></td>
+      <td><strong>${esc(o.id)}</strong></td><td>${esc(o.cliente?.nome)}<small>${esc(o.cliente?.telefone)}</small></td>
       <td>${dataBR(o.data)}</td><td class="num">${moeda(o.total)}</td><td>${dataHora(o.excluidoEm)}</td>
-      <td><button class="btn-icon mini" data-acao="restaurar" data-id="${o.id}">Restaurar</button></td>
+      <td><button class="btn-icon mini" data-acao="restaurar" data-id="${esc(o.id)}">Restaurar</button></td>
     </tr>`).join("") || '<tr><td colspan="6" class="texto-suave">A lixeira está vazia.</td></tr>';
 }
 

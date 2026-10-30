@@ -72,6 +72,8 @@ await page.waitForFunction(() => document.querySelectorAll("#fin-lista-body tr t
 ok((await porId("1760000000001C")).conta === "cmv" && (await porId("1760000000002C")).conta === "compra_material", "sugestões aceitas: CMV e compra");
 await page.selectOption("#fin-f-tipo", "classificar");
 await page.fill("#fin-f-busca", "luz");
+// a busca espera a pessoa parar de digitar: aguarda a lista mostrar só o resultado
+await page.waitForFunction(() => { const r = [...document.querySelectorAll("#fin-lista-body tr")]; return r.length >= 1 && r.every((t) => /luz/i.test(t.textContent)); });
 await page.locator("#fin-lista-body .fin-sel").first().check();
 await page.selectOption("#fin-lote-conta", "energia");
 await page.click("#fin-lote-aplicar");

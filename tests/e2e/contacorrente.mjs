@@ -186,7 +186,7 @@ const eq = nb(await page.textContent("#rel-equilibrio"));
 ok(eq.includes("Quanto preciso vender por mês para empatar") && nb(await page.textContent("#rel-equilibrio-valor")) === brl(peEsperado.pontoEquilibrio) && eq.includes("média de ago/26, set/26"),
   `quadro do ponto de equilíbrio: ${brl(peEsperado.pontoEquilibrio)} (média de ago e set)`);
 ok(eq.includes("este mês até 10/10: R$ 250,00"), "quadro mostra quanto já vendeu no mês");
-const dre = nb(await page.textContent("#fin-dre-conteudo .dre-info"));
+const dre = nb(await page.textContent("#fin-dre-conteudo"));
 ok(dre.includes("Recebido de fiado anterior à virada") && dre.includes("R$ 300,00"), "DRE: linha informativa \"Recebido de fiado anterior à virada\" R$ 300");
 ok(nb(await page.textContent("#fin-dre-conteudo tfoot .dre-info-linha")).includes("Recebido de fiado anterior à virada") && nb(await page.textContent("#fin-dre-conteudo tfoot")).includes("R$ 300,00"),
   "DRE: também como linha informativa no fim da tabela (não soma no lucro)");

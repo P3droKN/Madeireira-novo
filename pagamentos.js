@@ -2,6 +2,7 @@
 // Uma venda pode ter várias formas, como na NF-e; a soma precisa ser igual ao total.
 // Fiado: pede o cliente (a não ser que a tela já tenha um campo de cliente) e o vencimento.
 import { FORMAS_PADRAO } from "./lib/planoContas.js";
+import { hojeSP } from "./lib/datas.js";
 
 const moeda = (v) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -72,7 +73,10 @@ export function criarEditorPagamentos(el, { total = 0, semFiado = false, cliente
     const r = restante();
     const st = el.querySelector(".pag-status");
     if (!st) return;
-    if (Math.abs(r) < 0.005) {
+    if (!(alvo > 0)) {
+      st.className = "pag-status";
+      st.textContent = ""; // sem total ainda: nada a conferir
+    } else if (Math.abs(r) < 0.005) {
       st.className = "pag-status ok";
       st.textContent = `Soma confere: ${moeda(alvo)}`;
     } else {
@@ -89,7 +93,7 @@ export function criarEditorPagamentos(el, { total = 0, semFiado = false, cliente
       l.forma = e.target.value;
       if (l.forma === "fiado" && !l.vencimento) {
         const c = cfgFiado();
-        l.vencimento = somarDias(c.data || new Date().toISOString().slice(0, 10), c.prazoDias || 30);
+        l.vencimento = somarDias(c.data || hojeSP(), c.prazoDias || 30);
       }
       return render();
     }

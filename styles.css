@@ -971,7 +971,7 @@ body.modo-balcao .sigilo { display: none !important; }
 #btn-balcao[aria-pressed="true"] { border-color: var(--warning); color: var(--warning); }
 
 .orc-topo { gap: 0.75rem; flex-wrap: wrap; }
-.orc-abas { flex: 0 1 auto; min-width: 320px; }
+.orc-abas { flex: 0 1 auto; min-width: min(320px, 100%); }
 .orc-abas b { font-weight: 500; opacity: 0.8; }
 .orc-busca { max-width: 280px; }
 .mais-filtros { margin: 0 0 1rem; }
@@ -1112,3 +1112,37 @@ body.modo-balcao .sigilo { display: none !important; }
 .fech-colunas { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
 .fech-gaveta, .fech-resultado { margin: 2mm 0; font-size: 9pt; }
 .fech-conferido { margin-top: auto; padding-top: 8mm; font-size: 9.5pt; }
+.topo-app { display: flex; align-items: center; justify-content: center; gap: 0.75rem; flex-wrap: wrap; }
+
+/* ---------- Celular: sem rolagem lateral da página (varredura) ---------- */
+/* Os botões de opção escondidos ficavam com a largura da tela e empurravam a página para o lado */
+.segmentado label { position: relative; }
+.segmentado input { width: 1px; height: 1px; top: 0; left: 0; }
+.saldos-grid > *, .dia-quadros > *, .receber-cards > * { min-width: 0; }
+@media (max-width: 760px) {
+    .segmentado { flex-wrap: wrap; }
+    .segmentado label { flex: 1 1 auto; }
+    .saldos-grid, .receber-cards, .dia-quadros { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .app-container { padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); }
+    /* O menu ⋯ dos orçamentos abre por baixo da tela, inteiro, em vez de cortado dentro da tabela */
+    .menu-mais[open] .menu-itens { position: fixed; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom, 0px)); top: auto; min-width: 0; z-index: 1000; padding: 0.5rem; }
+    .menu-mais[open] .menu-itens button { padding: 0.8rem; font-size: 1rem; }
+    .table-container { -webkit-overflow-scrolling: touch; }
+}
+@media (max-width: 420px) {
+    .saldos-grid, .receber-cards, .dia-quadros { grid-template-columns: minmax(0, 1fr); }
+}
+/* Caixa › Lançamentos no celular: cada lançamento vira uma ficha (os botões ficam à vista) */
+@media (max-width: 640px) {
+    #fin-lista table thead { display: none; }
+    #fin-lista table, #fin-lista tbody { display: block; }
+    #fin-lista-body tr { display: grid; grid-template-columns: auto 1fr auto; gap: 0.15rem 0.6rem; padding: 0.6rem 0.2rem; border-bottom: 1px solid var(--input-border); }
+    #fin-lista-body td { border: 0 !important; padding: 0 !important; }
+    #fin-lista-body td:nth-child(1) { grid-row: 1 / span 3; align-self: start; }
+    #fin-lista-body td:nth-child(2) { grid-column: 2; font-size: 0.8rem; color: var(--text-muted); }
+    #fin-lista-body td:nth-child(3) { grid-column: 3; grid-row: 1; text-align: right; }
+    #fin-lista-body td:nth-child(4) { grid-column: 2 / span 2; }
+    #fin-lista-body td:nth-child(5), #fin-lista-body td:nth-child(6) { grid-column: 2 / span 2; font-size: 0.8rem; }
+    #fin-lista-body td:nth-child(7) { grid-column: 3; grid-row: 2; text-align: right; font-weight: 600; }
+    #fin-lista-body td:nth-child(8) { grid-column: 2 / span 2; display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.3rem; }
+}

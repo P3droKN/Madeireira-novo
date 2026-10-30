@@ -4,6 +4,7 @@
 import { contaPorId, naturezaDaConta, PAGO_COM, mesclarConfigFinanceiro, juntarConfig, CONFIG_FINANCEIRO_PADRAO } from "../lib/planoContas.js";
 import { converterLancamento, lancamentosDeAbertura, categoriaLegada, sugestaoDe } from "../lib/migracaoV2.js";
 import { numeroOrcamento, normalizarTelefone, somarDias, ORIGENS, MOTIVOS_PERDA } from "../lib/orcamentos.js";
+import { dataSP, hojeSP } from "../lib/datas.js";
 
 const CATEGORIAS = { venda: "income", custo: "expense", funcionario: "expense", despesa: "expense" };
 const METODOS = ["dinheiro", "pix", "bradesco", "debito", "credito", "cheque"];
@@ -118,8 +119,8 @@ export async function lerTudo(kv, k) {
     const todos = Object.values(hash).map(desembrulhar).filter(Boolean);
     financeItems = todos.filter((i) => !i.excluido);
     // Estornados dos últimos 120 dias: aparecem riscados no Resumo do dia (não somam em nada)
-    const limite = new Date(Date.now() - 120 * 86400000).toISOString().slice(0, 10);
-    estornados = todos.filter((i) => i.excluido && i.v === 2 && String(i.excluidoEm || i.competencia || "").slice(0, 10) >= limite);
+    const limite = dataSP(Date.now() - 120 * 86400000);
+    estornados = todos.filter((i) => i.excluido && i.v === 2 && dataSP(i.excluidoEm || i.competencia || "") >= limite);
   } else {
     financeItems = desembrulhar(await kv.get(k.finance)) || [];
   }
@@ -927,7 +928,7 @@ function valoresOrcamento(d) {
   };
 }
 
-const dataDe = (d) => (dataOk(d) ? d : new Date().toISOString().slice(0, 10));
+const dataDe = (d) => (dataOk(d) ? d : hojeSP());
 
 async function salvarClienteDoOrcamento(kv, k, nome, telefone) {
   const t = normalizarTelefone(telefone);
@@ -958,14 +959,17 @@ export async function salvarOrcamento(kv, k, d, cfgSalva) {
   if (!Number.isInteger(validadeDias) || validadeDias < 1 || validadeDias > 90) throw erro(400, "Validade inválida (1 a 90 dias).");
   const hoje = dataDe(d.hoje);
   const valores = valoresOrcamento(d);
-  const cliente = await salvarClienteDoOrcamento(kv, k, nome, tel.formatado);
   const agora = new Date().toISOString();
-
+  // Confere antes de mexer em qualquer coisa: orçamento recusado não altera o cadastro do cliente
+  const atual = d.id ? desembrulhar(await kv.hget(k.orcamentos, String(d.id))) : null;
   if (d.id) {
-    const atual = desembrulhar(await kv.hget(k.orcamentos, String(d.id)));
     if (!atual) throw erro(404, "Orçamento não encontrado.");
     if (atual.status === "fechado") throw erro(409, "Orçamento fechado (virou venda) não pode ser editado. Use Duplicar.");
     if (atual.excluidoEm) throw erro(409, "Orçamento está na lixeira. Restaure antes de editar.");
+  }
+  const cliente = await salvarClienteDoOrcamento(kv, k, nome, tel.formatado);
+
+  if (d.id) {
     const editado = {
       ...atual, ...valores,
       cliente: { id: cliente.id, nome: cliente.nome, telefone: cliente.telefone },

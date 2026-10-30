@@ -10,7 +10,7 @@
 <body>
     <div class="app-container">
         <header>
-            <h1>Sistema Madeireira</h1>
+            <div class="topo-app"><h1>Sistema Madeireira</h1><button type="button" class="btn-icon mini" id="btn-sair" title="Sair deste aparelho: apaga a senha e a cópia dos dados guardadas aqui">Sair</button></div>
             <nav class="tabs">
                 <button class="tab-btn active" id="btn-tab-vender" onclick="switchTab('vender')">Vender</button>
                 <button class="tab-btn" id="btn-tab-orcamentos" onclick="switchTab('orcamentos')">Orçamentos <span class="contador" id="orc-contador" hidden></span></button>
@@ -263,7 +263,7 @@
                                 <option value="entradas">Entradas</option>
                                 <option value="saidas">Saídas</option>
                                 <option value="migrados">Migrados (antigos)</option>
-                                <option value="fiado">Fiado e recebimentos</option>
+                                <option value="fiado">Fiado</option>
                             </select>
                         </div>
                         <div class="form-group"><label for="fin-f-conta">Conta</label><select id="fin-f-conta"></select></div>
@@ -288,6 +288,7 @@
                             <tbody id="fin-lista-body"></tbody>
                         </table>
                     </div>
+                    <button type="button" class="btn-icon" id="fin-lista-mais" hidden>Mostrar mais</button>
                 </section>
             </div>
 
@@ -311,7 +312,7 @@
                             <label><input type="radio" name="rel-visao" value="ano"><span>Ano</span></label>
                         </div>
                     </div>
-                    <button class="btn-icon" id="rel-imprimir">🖨️ Imprimir A4</button>
+                    <button class="btn-icon" id="rel-imprimir">🖨 Imprimir relatório</button>
                 </div>
                 <div id="rel-equilibrio" class="so-tela-rel"></div>
                 <h3 class="so-impressao" id="rel-titulo-impressao"></h3>

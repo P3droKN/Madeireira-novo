@@ -286,6 +286,17 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - "Selecionar todos" em Lançamentos marca só o que está na tela; a busca limpa a seleção. A cópia local no aparelho não derruba mais a conexão se a memória encher. Abertura refeita não soma cheques já compensados.
 - E2E: `tests/e2e/criticos.mjs`.
 
+**Entrega final, etapa 1b: importantes da varredura e integração**
+- `lib/datas.js` (`dataSP`, `hojeSP`): datas sempre em America/Sao_Paulo (servidor em UTC e aparelhos em qualquer fuso). Usado no 🔔 de orçamento, lixeira, Resumo do dia (perdido/convertido), "2ª impressão", datas padrão do servidor, nome do backup e `getLocalDateString`.
+- Senha: depois de 10 erros do mesmo endereço em 15 min, 429 com espera (`autorizar` agora é assíncrona). Botão "Sair" no topo apaga senha e cópia local do aparelho.
+- Celular: todas as telas cabem em 390px (seletor de opções corrigido, cartões em 1–2 colunas, menu ⋯ dos orçamentos abre por baixo da tela, Lançamentos vira fichas).
+- Desempenho: `normalizar` guarda o resultado enquanto a lista não muda; busca de Lançamentos espera a digitação parar (180 ms); lista de 300 em 300 com "Mostrar mais".
+- Fechar gaveta recarrega os dados antes (esperado atualizado) e usa janela própria (`perguntar`), como a data do cheque devolvido. Corrigir venda mantém o custo gravado de cada item (`custoUnitarioGravado`).
+- Resumo do dia: início = abertura no próprio dia da abertura e em período que começa antes; orçamentos da lixeira fora; outras entradas pela data do pagamento; cheque compensado e depois devolvido conta nos compensados.
+- Termos: forma "Fiado" (a via do cliente continua dizendo "A prazo"), tela "A receber"; "Data" no Lançar; "Custo dos produtos"; sem tPag e "Fase 2D" em Relatórios; "🖨 Imprimir relatório" e "🖨 Imprimir vias".
+- Servidor: rotas de leitura só aceitam GET; orçamento recusado não mexe no cadastro do cliente.
+- E2E: `tests/e2e/integracao.mjs` (fluxos da tabela 1.1 e regras de consistência sobre os dados gravados).
+
 ## 7. Próximos passos
 1. **Virada** (antes da 2D): ensaio no preview e depois o dia, conforme `VIRADA.md` e o checklist. 2C testada (ok), prazo 30 dias, fiado da pasta em conta corrente (entregue). Pendentes do usuário: resultado do ensaio no preview, nome do endereço e as datas.
 2. ~~Fase 2C~~ (entregue).

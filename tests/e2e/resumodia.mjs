@@ -51,8 +51,10 @@ await page.waitForFunction(() => window.Caixa && window.Caixa.migradoV2);
 // 1. Fechar gaveta (contou R$ 395, o sistema esperava R$ 400) e o atalho para o resumo
 await page.click("#btn-tab-caixa"); await sub("caixa", "saldos");
 await page.waitForSelector(".saldo-conta");
-respostas.push("395");
 await page.locator(".saldo-conta", { hasText: "Gaveta" }).locator("[data-conferir]").click();
+await page.waitForSelector("#modal-pergunta", { state: "visible" });
+ok(nb(await page.textContent("#perg-texto")).includes("Esperado pelo sistema: R$ 400,00"), "Fechar gaveta: janela própria com o esperado (dados recarregados)");
+await page.fill("#perg-campo", "395"); await page.click("#perg-ok");
 await page.waitForTimeout(600);
 await page.click("#cx-ver-resumo-dia");
 await page.waitForSelector("#dia-panorama");

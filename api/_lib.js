@@ -96,7 +96,21 @@ export function senhaConfere(recebida, esperada) {
 }
 
 // Devolve true se pode seguir; senão já respondeu o erro.
-export function autorizar(request, response) {
+// Limite de tentativas de senha: depois de 10 senhas erradas do mesmo endereço em 15 minutos, espera
+const LIMITE_ERROS = 10, JANELA_MS = 15 * 60 * 1000;
+const chaveErros = (request) => `${chaves().prefixo}madeireira_senha_erros:${String(request.headers["x-forwarded-for"] || request.socket?.remoteAddress || "?").split(",")[0].trim()}`;
+async function errosDeSenha(request) {
+  try {
+    const r = await kv().get(chaveErros(request));
+    const e = typeof r === "string" ? JSON.parse(r) : r;
+    return e && Date.now() - e.desde < JANELA_MS ? e : null;
+  } catch { return null; } // sem banco: não bloqueia por isso
+}
+async function anotarErroDeSenha(request, atual) {
+  try { await kv().set(chaveErros(request), JSON.stringify({ n: (atual?.n || 0) + 1, desde: atual?.desde || Date.now() })); } catch { /* sem banco */ }
+}
+
+export async function autorizar(request, response) {
   try {
     configBanco();
   } catch (e) {
@@ -108,7 +122,14 @@ export function autorizar(request, response) {
     response.status(500).json({ error: "SENHA_APP não configurada na Vercel." });
     return false;
   }
+  const erros = await errosDeSenha(request);
+  if (erros && erros.n >= LIMITE_ERROS) {
+    const min = Math.max(1, Math.ceil((JANELA_MS - (Date.now() - erros.desde)) / 60000));
+    response.status(429).json({ error: `Muitas tentativas de senha erradas. Espere ${min} minuto(s) e tente de novo.` });
+    return false;
+  }
   if (!senhaConfere(request.headers["x-senha"], esperada)) {
+    await anotarErroDeSenha(request, erros);
     response.status(401).json({ error: "Senha inválida." });
     return false;
   }

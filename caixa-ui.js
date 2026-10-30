@@ -4,6 +4,7 @@ import { movimentos, saldos, projecao, fluxoMensal, cheques, chequesNaAbertura, 
 import { grupoPorId } from "./lib/planoContas.js";
 import { somarDias } from "./lib/orcamentos.js";
 import { recebidoDeFiadoAnterior } from "./lib/receber.js";
+import { hojeSP } from "./lib/datas.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -11,7 +12,7 @@ const moeda = (v) => (v == null ? "—" : new Intl.NumberFormat("pt-BR", { style
 const dataBR = (d) => (d ? d.slice(0, 10).split("-").reverse().join("/") : "");
 const num = (v) => (v === "" || v == null ? null : Number(String(v).replace(",", ".")));
 const C = () => window.Caixa;
-const hoje = () => C()?.hoje() || new Date().toISOString().slice(0, 10);
+const hoje = () => C()?.hoje() || hojeSP();
 
 const estado = { refazer: false, mesFluxo: null, contaFluxo: "", filtroRecebidos: "a_compensar", filtroEmitidos: "a_compensar" };
 
@@ -339,14 +340,41 @@ async function salvarAbertura(e) {
   await C().recarregar();
 }
 
+// Janela própria para pedir um valor ou uma data (no celular abre o teclado numérico ou o calendário).
+// Devolve o texto digitado, ou null se a pessoa cancelar.
+function perguntar({ titulo, texto = "", tipo = "valor", inicial = "" }) {
+  let m = $("modal-pergunta");
+  if (!m) {
+    document.body.insertAdjacentHTML("beforeend", `<div id="modal-pergunta" class="modal-overlay" style="display:none"><form class="modal-content glass-panel" id="perg-form">
+      <h2 id="perg-titulo"></h2><p id="perg-texto" class="texto-suave"></p><input id="perg-campo" required>
+      <div class="export-actions"><button type="button" class="btn-icon" id="perg-cancelar">Cancelar</button><button type="submit" class="btn-primary" id="perg-ok">Salvar</button></div></form></div>`);
+    m = $("modal-pergunta");
+  }
+  $("perg-titulo").textContent = titulo;
+  $("perg-texto").textContent = texto;
+  const campo = $("perg-campo");
+  campo.type = tipo === "data" ? "date" : "number";
+  campo.step = "0.01";
+  campo.inputMode = tipo === "data" ? "" : "decimal";
+  campo.value = inicial;
+  m.style.display = "flex";
+  campo.focus();
+  return new Promise((resolve) => {
+    const fim = (v) => { m.style.display = "none"; $("perg-form").onsubmit = null; $("perg-cancelar").onclick = null; resolve(v); };
+    $("perg-form").onsubmit = (e) => { e.preventDefault(); fim(campo.value); };
+    $("perg-cancelar").onclick = () => fim(null);
+  });
+}
+
 async function conferir(conta) {
+  await C().recarregar(); // o "esperado" inclui o que outro aparelho lançou até agora
   const { movs, ab } = dados();
   const data = hoje();
   const calculado = saldos(movs, ab, data).porConta[conta];
-  const rotulo = conta === "gaveta" ? "Quanto tem na gaveta (contagem)?" : conta === "cheques_carteira" ? "Quanto soma os cheques em carteira?" : `Saldo do extrato do ${NOMES_CONTAS[conta]} hoje?`;
-  const resp = prompt(`${rotulo}\n\nCalculado pelo sistema: ${moeda(calculado)}`);
+  const rotulo = conta === "gaveta" ? "Fechar gaveta: quanto tem na gaveta?" : conta === "cheques_carteira" ? "Quanto soma os cheques em carteira?" : `Saldo do extrato do ${NOMES_CONTAS[conta]} hoje`;
+  const resp = await perguntar({ titulo: rotulo, texto: `Esperado pelo sistema: ${moeda(calculado)}` });
   if (resp === null) return;
-  const informado = num(resp.replace(/\./g, "").replace(",", ".")) ?? num(resp);
+  const informado = num(resp);
   if (informado == null || !Number.isFinite(informado)) return alert("Valor inválido.");
   try {
     const r = await postar({ conferencia: { data, conta, informado, calculado } });
@@ -445,10 +473,11 @@ document.addEventListener("click", (e) => {
   const t = e.target;
   if (t.dataset.chDevolver) {
     const [id, p] = t.dataset.chDevolver.split("|");
-    const data = prompt("Data em que o cheque voltou (AAAA-MM-DD):", hoje());
-    if (data === null) return;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return alert("Data inválida. Use AAAA-MM-DD.");
-    acaoCheque({ id, tipo: "recebido", pagamento: Number(p), devolvidoEm: data });
+    perguntar({ titulo: "Cheque devolvido", texto: "Data em que o cheque voltou:", tipo: "data", inicial: hoje() }).then((data) => {
+      if (data === null) return;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return alert("Data inválida.");
+      acaoCheque({ id, tipo: "recebido", pagamento: Number(p), devolvidoEm: data });
+    });
   }
   if (t.dataset.chDesfazer) {
     const [id, p] = t.dataset.chDesfazer.split("|");

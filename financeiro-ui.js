@@ -8,6 +8,7 @@ import { criarEditorPagamentos } from "./pagamentos.js";
 import { recebidoDeFiadoAnterior } from "./lib/receber.js";
 import { sugestaoDe } from "./lib/migracaoV2.js";
 import { criarItensCaixa } from "./itens-caixa.js";
+import { hojeSP } from "./lib/datas.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -77,7 +78,7 @@ function renderSub() {
     const mesBR = mesRelatorio().split("-").reverse().join("/");
     if (sub === "fluxo") { $("rel-titulo-impressao").textContent = `Fluxo de caixa · ${mesBR}`; window.CaixaUI?.fluxo($("rel-fluxo"), mesRelatorio()); }
     if (sub === "formas") renderFormas();
-    if (sub === "receber") { $("rel-titulo-impressao").textContent = `A receber (fiado) · ${(C()?.hoje() || "").split("-").reverse().join("/")}`; window.ReceberUI?.relatorio($("rel-receber")); }
+    if (sub === "receber") { $("rel-titulo-impressao").textContent = `A receber · ${(C()?.hoje() || "").split("-").reverse().join("/")}`; window.ReceberUI?.relatorio($("rel-receber")); }
     if (sub === "orcamentos") { $("rel-titulo-impressao").textContent = `Orçamentos · ${mesBR}`; window.Orcamentos?.relatorio($("rel-orcamentos-conteudo"), mesRelatorio()); }
   }
   if (grupo === "ajustes") {
@@ -135,11 +136,11 @@ function sugerirPagoCom(conta, fornecedor) {
 function renderFormulario() {
   estado.idPendente = null; // formulário novo, lançamento novo
   const tipo = tipoAtual();
-  const hoje = C()?.hoje() || new Date().toISOString().slice(0, 10);
+  const hoje = C()?.hoje() || hojeSP();
   const form = $("fin-form");
   const fornecedores = [...new Set((C()?.itens || []).map((l) => l.fornecedor).filter(Boolean))].sort();
   let html = `<div class="form-row">
-      <div class="form-group"><label for="ff-data">Data (competência)</label><input type="date" id="ff-data" value="${hoje}" required></div>`;
+      <div class="form-group"><label for="ff-data">Data</label><input type="date" id="ff-data" value="${hoje}" required></div>`;
   if (tipo === "venda") {
     html += `
       <div class="form-group"><label for="ff-conta">Tipo de receita</label><select id="ff-conta">${opcoesContas(ehReceitaVenda, "venda_produtos")}</select></div>
@@ -153,10 +154,10 @@ function renderFormulario() {
     <fieldset class="ff-itens" id="ff-itens-bloco"><legend>Itens vendidos</legend>
       <div id="ff-itens"></div>
       <p class="aviso aviso-alerta" id="ff-itens-aviso">Sem itens, o custo será estimado. Para o lucro sair certo, adicione os itens ou use a aba Vender.</p>
-      <p class="sigilo" id="ff-cmv-calculado" hidden>Custo dos produtos (CMV) calculado pelos itens: <strong></strong></p>
+      <p class="sigilo" id="ff-cmv-calculado" hidden>Custo dos produtos calculado pelos itens: <strong></strong></p>
     </fieldset>
     <div class="form-group"><label>Formas de pagamento</label><div id="ff-pagamentos"></div></div>
-    <div class="form-group" id="ff-cmv-grupo"><label for="ff-cmv">Custo dos produtos (CMV), se souber</label>
+    <div class="form-group" id="ff-cmv-grupo"><label for="ff-cmv">Custo dos produtos, se souber</label>
       <input type="number" id="ff-cmv" step="0.01" min="0" inputmode="decimal" placeholder="vazio = estimado pela margem padrão">
       <small class="texto-suave">Sem itens e sem custo, o DRE estima pela margem padrão e marca como "estimado".</small></div>`;
   } else if (tipo === "transferencia") {
@@ -418,7 +419,8 @@ function renderLista() {
   if (!C()) return;
   const lista = filtrarLista();
   estado.visivel = lista;
-  const LIMITE = 400;
+  // Mostra de 300 em 300 ("Mostrar mais"); filtros e busca voltam para os primeiros 300
+  const LIMITE = estado.limiteLista || 300;
   estado.mostrados = lista.slice(0, LIMITE);
   $("fin-lista-body").innerHTML = lista.slice(0, LIMITE).map((l) => {
     const c = contaPorId[l.conta];
@@ -440,6 +442,8 @@ function renderLista() {
   }).join("") || '<tr><td colspan="8" class="texto-suave">Nenhum lançamento com esse filtro.</td></tr>';
   const total = lista.reduce((s, l) => s + (foraDoSaldo(l) ? 0 : (naturezaDaConta(l.conta) === "entrada" ? 1 : -1) * Math.round(l.value * 100)), 0) / 100;
   $("fin-lista-contagem").textContent = `${lista.length} lançamentos${lista.length > LIMITE ? ` (mostrando ${LIMITE})` : ""} · saldo do filtro ${moeda(total)}`;
+  $("fin-lista-mais").hidden = lista.length <= LIMITE;
+  $("fin-lista-mais").textContent = `Mostrar mais ${Math.min(300, lista.length - LIMITE)} (de ${lista.length - LIMITE} restantes)`;
   $("fin-sel-todos").checked = estado.mostrados.length > 0 && estado.mostrados.every((l) => estado.selecionados.has(String(l.id)));
   atualizarLote();
 }
@@ -549,8 +553,7 @@ function renderDRE() {
       <div><span>Compras do mês (viram estoque)</span><strong>${moeda(d.info.compras)}</strong></div>
       <div><span>Estoque estimado em R$ (compras − CMV)</span><strong>${moeda(estoque)}</strong></div>
       <div><span>Ponto de equilíbrio</span><strong>${moeda(d.info.pontoEquilibrio)}</strong></div>
-      ${doAnterior ? `<div><span>Recebido de fiado anterior à virada (entrou no caixa; não é venda deste mês)</span><strong>${moeda(doAnterior)}</strong></div>` : ""}
-      ${d.info.aportes ? `<div><span>Aportes do dono</span><strong>${moeda(d.info.aportes)}</strong></div>` : ""}
+            ${d.info.aportes ? `<div><span>Aportes do dono</span><strong>${moeda(d.info.aportes)}</strong></div>` : ""}
     </div>`;
 }
 
@@ -643,12 +646,12 @@ function renderFormas() {
   $("rel-titulo-impressao").textContent = `Vendas por forma de pagamento · ${mes.split("-").reverse().join("/")}`;
   $("rel-formas-conteudo").innerHTML = `
     <div class="table-container"><table class="tabela-fin">
-      <thead><tr><th>Forma</th><th>tPag</th><th class="num">Vendas</th><th class="num">Valor</th><th class="num">%</th></tr></thead>
-      <tbody>${r.linhas.map((l) => `<tr><td>${esc(l.nome)}</td><td>${esc(l.tPag)}</td><td class="num">${l.quantidade}</td><td class="num"><strong>${moeda(l.valor)}</strong></td><td class="num">${pct(l.pct)}</td></tr>`).join("")
-        || '<tr><td colspan="5" class="texto-suave">Nenhuma venda no mês.</td></tr>'}</tbody>
+      <thead><tr><th>Forma</th><th class="num">Vendas</th><th class="num">Valor</th><th class="num">%</th></tr></thead>
+      <tbody>${r.linhas.map((l) => `<tr><td>${esc(l.nome)}</td><td class="num">${l.quantidade}</td><td class="num"><strong>${moeda(l.valor)}</strong></td><td class="num">${pct(l.pct)}</td></tr>`).join("")
+        || '<tr><td colspan="4" class="texto-suave">Nenhuma venda no mês.</td></tr>'}</tbody>
       <tfoot><tr class="dre-total"><td colspan="2">Total</td><td class="num">${r.vendas}</td><td class="num"><strong>${moeda(r.total)}</strong></td><td></td></tr></tfoot>
     </table></div>
-    <p class="texto-suave">Pela data da venda (competência). Uma venda paga com duas formas aparece nas duas. O arquivo CSV e o detalhamento chegam na Fase 2D.</p>`;
+    <p class="texto-suave">Pela data da venda. Uma venda paga com duas formas aparece nas duas.</p>`;
 }
 
 // ---------- Configuração ----------
@@ -663,7 +666,7 @@ function renderConfig() {
       <thead><tr><th>Forma</th><th>Conta de destino</th><th>Código tPag (NF-e)</th></tr></thead>
       <tbody>${FORMAS_PADRAO.filter((f) => !f.soMigracao).map((f) => `<tr>
         <td>${esc(f.nome)}</td>
-        <td>${f.fiado ? '<span class="texto-suave">Contas a receber (Caixa › A receber)</span>' : `<select data-forma-conta="${f.id}">${op(c.formas[f.id].conta)}</select>`}</td>
+        <td>${f.fiado ? '<span class="texto-suave">A receber (Caixa › A receber)</span>' : `<select data-forma-conta="${f.id}">${op(c.formas[f.id].conta)}</select>`}</td>
         <td><input type="text" data-forma-tpag="${f.id}" value="${esc(c.formas[f.id].tPag)}" maxlength="2" inputmode="numeric" class="campo-curto"></td>
       </tr>`).join("")}</tbody></table></div>
     <small class="texto-suave">Códigos a confirmar com o escritório. PIX Bradesco (chave pelo WhatsApp) = 20 estático; PIX PicPay (QR na maquininha) = 17 dinâmico.</small>
@@ -797,8 +800,14 @@ $("aj-impressao-form").addEventListener("submit", async (e) => {
   }
 });
 $("orc-config-form").addEventListener("submit", salvarConfig);
-for (const id of ["fin-f-mes", "fin-f-tipo", "fin-f-conta"]) $(id).addEventListener("change", () => { estado.selecionados.clear(); renderLista(); });
-$("fin-f-busca").addEventListener("input", () => { estado.selecionados.clear(); renderLista(); });
+for (const id of ["fin-f-mes", "fin-f-tipo", "fin-f-conta"]) $(id).addEventListener("change", () => { estado.selecionados.clear(); estado.limiteLista = 300; renderLista(); });
+// Busca: espera a pessoa parar de digitar (com milhares de lançamentos, não recalcula a cada letra)
+let buscaTimer = null;
+$("fin-f-busca").addEventListener("input", () => {
+  clearTimeout(buscaTimer);
+  buscaTimer = setTimeout(() => { estado.selecionados.clear(); estado.limiteLista = 300; renderLista(); }, 180);
+});
+$("fin-lista-mais").addEventListener("click", () => { estado.limiteLista = (estado.limiteLista || 300) + 300; renderLista(); });
 $("fin-lista-body").addEventListener("change", (e) => {
   if (!e.target.classList.contains("fin-sel")) return;
   if (e.target.checked) estado.selecionados.add(e.target.value); else estado.selecionados.delete(e.target.value);

@@ -61,9 +61,10 @@ const saldo = async (nome) => nb(await card(nome).locator("strong").textContent(
 ok(await saldo("Gaveta") === "R$ 250,00" && await saldo("Bradesco") === "R$ 5.250,00" && await saldo("PicPay") === "R$ 200,00" && await saldo("Cheques em carteira") === "R$ 400,00", "saldos hoje: gaveta 250, Bradesco 5.250, PicPay 200 (débito D+1 − transferência), carteira 400");
 ok(nb(await page.locator(".saldos-grid .destaque").first().textContent()).includes("R$ 6.100,00"), "total R$ 6.100,00");
 
+const responderJanela = async (valor) => { await page.waitForSelector("#modal-pergunta", { state: "visible" }); await page.fill("#perg-campo", valor); await page.click("#perg-ok"); };
 // Conferir gaveta
-respostas.push("240");
 await card("Gaveta").locator("[data-conferir]").click();
+await responderJanela("240");
 await page.waitForTimeout(500);
 ok(nb(dialogos.at(-2) || "").includes("diferença de -R$ 10,00") || nb(dialogos.join("|")).includes("diferença de -R$ 10,00"), "conferência da gaveta mostra a diferença de −R$ 10,00");
 await page.waitForSelector(".saldo-conta");
@@ -89,8 +90,8 @@ await page.screenshot({ path: "caixa.png", fullPage: true });
 await page.click("#btn-tab-caixa"); await sub("caixa", "cheques");
 const rec = page.locator("#fin-cheques tr", { hasText: "José" });
 ok(nb(await page.textContent("#fin-cheques")).includes("Em carteira (a compensar)R$ 400,00"), "cheques: R$ 400 em carteira");
-respostas.push("2026-11-03");
 await rec.locator("[data-ch-devolver]").click();
+await responderJanela("2026-11-03");
 await page.waitForTimeout(500);
 ok((await lanc("chq1")).pagamentos[0].cheque.devolvidoEm === "2026-11-03", "marcado como devolvido");
 ok(nb(await page.textContent("#fin-cheques")).includes("Devolvidos (cobrar do cliente)R$ 400,00"), "aparece em devolvidos (cobrar do cliente)");

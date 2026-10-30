@@ -11,13 +11,14 @@ import {
 } from "./_dados.js";
 import { CEPILHADO_PADRAO, montarCatalogo, chavePrecoValida } from "../lib/catalogo.js";
 import { resumirLancamentos } from "../lib/resumo.js";
+import { hojeSP } from "../lib/datas.js";
 
 const naoPermitido = (response) => response.status(405).json({ error: "Method not allowed" });
 
 // Envolve a rota: senha, método aceito e erro padronizado
 function rota(metodos, fn) {
   return async (request, response) => {
-    if (!autorizar(request, response)) return;
+    if (!(await autorizar(request, response))) return;
     if (metodos && !metodos.includes(request.method)) return naoPermitido(response);
     try {
       await fn(request, response);
@@ -29,7 +30,7 @@ function rota(metodos, fn) {
 
 export const ROTAS = {
   // GET -> lançamentos, acumulado, config financeira, saldos e status do banco
-  getFinance: rota(null, async (request, response) => {
+  getFinance: rota(["GET"], async (request, response) => {
     const { migrado, migradoV2, financeItems, estornados, acumulado, configFinanceiro, saldos } = await lerTudo(kv(), chaves());
     response.status(200).json({
       migrado,
@@ -79,14 +80,14 @@ export const ROTAS = {
       if (!gravacaoBloqueada()) await salvarCopia(kv(), k, "download");
       backup = await montarBackup(kv(), k);
     }
-    const dia = new Date().toISOString().slice(0, 10);
+    const dia = hojeSP(); // nome do arquivo no dia de Brasília (export às 22h50 de 17/10 sai com 17/10)
     response.setHeader("Content-Disposition", `attachment; filename="madeireira_backup_${k.ambiente}_${dia}.json"`);
     response.status(200).json(backup);
   }),
 
   // Custos (data/custos.json) + preços de venda e config (KV).
   // Sem banco, devolve só os custos: a calculadora funciona e o vendedor digita os preços.
-  catalogo: rota(null, async (request, response) => {
+  catalogo: rota(["GET"], async (request, response) => {
     const custos = lerCustos();
     let precos = {}, config = {}, kvDisponivel = true;
     try {
@@ -157,7 +158,7 @@ export const ROTAS = {
 
   // POST { confirmacao: "RESTAURAR", arquivo: <conteúdo do backup> }
   restaurar: async (request, response) => {
-    if (!autorizar(request, response)) return;
+    if (!(await autorizar(request, response))) return;
     if (request.method !== "POST") return naoPermitido(response);
     if (request.body?.confirmacao !== "RESTAURAR") {
       return response.status(400).json({ error: 'Envie confirmacao: "RESTAURAR".' });
@@ -175,7 +176,7 @@ export const ROTAS = {
   }),
 
   // Resumo do banco (quantidade e totais por mês, acumulado) para conferir com um arquivo de backup.
-  resumo: rota(null, async (request, response) => {
+  resumo: rota(["GET"], async (request, response) => {
     const { migrado, financeItems, acumulado } = await lerTudo(kv(), chaves());
     response.status(200).json({ status: { ...statusBanco(), migrado }, resumo: resumirLancamentos(financeItems, acumulado) });
   }),

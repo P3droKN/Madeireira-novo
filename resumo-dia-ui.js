@@ -4,6 +4,7 @@
 import { resumoDoDia } from "./lib/resumoDia.js";
 import { somarDias } from "./lib/orcamentos.js";
 import { lojaDaConfig } from "./lib/impressao.js";
+import { hojeSP } from "./lib/datas.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -12,7 +13,7 @@ const dataBR = (d) => (d ? d.slice(0, 10).split("-").reverse().join("/") : "");
 const horaBR = (iso) => (iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }) : "—");
 const pct = (v) => (v == null ? "—" : `${(v * 100).toFixed(1).replace(".", ",")}%`);
 const C = () => window.Caixa;
-const hoje = () => C()?.hoje() || new Date().toISOString().slice(0, 10);
+const hoje = () => C()?.hoje() || hojeSP();
 
 const estado = { de: null, ate: null, periodo: false, filtro: "todos", semCusto: false, el: null, r: null };
 

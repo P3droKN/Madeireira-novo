@@ -4,6 +4,8 @@ import { contasAReceber, abertasDoCliente, textoCobrancaFiado } from "./lib/rece
 import { cheques } from "./lib/caixa.js";
 import { linkWhatsApp, normalizarTelefone, somarDias } from "./lib/orcamentos.js";
 import { criarEditorPagamentos } from "./pagamentos.js";
+import { hojeSP } from "./lib/datas.js";
+import { FORMAS_PADRAO } from "./lib/planoContas.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -11,7 +13,7 @@ const moeda = (v) => new Intl.NumberFormat("pt-BR", { style: "currency", currenc
 const dataBR = (d) => (d ? d.slice(0, 10).split("-").reverse().join("/") : "—");
 const num = (v) => (v === "" || v == null ? null : Number(String(v).replace(",", ".")));
 const C = () => window.Caixa;
-const hoje = () => C()?.hoje() || new Date().toISOString().slice(0, 10);
+const hoje = () => C()?.hoje() || hojeSP();
 const centavos = (v) => Math.round(Number(v || 0) * 100);
 
 const estado = { visao: "dividas", busca: "", quitados: false, abertos: new Set(), atual: null, editor: null, editandoCliente: null, el: null };
@@ -50,7 +52,7 @@ function render(el) {
   const atrasados = r.porCliente.filter((c) => c.atrasado > 0).length;
   el.innerHTML = `
   <div class="saldos-grid receber-cards">
-    <div class="total-bloco"><span>A receber (fiado)</span><strong>${moeda(r.totalAberto)}</strong><small class="texto-suave">${r.porCliente.filter((c) => c.aberto > 0).length} cliente(s)</small>${r.totalContaCorrente ? `<small class="texto-suave">conta corrente ${moeda(r.totalContaCorrente)} · com vencimento ${moeda(r.totalComVencimento)}</small>` : ""}${r.comAlerta ? `<small><span class="tag tag-alerta">⚠ ${r.comAlerta} conta(s) corrente(s) com alerta</span></small>` : ""}</div>
+    <div class="total-bloco"><span>A receber</span><strong>${moeda(r.totalAberto)}</strong><small class="texto-suave">${r.porCliente.filter((c) => c.aberto > 0).length} cliente(s)</small>${r.totalContaCorrente ? `<small class="texto-suave">conta corrente ${moeda(r.totalContaCorrente)} · com vencimento ${moeda(r.totalComVencimento)}</small>` : ""}${r.comAlerta ? `<small><span class="tag tag-alerta">⚠ ${r.comAlerta} conta(s) corrente(s) com alerta</span></small>` : ""}</div>
     <div class="total-bloco"><span>Atrasado</span><strong class="${r.totalAtrasado ? "type-expense" : ""}">${moeda(r.totalAtrasado)}</strong><small class="texto-suave">${atrasados} cliente(s) com atraso</small></div>
     <div class="total-bloco"><span>Cheques em carteira</span><strong>${moeda(carteira)}</strong><small class="texto-suave">a compensar</small></div>
     <div class="total-bloco destaque"><span>Total na rua</span><strong>${moeda(naRua)}</strong><small class="texto-suave">fiado + cheques em carteira</small></div>
@@ -95,7 +97,7 @@ function renderConteudo(rPronto) {
     <div class="receber-secao-titulo"><h3>Fiado com vencimento</h3><span class="texto-suave">${moeda(r.totalComVencimento)}</span></div>
     <div class="table-container"><table class="tabela-fin tabela-receber" id="rc-tabela-venc">
       <thead><tr><th>Cliente</th><th class="num">Em aberto</th><th class="num">Atrasado</th><th class="num">Maior atraso</th><th>Próximo vencimento</th><th>Ações</th></tr></thead>
-      <tbody>${comVenc.map((c) => linhaCliente(c)).join("") || '<tr><td colspan="6" class="texto-suave">Ninguém devendo. As vendas em "Fiado (a receber)" aparecem aqui.</td></tr>'}</tbody>
+      <tbody>${comVenc.map((c) => linhaCliente(c)).join("") || '<tr><td colspan="6" class="texto-suave">Ninguém devendo. As vendas em Fiado aparecem aqui.</td></tr>'}</tbody>
     </table></div>`;
   $("rc-quitados").addEventListener("change", (e) => { estado.quitados = e.target.checked; renderConteudo(); });
 }
@@ -159,7 +161,8 @@ function detalheCliente(c) {
   </div>`;
 }
 
-const NOMES_FORMA = { dinheiro: "Dinheiro", pix_bradesco: "PIX Bradesco", pix_picpay: "PIX PicPay", transferencia: "Transferência", debito: "Débito", credito: "Crédito", credito_parcelado: "Crédito parcelado", cheque: "Cheque" };
+// Os mesmos nomes de forma do resto do sistema
+const NOMES_FORMA = Object.fromEntries(FORMAS_PADRAO.map((f) => [f.id, f.nome.replace(/\s*\(.*\)$/, "")]));
 const nomeForma = (f) => NOMES_FORMA[f] || f;
 
 // ---------- Clientes (cadastro) ----------

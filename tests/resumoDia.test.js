@@ -28,7 +28,7 @@ test("dia com à vista, fiado, crédito, débito, recebimento de fiado, saída e
   const r = resumoDoDia({ lancamentos: dia20(), config: {}, saldos, de: "2026-10-20", clientes });
   assert.deepEqual(r.quadros, { vendido: 1200, pedidos: 4, ticketMedio: 300, entrou: 450, saiu: 500, saldo: -50, fiadoVendido: 300, recebidoFiado: 250, recebidoAnterior: 250 });
   // entradas por forma: o total bate com vendido + recebimentos
-  assert.deepEqual(r.entradas.formas.map((f) => [f.nome, f.quantidade, f.valor]), [["Dinheiro", 1, 200], ["Débito", 1, 100], ["Crédito parcelado 3x", 1, 600], ["Fiado / a prazo", 1, 300]]);
+  assert.deepEqual(r.entradas.formas.map((f) => [f.nome, f.quantidade, f.valor]), [["Dinheiro", 1, 200], ["Débito", 1, 100], ["Crédito parcelado 3x", 1, 600], ["Fiado", 1, 300]]);
   assert.ok(r.entradas.formas.find((f) => f.forma === "fiado").naoEntraNoCaixa);
   assert.deepEqual(r.entradas.recebimentos.map((f) => [f.nome, f.valor, f.anterior]), [["PIX Bradesco", 250, 250]]);
   assert.equal(r.entradas.total, 1450);
@@ -90,4 +90,37 @@ test("soma dos dias = mês (vendas, CMV e movimento de cada conta); período som
   const mes = resumoDoDia({ lancamentos: l, config: {}, saldos, de: "2026-10-01", ate: "2026-10-31", clientes });
   assert.equal(mes.resultado.vendas, dre.valores.receitaBruta);
   assert.equal(mes.quadros.vendido, dre.valores.receitaBruta);
+});
+
+test("período que começa antes da abertura: o início é a própria abertura (fim do período = fim do último dia)", () => {
+  const l = dia20();
+  const um = resumoDoDia({ lancamentos: l, config: {}, saldos, de: "2026-10-20", clientes });
+  const periodo = resumoDoDia({ lancamentos: l, config: {}, saldos, de: "2026-09-25", ate: "2026-10-20", clientes });
+  assert.ok(periodo.contas.inicioNaAbertura);
+  assert.deepEqual(periodo.contas.porConta.map((c) => c.inicio), [300, 1000, 0, 0]);
+  assert.deepEqual(periodo.contas.porConta.map((c) => c.fim), um.contas.porConta.map((c) => c.fim));
+});
+
+test("cheque compensado e depois devolvido: aparece nos compensados do dia em que compensou", () => {
+  const l = [venda("2026-10-10", 500, [pg("cheque", 500, { cheque: { numero: "77", compensacao: "2026-10-15", devolvidoEm: "2026-10-18" } })])];
+  assert.equal(resumoDoDia({ lancamentos: l, config: {}, saldos, de: "2026-10-15" }).cheques.compensados.length, 1);
+  assert.equal(resumoDoDia({ lancamentos: l, config: {}, saldos, de: "2026-10-18" }).cheques.devolvidos.length, 1);
+});
+
+test("fuso horário: perdido às 22h30 em Brasília conta no próprio dia; orçamento na lixeira não conta", () => {
+  const orcamentos = [
+    { id: "ORC-0001", data: "2026-10-20", status: "perdido", perdidoEm: "2026-10-21T01:30:00Z", total: 100 }, // 22h30 de 20/10 em Brasília
+    { id: "ORC-0002", data: "2026-10-20", status: "aberto", excluidoEm: "2026-10-20T15:00:00Z", total: 50 },
+  ];
+  const r = resumoDoDia({ lancamentos: [], config: {}, saldos, de: "2026-10-20", orcamentos });
+  assert.deepEqual([r.orcamentos.perdidos.length, r.orcamentos.criados.length], [1, 1]);
+});
+
+test("dia da abertura (a virada): começa com os saldos da abertura e o fim = início do dia seguinte", () => {
+  const l = [venda("2026-10-01", 50, [pg("dinheiro", 50)])];
+  const d1 = resumoDoDia({ lancamentos: l, config: {}, saldos, de: "2026-10-01" });
+  const d2 = resumoDoDia({ lancamentos: l, config: {}, saldos, de: "2026-10-02" });
+  assert.deepEqual(d1.contas.porConta.map((c) => c.inicio), [300, 1000, 0, 0]);
+  assert.equal(d1.contas.porConta[0].fim, 350);
+  assert.deepEqual(d2.contas.porConta.map((c) => c.inicio), d1.contas.porConta.map((c) => c.fim));
 });

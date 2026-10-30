@@ -125,7 +125,7 @@ await page.click("#imp-fechar");
 // 4. Busca pelo número
 for (const termo of ["V-0001", "1", "v1"]) {
   await page.fill("#fin-f-busca", termo); await page.dispatchEvent("#fin-f-busca", "input");
-  await page.waitForTimeout(150);
+  await page.waitForTimeout(450); // a busca espera a pessoa parar de digitar
   ok((await page.locator("#fin-lista-body [data-vias]").count()) === 1, `busca "${termo}" acha a venda V-0001`);
 }
 await page.fill("#fin-f-busca", ""); await page.dispatchEvent("#fin-f-busca", "input");

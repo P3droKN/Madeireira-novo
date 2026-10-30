@@ -68,7 +68,7 @@ ok(v2 && v2.clienteId === "C1" && v2.pagamentos[0].fiado.vencimento === "2026-10
 
 // 3. A receber
 await irReceber();
-ok(await card("A receber (fiado)") === "R$ 350,00" && await card("Atrasado") === "R$ 100,00" && await card("Total na rua") === "R$ 350,00", "cartões: a receber R$ 350, atrasado R$ 100, na rua R$ 350");
+ok(await card("A receber") === "R$ 350,00" && await card("Atrasado") === "R$ 100,00" && await card("Total na rua") === "R$ 350,00", "cartões: a receber R$ 350, atrasado R$ 100, na rua R$ 350");
 ok(nb(await linhaZe().textContent()).includes("5 dia(s)"), "Zé: maior atraso 5 dias (venceu 05/10)");
 ok((await linhaZe().getAttribute("class")).includes("cor-vermelho"), "cliente com atraso fica em vermelho");
 ok(nb(await linhaZe().textContent()).includes("sem WhatsApp"), "sem WhatsApp: não mostra Cobrar");
@@ -85,7 +85,7 @@ await page.click("#rc-receber-form button[type=submit]");
 await page.waitForFunction(() => document.getElementById("modal-receber").style.display === "none");
 await page.waitForTimeout(300);
 ok(nb(dialogos.at(-1)).includes("Recebido R$ 150,00 de Zé da Obra") && nb(dialogos.at(-1)).includes("Ainda em aberto: R$ 200,00"), "recebimento parcial: resta R$ 200");
-ok(await card("A receber (fiado)") === "R$ 200,00" && await card("Atrasado") === "R$ 0,00" && await card("Cheques em carteira") === "R$ 150,00" && await card("Total na rua") === "R$ 350,00",
+ok(await card("A receber") === "R$ 200,00" && await card("Atrasado") === "R$ 0,00" && await card("Cheques em carteira") === "R$ 150,00" && await card("Total na rua") === "R$ 350,00",
   "abate a mais antiga (a vencida): atrasado zera; cheque de R$ 150 na carteira; na rua continua R$ 350");
 const rec = (await lanc()).find((l) => l.conta === "recebimento");
 ok(rec && rec.clienteId === "C1" && rec.pagamentos[0].conta === "cheques_carteira", "recebimento gravado (conta recebimento, cheque na carteira)");
@@ -94,11 +94,12 @@ ok(rec && rec.clienteId === "C1" && rec.pagamentos[0].conta === "cheques_carteir
 await sub("caixa", "cheques");
 const linhaCh = page.locator("#fin-cheques tr", { hasText: "123" });
 ok(nb(await linhaCh.textContent()).includes("Zé da Obra"), "cheque do recebimento aparece em Cheques com o cliente");
-respostas.push("2026-10-21");
 await linhaCh.locator("[data-ch-devolver]").click();
+await page.waitForSelector("#modal-pergunta", { state: "visible" });
+await page.fill("#perg-campo", "2026-10-21"); await page.click("#perg-ok");
 await page.waitForTimeout(500);
 await irReceber();
-ok(await card("A receber (fiado)") === "R$ 350,00" && await card("Cheques em carteira") === "R$ 0,00", "cheque devolvido: a dívida volta a R$ 350 e sai da carteira");
+ok(await card("A receber") === "R$ 350,00" && await card("Cheques em carteira") === "R$ 0,00", "cheque devolvido: a dívida volta a R$ 350 e sai da carteira");
 await linhaZe().locator('[data-rc="ver"]').click();
 ok(nb(await page.textContent("#fin-receber .receber-detalhe")).includes("Cheque devolvido nº 123"), "detalhe mostra o cheque devolvido como dívida");
 
@@ -106,7 +107,7 @@ ok(nb(await page.textContent("#fin-receber .receber-detalhe")).includes("Cheque 
 await page.locator("#fin-receber [data-rc-estornar]").first().click();
 await page.waitForTimeout(600);
 await irReceber();
-ok(await card("A receber (fiado)") === "R$ 350,00" && !(await lanc()).some((l) => l.conta === "recebimento"), "estornar recebimento: some e a conta volta a ficar como antes do recebimento (R$ 350)");
+ok(await card("A receber") === "R$ 350,00" && !(await lanc()).some((l) => l.conta === "recebimento"), "estornar recebimento: some e a conta volta a ficar como antes do recebimento (R$ 350)");
 
 // 7. Recebimento total em dinheiro: quita e entra na gaveta
 await linhaZe().locator('[data-rc="receber"]').click();
@@ -126,7 +127,7 @@ await page.clock.setFixedTime(new Date("2026-11-05T10:00:00-03:00"));
 await page.reload();
 await page.waitForFunction(() => window.Caixa && window.Caixa.migradoV2);
 await irReceber();
-ok(await card("A receber (fiado)") === "R$ 80,00" && await card("Atrasado") === "R$ 80,00", "compra nova depois de quitar: só ela fica em aberto (a paga não reabre)");
+ok(await card("A receber") === "R$ 80,00" && await card("Atrasado") === "R$ 80,00", "compra nova depois de quitar: só ela fica em aberto (a paga não reabre)");
 await page.locator('label:has(input[name="rc-visao"][value="clientes"])').click();
 await page.locator("#fin-receber tr", { hasText: "Zé da Obra" }).locator("[data-rc-editar]").click();
 await page.fill("#rc-cli-tel", "(47) 98888-7777");
@@ -159,7 +160,7 @@ ok(nb(await page.textContent("#fin-dre-conteudo")).includes("R$ 330,00"), "DRE d
 await page.click("#btn-tab-caixa"); await sub("caixa", "lista");
 await page.selectOption("#fin-f-tipo", "fiado");
 const lista = nb(await page.textContent("#fin-lista-body"));
-ok(lista.includes("Recebimento de fiado") && lista.includes("Fiado (a receber)"), "Lançamentos › 'Fiado e recebimentos' mostra vendas fiado e recebimentos");
+ok(lista.includes("Recebimento de fiado") && lista.includes("Fiado"), "Lançamentos › 'Fiado e recebimentos' mostra vendas fiado e recebimentos");
 
 // 11. Desligar o fiado nos Ajustes
 await page.click("#btn-tab-ajustes"); await sub("ajustes", "financeiro");
