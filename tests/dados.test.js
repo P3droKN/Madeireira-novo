@@ -861,3 +861,28 @@ test("duas conferências (fechar gaveta) ao mesmo tempo não se apagam; abertura
   assert.ok(CHAVES_ZERAR.includes("conferencias"));
   assert.ok("madeireira_conferencias" in (await montarBackup(kv, K)).chaves);
 });
+
+test("dois aparelhos no mesmo lançamento: impressão, cheque e estorno não apagam uma correção feita no mesmo instante", async () => {
+  const { marcarImpresso, atualizarCheque } = await import("../api/_dados.js");
+  const base = kvFalso({ [K.finance]: [] });
+  await migrar(base, K);
+  // Banco "lento": cada leitura demora, para as gravações dos dois aparelhos se cruzarem
+  const devagar = (fn) => async (...a) => { const r = await fn(...a); await new Promise((ok) => setTimeout(ok, 20)); return r; };
+  const kv = { ...base, hget: devagar(base.hget), hmget: devagar(base.hmget) };
+  const venda = (value, extra = {}) => ({ id: "V1", v: 2, conta: "venda_produtos", value, competencia: "2026-10-01",
+    pagamentos: [{ forma: "cheque", valor: value, cheque: { compensacao: "2026-10-20" } }], ...extra });
+  await salvarLancamentos(kv, K, [venda(100)]);
+  const v0 = (await kv.hget(K.lancamentos, "V1")).versao;
+  await Promise.all([marcarImpresso(kv, K, "V1"), salvarLancamentos(kv, K, [venda(150, { versaoBase: v0 })])]);
+  let l = await kv.hget(K.lancamentos, "V1");
+  assert.equal(l.value, 150, "a correção ficou");
+  assert.ok(l.impressoEm, "a marca de impressão ficou");
+  await Promise.all([
+    atualizarCheque(kv, K, { id: "V1", tipo: "recebido", pagamento: 0, compensacao: "2026-10-25" }),
+    salvarLancamentos(kv, K, [venda(180, { pagamentos: [{ forma: "cheque", valor: 180, cheque: { compensacao: "2026-10-20" } }] })]),
+  ]);
+  l = await kv.hget(K.lancamentos, "V1");
+  assert.equal(l.value, 180, "a correção não some com a atualização do cheque");
+  // a trava é liberada: nada fica preso
+  assert.equal([...base.dados.keys()].filter((c) => c.includes(":lanc:")).length, 0);
+});

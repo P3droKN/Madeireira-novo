@@ -105,4 +105,32 @@ await page.locator(`#fin-lista-body [data-excluir="${vOrc.id}"]`).click();
 await page.waitForTimeout(600);
 o = JSON.parse((await db()).madeireira_orcamentos["ORC-0001"]);
 ok(o.status === "aberto" && page.dialogos.some((d) => d.includes('ORC-0001 voltou para "Em aberto"')), "estornar a venda reabre o orçamento (e avisa)");
+
+// 8. Memória do aparelho cheia: a cópia local não cabe, mas o sistema continua online e gravando
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 950 }, locale: "pt-BR", timezoneId: "America/Sao_Paulo" });
+  await ctx.addInitScript(() => {
+    const orig = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k, v) {
+      if (String(k).startsWith("madeireira_finance") || String(k).startsWith("madeireira_acumulado")) throw new DOMException("cheio", "QuotaExceededError");
+      return orig.call(this, k, v);
+    };
+  });
+  const p = await ctx.newPage();
+  p.dialogos = [];
+  p.on("dialog", async (d) => { p.dialogos.push(d.message()); await d.accept(); });
+  p.on("pageerror", (e) => console.log("ERRO JS:", e.message));
+  await p.goto(URL);
+  await p.fill("#senha-input", "pinho123"); await p.click("#senha-form button");
+  await p.waitForFunction(() => window.Caixa && window.Caixa.migradoV2);
+  ok(!(await p.evaluate(() => window.Caixa.somenteLeitura)) && !(await p.textContent("body")).includes("Sem conexão com a nuvem"), "memória do aparelho cheia: continua online (sem \"Sem conexão\")");
+  const antes = (await lanc()).length;
+  await p.selectOption("#material", "PINUS"); await p.selectOption("#dimension", "PINUS|1x2x2.50");
+  await p.fill("#quantity-pieces", "2"); await p.click("#btn-adicionar");
+  await p.click("#btn-registrar-venda");
+  await fecharVias(p, p.dialogos);
+  await p.waitForTimeout(600);
+  ok((await lanc()).length === antes + 1, "memória do aparelho cheia: a venda é gravada normalmente");
+  await ctx.close();
+}
 await browser.close();

@@ -335,3 +335,5 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - Mês: quadro "Quanto preciso vender por mês para empatar" no topo; caixa por conta do mês até hoje (o que vence depois fica na projeção de 30 dias de Caixa › Saldos).
 - DRE: linhas zeradas escondidas ("mostrar linhas zeradas"), um só bloco amarelo de avisos.
 - Imprimir: "Imprimir fechamento" (Dia) / "Imprimir relatório do mês" na mesma ordem da tela.
+
+**Varredura, complemento (antes da etapa 3):** trava curta por lançamento (`comTrava` em api/_dados.js, chave `<trava>:lanc:<id>`, expira em 15 s) em salvar/corrigir, marcar impressão, atualizar cheque e estornar: com dois aparelhos ao mesmo tempo, uma gravação espera a outra e lê o que ela gravou (teste "dois aparelhos no mesmo lançamento" em tests/dados.test.js). Teste e2e da memória do aparelho cheia em tests/e2e/criticos.mjs.

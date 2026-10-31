@@ -232,7 +232,35 @@ async function exigirMigracao(kv, k) {
 }
 
 // Cria ou edita lançamentos, um campo por id: nunca regrava a lista inteira.
-export async function salvarLancamentos(kv, k, itens) {
+// Trava curta por lançamento: duas gravações no mesmo registro (dois aparelhos ao mesmo tempo) passam uma
+// de cada vez, e a segunda lê o que a primeira gravou. Sem isso, marcar impressão, atualizar um cheque ou
+// estornar no instante de uma correção regravava o registro antigo e a correção se perdia.
+export async function comTrava(kv, k, ids, fn) {
+  const nomes = [...new Set(ids.filter(Boolean).map(String))].sort().map((id) => `${k.trava}:lanc:${id}`);
+  const presas = [];
+  try {
+    for (const nome of nomes) {
+      let ok = false;
+      for (let t = 0; t < 60 && !ok; t++) {
+        ok = Boolean(await kv.set(nome, "1", { nx: true, ex: 15 }));
+        if (!ok) await new Promise((r) => setTimeout(r, 50));
+      }
+      if (!ok) throw erro(409, "Outro aparelho está gravando este lançamento agora. Tente de novo em instantes.");
+      presas.push(nome);
+    }
+    return await fn();
+  } finally {
+    if (presas.length) await kv.del(...presas);
+  }
+}
+
+export const salvarLancamentos = (kv, k, itens) =>
+  comTrava(kv, k, Array.isArray(itens) && itens.length <= 50 ? itens.map((i) => i?.id) : [], () => salvarLancamentosSemTrava(kv, k, itens));
+export const marcarImpresso = (kv, k, id) => comTrava(kv, k, [id], () => marcarImpressoSemTrava(kv, k, id));
+export const excluirLancamento = (kv, k, id) => comTrava(kv, k, [id], () => excluirLancamentoSemTrava(kv, k, id));
+export const atualizarCheque = (kv, k, p) => comTrava(kv, k, [p?.id], () => atualizarChequeSemTrava(kv, k, p));
+
+async function salvarLancamentosSemTrava(kv, k, itens) {
   if (!Array.isArray(itens) || itens.length === 0 || itens.length > 50) {
     throw erro(400, "Envie de 1 a 50 lançamentos.");
   }
@@ -306,7 +334,7 @@ export async function salvarLancamentos(kv, k, itens) {
 export const numeroVenda = (n) => `V-${String(n).padStart(4, "0")}`;
 
 // Primeira impressão das vias: a partir daí, a via reimpressa sai marcada "2ª impressão em DD/MM"
-export async function marcarImpresso(kv, k, id) {
+async function marcarImpressoSemTrava(kv, k, id) {
   const atual = desembrulhar(await kv.hget(k.lancamentos, String(id)));
   if (!atual) throw erro(404, "Venda não encontrada.");
   if (atual.impressoEm) return { impressoEm: atual.impressoEm, primeira: false };
@@ -316,7 +344,7 @@ export async function marcarImpresso(kv, k, id) {
 }
 
 // Exclusão "suave": o lançamento fica guardado com a marca de excluído.
-export async function excluirLancamento(kv, k, id) {
+async function excluirLancamentoSemTrava(kv, k, id) {
   await exigirMigracao(kv, k);
   const atual = desembrulhar(await kv.hget(k.lancamentos, String(id)));
   if (!atual) throw erro(404, "Lançamento não encontrado.");
@@ -1161,7 +1189,7 @@ export async function registrarConferencia(kv, k, c) {
 }
 
 // Cheques: devolvido (ou desfazer), data de compensação e conta de depósito/saída
-export async function atualizarCheque(kv, k, p) {
+async function atualizarChequeSemTrava(kv, k, p) {
   const l = desembrulhar(await kv.hget(k.lancamentos, String(p?.id || "")));
   if (!l || l.excluido) throw erro(404, "Lançamento não encontrado.");
   const novo = { ...l };
