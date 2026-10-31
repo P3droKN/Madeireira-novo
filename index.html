@@ -81,7 +81,6 @@
                         <h2>Pedido</h2>
                         <div class="painel-acoes">
                             <button class="btn-icon" onclick="Calculadora.whatsapp()" title="Texto do orçamento para copiar e colar no WhatsApp (sem custo)">💬 Texto para WhatsApp</button>
-                            <button class="btn-icon" onclick="window.print()" title="Imprimir este pedido">🖨️ Imprimir</button>
                             <button class="btn-icon" onclick="Calculadora.limpar(true)" title="Remover todos os itens">Limpar</button>
                         </div>
                     </div>
@@ -170,9 +169,9 @@
                             </div>
                         </div>
                         <div class="botoes-finalizar">
-                            <button class="btn-icon" id="btn-imprimir-vias" onclick="Calculadora.imprimirRascunho()" title="Imprime o pedido da tela (ainda sem número). Depois de registrar, a venda sai com o número V-000X.">🖨 Imprimir 2 vias</button>
                             <button class="btn-icon btn-orcamento" id="btn-salvar-orcamento" onclick="Orcamentos.abrirSalvar()">💾 Salvar como orçamento</button>
-                            <button class="btn-success" id="btn-registrar-venda" onclick="registerDirectSale()">Registrar venda</button>
+                            <button class="btn-icon" id="btn-registrar-venda" onclick="registerDirectSale()" title="Grava a venda (V-000X). As vias podem ser impressas depois.">Registrar venda</button>
+                            <button class="btn-success" id="btn-registrar-imprimir" onclick="registerDirectSale({ imprimir: true })" title="Grava a venda e já manda as vias para a impressora">✅ Registrar e imprimir vias</button>
                         </div>
                         <p class="texto-suave nota">A venda grava, por item e no total: preço de tabela, preço final, variação e motivo. O custo dos itens fica guardado junto (CMV), sem lançar uma saída separada.</p>
                     </div>
@@ -706,6 +705,7 @@
                 <label><input type="radio" name="imp-modo" value="loja"><span>1 via: só da loja</span></label>
                 <label><input type="radio" name="imp-modo" value="cliente"><span>1 via: só do cliente</span></label>
             </div>
+            <div id="imp-incompleto" class="aviso aviso-alerta" hidden></div>
             <div id="imp-aviso" class="aviso aviso-alerta" hidden>Pedido grande: não cabe em meia folha, então cada via vai numa página inteira.</div>
             <div class="imp-previa" aria-label="Prévia da impressão"><div id="imp-previa-folha"></div></div>
             <div class="export-actions">

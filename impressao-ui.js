@@ -1,7 +1,7 @@
 // Janela de impressão das vias (pedidos e orçamentos): escolha 2 vias / só loja / só cliente (lembrada no
 // aparelho), prévia na tela, Imprimir (A4, sem cabeçalho e rodapé do navegador) e Baixar PDF.
 // O documento sai de lib/impressao.js: nada de custo, margem, tabela, % ou controle interno.
-import { documentoDaVenda, documentoDoOrcamento, folhaHtml, lojaDaConfig, CSS_FOLHA } from "./lib/impressao.js";
+import { documentoDaVenda, documentoDoOrcamento, folhaHtml, lojaDaConfig, faltaNaImpressao, CSS_FOLHA } from "./lib/impressao.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -41,10 +41,14 @@ function renderPrevia() {
 }
 
 /**
- * Abre a janela. venda: lançamento (já gravado: tem número) ou rascunho; orcamento: orçamento salvo.
+ * Abre a janela. venda: lançamento já gravado (tem número); orcamento: orçamento salvo.
  * titulo/mensagem: o que aparece no topo ("Venda V-0012 registrada", "Orçamento ORC-0005 salvo"…).
  */
-function abrir({ venda = null, orcamento = null, titulo = "", mensagem = "", exemplo = null } = {}) {
+/**
+ * imprimirJa: "✅ Registrar e imprimir vias" manda direto para a impressora (com a última escolha de vias),
+ * a não ser que falte algo em Ajustes › Impressão: aí a janela fica aberta com o aviso amarelo.
+ */
+function abrir({ venda = null, orcamento = null, titulo = "", mensagem = "", exemplo = null, imprimirJa = false } = {}) {
   estado.lojaExemplo = exemplo;
   if (venda) {
     const salvo = window.Caixa?.itens?.find((l) => String(l.id) === String(venda.id));
@@ -60,7 +64,7 @@ function abrir({ venda = null, orcamento = null, titulo = "", mensagem = "", exe
   }
   estado.paginaInteira = !cabeEmMeiaFolha(estado.doc);
   $("imp-titulo").textContent = titulo || (estado.doc.tipo === "pedido"
-    ? (estado.doc.numero ? `Imprimir pedido ${estado.doc.numero}` : "Imprimir pedido (ainda não registrado)")
+    ? `Imprimir pedido ${estado.doc.numero || ""}`
     : `Imprimir orçamento ${estado.doc.numero}`);
   $("imp-mensagem").innerHTML = mensagem;
   $("imp-mensagem").hidden = !mensagem;
@@ -68,7 +72,14 @@ function abrir({ venda = null, orcamento = null, titulo = "", mensagem = "", exe
   const r = document.querySelector(`input[name="imp-modo"][value="${modo}"]`) || document.querySelector('input[name="imp-modo"][value="duas"]');
   r.checked = true;
   renderPrevia();
+  const falta = faltaNaImpressao(loja());
+  $("imp-incompleto").hidden = !falta.length;
+  $("imp-incompleto").innerHTML = falta.length
+    ? `A via está saindo incompleta: falta ${esc(falta.join(", "))}. <a href="#" id="imp-ir-ajustes">Preencher em Ajustes › Impressão</a>`
+    : "";
+  $("imp-ir-ajustes")?.addEventListener("click", (e) => { e.preventDefault(); fechar(); window.Financeiro?.irPara("ajustes", "impressao"); });
   $("modal-impressao").style.display = "flex";
+  if (imprimirJa && !falta.length) setTimeout(imprimir, 60);
 }
 
 function fechar() { $("modal-impressao").style.display = "none"; }

@@ -343,3 +343,7 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - Logo opcional (Ajustes › Impressão, reduzido no aparelho para até 600 × 240 e guardado como data URL em `configFinanceiro.impressao.logo`, máx. 300 mil caracteres). Sem logo, nenhum espaço reservado; com logo, entra antes do nome com 13 mm de altura (o cabeçalho não cresce).
 - Padrão de `impressao` em lib/planoContas.js com os dados da loja; configuração salva no formato antigo (sem `pix`) é ignorada e vale o padrão. `faltaNaImpressao(loja)` lista o que falta (nome, endereço, telefone, Pix).
 - Cliente: campos `fixo, endereco, bairro, cidade, uf, documento, ie` (`dadosDaVia` em api/_dados.js; UF com 2 letras, CPF/CNPJ formatado). No formulário atual de clientes, em "Endereço e documentos (saem na via)".
+
+**Entrega final, etapa 4: Vender**
+- Botões: 💾 Salvar como orçamento · Registrar venda · ✅ Registrar e imprimir vias (`#btn-registrar-imprimir`, `registerDirectSale({ imprimir: true })`, mesma trava contra clique duplo). Registrar e imprimir abre a janela das vias e já manda para a impressora com a última escolha de vias; se faltar algo em Ajustes › Impressão, não imprime sozinho e mostra o aviso amarelo (`#imp-incompleto`) com link para Ajustes › Impressão. Corrigindo uma venda, o botão vira "✅ Salvar correção e imprimir vias".
+- Saíram a impressão de rascunho (`Calculadora.imprimirRascunho`, botão "🖨 Imprimir 2 vias") e o "🖨️ Imprimir" antigo do quadro Pedido (window.print da tela). Toda via sai de uma venda já registrada (com número) ou de um orçamento salvo.

@@ -78,13 +78,13 @@ await add("CEDRO_MESCLADO", "CEDRO_MESCLADO|1x2", 6, 2.5); await add("FORRO", "F
 await page.waitForFunction(() => document.querySelectorAll("#items-body tr.linha-item").length === 5);
 await muda(page.locator("#pct-geral"), -3);
 const totalTela = nb(await page.inputValue("#total-final"));
-ok(await page.isVisible("#btn-imprimir-vias") && nb(await page.textContent("#btn-imprimir-vias")).includes("Imprimir 2 vias"), "Vender: botão 🖨 Imprimir 2 vias ao lado de Registrar e Salvar orçamento");
-await page.click("#btn-imprimir-vias");
+ok(await page.isVisible("#btn-registrar-imprimir") && nb(await page.textContent("#btn-registrar-imprimir")) === "✅ Registrar e imprimir vias" && await page.isVisible("#btn-registrar-venda"),
+  "Vender: \"✅ Registrar e imprimir vias\" ao lado de \"Registrar venda\"");
+ok(!(await page.locator("#btn-imprimir-vias").count()) && !(await page.locator("button", { hasText: "🖨️ Imprimir" }).count()), "sem impressão de rascunho: saíram o \"🖨 Imprimir 2 vias\" e o \"🖨️ Imprimir\" antigo");
+await page.click("#btn-registrar-imprimir");
 await page.waitForSelector("#modal-impressao", { state: "visible" });
-ok(!nb(await page.textContent("#imp-previa-folha")).includes("V-0"), "antes de registrar: prévia sem número");
-await page.click("#imp-fechar");
-await page.click("#btn-registrar-venda");
-await page.waitForSelector("#modal-impressao", { state: "visible" });
+await page.waitForFunction(() => window.__impressoes.length === 1);
+ok(await page.isHidden("#imp-incompleto"), "Registrar e imprimir: vai direto para a impressora (Ajustes › Impressão completo, sem aviso)");
 ok(nb(await page.textContent("#imp-titulo")) === "Venda V-0001 registrada", "janela \"Venda V-0001 registrada\" (qualquer forma de pagamento)");
 ok(await page.isChecked('input[name="imp-modo"][value="duas"]'), "2 vias: loja + cliente vem marcado");
 const previa = nb(await page.textContent("#imp-previa-folha"));
@@ -96,8 +96,6 @@ const linhas = await page.$$eval("#imp-previa-folha .pv-via:first-child tbody tr
 const totalVia = await page.textContent("#imp-previa-folha .pv-via:first-child .pv-total strong");
 ok(linhas.length === 5 && linhas.reduce((s, t) => s + centavos(t), 0) === centavos(totalVia) && centavos(totalVia) === Math.round(Number(totalTela) * 100),
   `soma das 5 linhas impressas = total (${nb(totalVia)})`);
-await page.click("#imp-imprimir");
-await page.waitForFunction(() => window.__impressoes.length === 1);
 const p5 = await pdfDaUltimaImpressao("pedido-5-itens.pdf");
 ok(p5.paginas === 1, "Chrome: 2 vias de um pedido de 5 itens numa única folha A4");
 if (p5.texto != null) ok(!/custo|margem|tabela|%|selecionada|últimas peças/i.test(p5.texto) && p5.texto.includes("V-0001"), "PDF sem \"custo\", \"margem\", \"tabela\" nem \"%\"");
@@ -234,4 +232,19 @@ await page.click("#imp-cfg-logo-tirar");
 await page.click("#aj-impressao-form button[type=submit]");
 await page.waitForTimeout(400);
 ok(JSON.parse((await db()).madeireira_config_financeiro).impressao.logo === "", "\"Tirar o logo\" volta ao cabeçalho sem logo");
+
+// 12. Ajustes › Impressão incompleto: aviso amarelo com link, e "Registrar e imprimir" espera (não imprime incompleto)
+await page.fill("#imp-cfg-endereco", ""); await page.fill("#imp-cfg-pix", "");
+await page.click("#aj-impressao-form button[type=submit]");
+await page.waitForTimeout(400);
+await page.click("#btn-tab-vender");
+await add("PINUS", "PINUS|1x2x2.50", 2);
+const antesInc = (await impressoes()).length;
+await page.click("#btn-registrar-imprimir");
+await page.waitForSelector("#modal-impressao", { state: "visible" });
+await page.waitForTimeout(300);
+ok(await page.isVisible("#imp-incompleto") && nb(await page.textContent("#imp-incompleto")).includes("falta endereço, linha do Pix") && (await impressoes()).length === antesInc,
+  "Impressão incompleta: aviso amarelo (falta endereço, linha do Pix) e não imprime sozinho");
+await page.click("#imp-ir-ajustes");
+ok(await page.isHidden("#modal-impressao") && await page.isVisible("#aj-impressao"), "o link do aviso abre Ajustes › Impressão");
 await browser.close();

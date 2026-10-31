@@ -448,6 +448,7 @@ function renderVinculo() {
   $("btn-salvar-orcamento").textContent = v?.modo === "editar" ? `💾 Salvar alterações no ${v.id}` : "💾 Salvar como orçamento";
   $("btn-salvar-orcamento").hidden = v?.modo === "corrigir";
   $("btn-registrar-venda").textContent = v?.modo === "corrigir" ? `Salvar correção da ${v.numero || "venda"}` : "Registrar venda";
+  $("btn-registrar-imprimir").textContent = v?.modo === "corrigir" ? "✅ Salvar correção e imprimir vias" : "✅ Registrar e imprimir vias";
   if (!v || !estado.pedido.length) { el.hidden = true; return; }
   const textos = {
     corrigir: `Corrigindo a venda <strong>${esc(v.numero || "")}</strong> (antes ${moeda(v.valorAntes)}). Ao salvar, o número continua o mesmo e o custo, o caixa e o fiado são recalculados.`,
@@ -752,18 +753,6 @@ window.Calculadora = {
   },
 
   // Vender › 🖨 Imprimir 2 vias: o pedido que está na tela (rascunho, ainda sem número)
-  imprimirRascunho() {
-    if (!estado.pedido.length) return alert("O pedido está vazio. Adicione itens primeiro.");
-    const r = itensDaVenda(estado.pedido);
-    if (r.semPreco) return alert("Há item sem preço. Digite o preço na linha do item.");
-    let pagamentos = [];
-    try { pagamentos = editorPagamentos.ler(); } catch { /* formas ainda não fecham: a via sai sem elas */ }
-    const v = estado.vinculo;
-    window.Impressao.abrir({ venda: {
-      id: null, numero: v?.modo === "corrigir" ? v.numero : null, competencia: $("direct-sale-date")?.value || "", itens: r.itens, frete: valorFrete(),
-      value: arred(r.venda + valorFrete()), pagamentos, cliente: editorPagamentos.clienteDigitado() || v?.cliente?.nome || "", orcamento: v?.modo === "converter" ? v.id : null,
-    } });
-  },
 
   // Usado por registerDirectSale (script.js): tudo o que a venda grava
   resumo() {

@@ -421,7 +421,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .menu-itens button { background: none; border: none; color: var(--text-main); text-align: left; padding: 0.45rem 0.6rem; border-radius: 0.35rem; cursor: pointer; font-size: 0.85rem; }
 .menu-itens button:hover { background: rgba(255,255,255,0.08); }
 .motivos-perda { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.botoes-finalizar { display: grid; grid-template-columns: 1fr 2fr; gap: 0.75rem; margin-top: 1rem; }
+.botoes-finalizar { display: grid; grid-template-columns: 1fr 1fr 1.6fr; gap: 0.75rem; margin-top: 1rem; }
+.botoes-finalizar > button { min-height: 46px; }
 .botoes-finalizar .btn-success { width: 100%; }
 .btn-orcamento { height: 46px; font-weight: 600; }
 .vinculo { margin-top: 1rem; }

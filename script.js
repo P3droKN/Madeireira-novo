@@ -322,7 +322,7 @@ async function registerDirectSale(opcoes) {
     }
 }
 
-async function registrarVendaAgora() {
+async function registrarVendaAgora(opcoes = {}) {
     const pedido = window.Calculadora && window.Calculadora.resumo();
     if (!pedido || pedido.itens.length === 0) {
         alert("O pedido está vazio. Adicione itens primeiro.");
@@ -406,7 +406,7 @@ async function registrarVendaAgora() {
         fiadoTotal ? `Fiado: ${formatCurrency(fiadoTotal)} a receber de ${esc(vendaItem.cliente)} (Caixa › A receber).` : '',
     ].filter(Boolean);
     window.Calculadora.limpar(false);
-    window.Impressao.abrir({ venda: salva, titulo: `Venda ${num} ${corrigindo ? 'corrigida' : 'registrada'}`, mensagem: linhas.map((t) => `<div>${t}</div>`).join('') });
+    window.Impressao.abrir({ venda: salva, titulo: `Venda ${num} ${corrigindo ? 'corrigida' : 'registrada'}`, mensagem: linhas.map((t) => `<div>${t}</div>`).join(''), imprimirJa: Boolean(opcoes.imprimir) });
 }
 
 // --- LOGICA DE ACUMULADOS ---
