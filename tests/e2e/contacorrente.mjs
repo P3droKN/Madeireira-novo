@@ -111,7 +111,7 @@ ok(nb(await page.textContent("#imp-titulo")) === "Venda V-0002 registrada" && aw
 await page.click("#imp-imprimir");
 await page.waitForFunction(() => window.__impressoes.length === 1);
 let imp = nb((await impressoes()).at(-1));
-ok(imp.includes("VIA DA LOJA") && imp.includes("VIA DO CLIENTE") && imp.includes("Seu Arlindo") && imp.includes("R$ 250,00") && imp.includes("Assinatura do cliente") && imp.includes("A prazo"), "2 vias impressas: loja e cliente, com cliente, total, forma (a prazo) e assinatura");
+ok(imp.includes("VIA DA LOJA") && imp.includes("VIA DO CLIENTE") && imp.includes("Seu Arlindo") && imp.includes("R$ 250,00") && imp.includes("ASSINATURA:") && imp.includes("A prazo"), "2 vias impressas: loja e cliente, com cliente, total, forma (a prazo) e assinatura");
 ok(!/custo|margem|CMV|conta corrente|tabela/i.test(imp), "a via não mostra custo, margem nem conta corrente");
 ok(imp.includes("PEDIDO Nº V-0002") && !imp.includes(v1.id), "via com número curto e sequencial (V-0002; a V-0001 foi a venda de setembro)");
 await page.click("#imp-fechar");

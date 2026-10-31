@@ -9,7 +9,7 @@ const MODO_KEY = "madeireira_vias_modo";
 const lerModo = () => { try { return localStorage.getItem(MODO_KEY) || "duas"; } catch { return "duas"; } };
 const guardarModo = (m) => { try { localStorage.setItem(MODO_KEY, m); } catch { /* aparelho sem armazenamento */ } };
 
-const estado = { doc: null, vendaId: null, nomeArquivo: "pedido", paginaInteira: false };
+const estado = { doc: null, vendaId: null, nomeArquivo: "pedido", paginaInteira: false, lojaExemplo: null };
 
 // O CSS da folha vai uma vez para a página (prévia, impressão e PDF usam o mesmo)
 if (!$("estilo-folha")) {
@@ -19,7 +19,7 @@ if (!$("estilo-folha")) {
   document.head.appendChild(st);
 }
 
-const loja = () => lojaDaConfig(window.Caixa?.configFinanceiro);
+const loja = () => estado.lojaExemplo || lojaDaConfig(window.Caixa?.configFinanceiro);
 const modoAtual = () => document.querySelector('input[name="imp-modo"]:checked')?.value || "duas";
 
 // Pedido grande demais para meia folha: cada via vai numa página inteira
@@ -44,17 +44,17 @@ function renderPrevia() {
  * Abre a janela. venda: lançamento (já gravado: tem número) ou rascunho; orcamento: orçamento salvo.
  * titulo/mensagem: o que aparece no topo ("Venda V-0012 registrada", "Orçamento ORC-0005 salvo"…).
  */
-function abrir({ venda = null, orcamento = null, titulo = "", mensagem = "" } = {}) {
+function abrir({ venda = null, orcamento = null, titulo = "", mensagem = "", exemplo = null } = {}) {
+  estado.lojaExemplo = exemplo;
   if (venda) {
     const salvo = window.Caixa?.itens?.find((l) => String(l.id) === String(venda.id));
     const l = { ...(salvo || venda) };
     const cad = l.clienteId ? window.Clientes?.porId(l.clienteId) : null;
-    if (cad?.telefone) l.clienteTelefone = cad.telefone;
-    estado.doc = documentoDaVenda(l);
+    estado.doc = documentoDaVenda(l, { cadastro: cad });
     estado.vendaId = salvo ? salvo.id : null;
     estado.nomeArquivo = l.numero ? `Pedido ${l.numero}` : "Pedido";
   } else {
-    estado.doc = documentoDoOrcamento(orcamento);
+    estado.doc = documentoDoOrcamento(orcamento, { cadastro: orcamento.cliente?.id ? window.Clientes?.porId(orcamento.cliente.id) : null });
     estado.vendaId = null;
     estado.nomeArquivo = `Orçamento ${orcamento.id}`;
   }
@@ -154,6 +154,19 @@ $("imp-pdf").addEventListener("click", baixarPdf);
 $("imp-fechar").addEventListener("click", fechar);
 $("imp-modo").addEventListener("change", () => { guardarModo(modoAtual()); renderPrevia(); });
 
+// Ajustes › Impressão › Ver exemplo: um pedido de mostra com o que está no formulário (nada é gravado)
+function exemplo(impressao) {
+  const itens = [
+    { descricao: "Pinus 2x4 × 3,00 m", acabamento: "BRUTO", quantidadeCobrada: 10, unidade: "peça", vendaTotal: 242.5 },
+    { descricao: "Cedro mesclado 1x2", acabamento: "CEPILHADO", quantidade: 6, comprimento: 2.5, quantidadeCobrada: 15, unidade: "m", vendaTotal: 128.1 },
+    { descricao: "Forro de pinus comprido", acabamento: "UNICO", quantidadeCobrada: 12.5, unidade: "m²", vendaTotal: 423.13 },
+  ];
+  const venda = { id: "exemplo", numero: "V-0000", competencia: window.Caixa?.hoje?.() || "", value: 833.73, frete: 40, cliente: "Cliente de exemplo",
+    itens, pagamentos: [{ forma: "pix_bradesco", valor: 833.73 }] };
+  abrir({ venda, titulo: "Exemplo da via (nada foi gravado)", exemplo: lojaDaConfig({ impressao }) });
+  estado.vendaId = null;
+}
+
 // window.Via.imprimir(l): compatível com as chamadas antigas (abre a janela)
-window.Impressao = { abrir, fechar, esc };
+window.Impressao = { abrir, fechar, esc, exemplo };
 window.Via = { imprimir: (l) => abrir({ venda: l }) };

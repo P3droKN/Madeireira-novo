@@ -430,17 +430,35 @@
 
                 <section class="glass-panel fin-sub" id="aj-impressao" data-sub-de="ajustes" hidden>
                     <div class="painel-titulo"><h2>Impressão das vias</h2></div>
-                    <p class="texto-suave">Cabeçalho que sai em todo pedido e orçamento impresso (e no PDF). Os campos em branco não aparecem.</p>
+                    <p class="texto-suave">Cabeçalho e rodapé de todo pedido e orçamento impresso (e do PDF), no modelo do cartão da loja. Os campos em branco não aparecem.</p>
                     <form id="aj-impressao-form" class="fin-form">
                         <div class="form-row">
-                            <div class="form-group"><label for="imp-cfg-nome">Nome da madeireira</label><input type="text" id="imp-cfg-nome" maxlength="80"></div>
-                            <div class="form-group"><label for="imp-cfg-telefone">Telefone / WhatsApp</label><input type="text" id="imp-cfg-telefone" maxlength="60"></div>
+                            <div class="form-group"><label for="imp-cfg-nome">Nome da loja</label><input type="text" id="imp-cfg-nome" maxlength="80"></div>
+                            <div class="form-group"><label for="imp-cfg-telefone">Telefone fixo</label><input type="text" id="imp-cfg-telefone" maxlength="60"></div>
+                            <div class="form-group"><label for="imp-cfg-whatsapp">WhatsApp</label><input type="text" id="imp-cfg-whatsapp" maxlength="60"></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label for="imp-cfg-endereco">Endereço</label><input type="text" id="imp-cfg-endereco" maxlength="160"></div>
-                            <div class="form-group"><label for="imp-cfg-cnpj">CNPJ (opcional)</label><input type="text" id="imp-cfg-cnpj" maxlength="25"></div>
+                            <div class="form-group"><label for="imp-cfg-endereco">Endereço (1ª linha)</label><input type="text" id="imp-cfg-endereco" maxlength="160"></div>
+                            <div class="form-group"><label for="imp-cfg-cidade">CEP e cidade (2ª linha)</label><input type="text" id="imp-cfg-cidade" maxlength="160"></div>
                         </div>
-                        <div class="export-actions"><button type="submit" class="btn-primary">Salvar</button></div>
+                        <div class="form-row">
+                            <div class="form-group"><label for="imp-cfg-email">E-mail</label><input type="text" id="imp-cfg-email" maxlength="100"></div>
+                            <div class="form-group"><label for="imp-cfg-instagram">Instagram</label><input type="text" id="imp-cfg-instagram" maxlength="80"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label for="imp-cfg-pix">Linha do Pix (ao lado do total)</label><input type="text" id="imp-cfg-pix" maxlength="160"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label for="imp-cfg-avisos">Avisos do rodapé do pedido (um por linha)</label><textarea id="imp-cfg-avisos" rows="3" maxlength="600"></textarea></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label for="imp-cfg-logo">Logo (opcional)</label>
+                                <input type="file" id="imp-cfg-logo" accept="image/png,image/jpeg,image/webp">
+                                <small class="texto-suave">Sem logo, o cabeçalho começa direto no nome. Com logo, ele entra à esquerda do nome, na mesma altura.</small>
+                                <div id="imp-cfg-logo-atual" class="logo-atual" hidden><img id="imp-cfg-logo-img" alt="Logo atual"><button type="button" class="btn-icon mini" id="imp-cfg-logo-tirar">Tirar o logo</button></div>
+                            </div>
+                        </div>
+                        <div class="export-actions"><button type="button" class="btn-icon" id="imp-cfg-ver">Ver exemplo</button><button type="submit" class="btn-primary">Salvar</button></div>
                     </form>
                 </section>
 

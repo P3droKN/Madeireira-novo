@@ -1176,3 +1176,10 @@ body.modo-balcao .sigilo { display: none !important; }
     .dia-tres strong { font-size: 1.6rem; }
 }
 .fech-linha { margin: 0 0 2mm; font-size: 9pt; }
+/* Ajustes › Impressão: logo atual */
+.logo-atual { display: flex; align-items: center; gap: 0.8rem; margin-top: 0.5rem; }
+.logo-atual img { max-height: 56px; max-width: 160px; background: #fff; border-radius: 6px; padding: 4px; }
+#imp-cfg-avisos { width: 100%; resize: vertical; }
+.rc-cli-via { margin: 0.4rem 0 0.8rem; }
+.rc-cli-via summary { cursor: pointer; color: var(--text-muted); font-size: 0.92rem; margin-bottom: 0.5rem; }
+.rc-cli-uf { max-width: 6rem; }

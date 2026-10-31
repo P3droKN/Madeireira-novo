@@ -190,7 +190,7 @@ await abaOrc("aberto");
 await menu("ORC-0003", "imprimir");
 await page.waitForSelector("#modal-impressao", { state: "visible" });
 const imp = nb(await page.textContent("#imp-previa-folha"));
-ok(imp.includes("ORÇAMENTO Nº ORC-0003") && imp.includes("R$ 100,00") && imp.includes("Válido até") && !/custo|margem|tabela|assinatura/i.test(imp), "menu ⋯ › 🖨 Imprimir 2 vias: prévia sem custo, margem, tabela nem assinatura");
+ok(imp.includes("ORÇAMENTO Nº ORC-0003") && imp.includes("R$ 100,00") && imp.includes("VÁLIDO ATÉ") && !/custo|margem|tabela|assinatura/i.test(imp), "menu ⋯ › 🖨 Imprimir 2 vias: prévia sem custo, margem, tabela nem assinatura");
 await page.click("#imp-fechar");
 await page.screenshot({ path: "orcamentos.png", fullPage: true });
 

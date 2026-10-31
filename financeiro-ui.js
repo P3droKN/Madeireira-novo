@@ -85,7 +85,9 @@ function renderSub() {
     if (sub === "financeiro" || sub === "orcamentos") renderConfig();
     if (sub === "impressao") {
       const i = mesclarConfigFinanceiro(C()?.configFinanceiro).impressao;
-      for (const k of ["nome", "telefone", "endereco", "cnpj"]) $(`imp-cfg-${k}`).value = i[k] || "";
+      for (const k of CAMPOS_IMPRESSAO) $(`imp-cfg-${k}`).value = i[k] || "";
+      estado.logo = i.logo || "";
+      mostrarLogo();
     }
     if (sub === "saldos") window.CaixaUI?.abertura($("aj-abertura"));
   }
@@ -735,14 +737,40 @@ document.querySelectorAll(".subtabs[data-grupo]").forEach((nav) => nav.addEventL
 $("fin-tipo").addEventListener("change", renderFormulario);
 $("fin-form").addEventListener("submit", enviarFormulario);
 $("fin-config-form").addEventListener("submit", salvarConfig);
-// Ajustes › Impressão: só o cabeçalho; o resto da configuração vai junto, como está
+// Ajustes › Impressão: cabeçalho, rodapé e logo; o resto da configuração vai junto, como está
+const CAMPOS_IMPRESSAO = ["nome", "endereco", "cidade", "telefone", "whatsapp", "email", "instagram", "pix", "avisos"];
+const impressaoDoForm = () => ({ ...Object.fromEntries(CAMPOS_IMPRESSAO.map((k) => [k, $(`imp-cfg-${k}`).value.trim()])), logo: estado.logo || "" });
+function mostrarLogo() {
+  $("imp-cfg-logo-atual").hidden = !estado.logo;
+  if (estado.logo) $("imp-cfg-logo-img").src = estado.logo;
+}
+// O logo é reduzido no aparelho (até 600 × 240) para a configuração continuar leve
+$("imp-cfg-logo").addEventListener("change", async (e) => {
+  const arq = e.target.files?.[0];
+  if (!arq) return;
+  try {
+    const img = await new Promise((ok, falha) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => falha(new Error("imagem não abriu")); i.src = URL.createObjectURL(arq); });
+    const escala = Math.min(1, 600 / img.width, 240 / img.height);
+    const cv = document.createElement("canvas");
+    cv.width = Math.round(img.width * escala); cv.height = Math.round(img.height * escala);
+    cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+    estado.logo = cv.toDataURL("image/png");
+    if (estado.logo.length > 280000) estado.logo = cv.toDataURL("image/jpeg", 0.85);
+    mostrarLogo();
+  } catch (err) {
+    alert(`Não foi possível usar essa imagem: ${err.message}`);
+  }
+  e.target.value = "";
+});
+$("imp-cfg-logo-tirar").addEventListener("click", () => { estado.logo = ""; mostrarLogo(); });
+// Ver exemplo: a via com um pedido de mostra e o que está no formulário (sem salvar)
+$("imp-cfg-ver").addEventListener("click", () => window.Impressao?.exemplo(impressaoDoForm()));
 $("aj-impressao-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const impressao = Object.fromEntries(["nome", "telefone", "endereco", "cnpj"].map((k) => [k, $(`imp-cfg-${k}`).value.trim()]));
   try {
-    const r = await window.api("/api/config", { method: "POST", body: { financeiro: { ...mesclarConfigFinanceiro(C().configFinanceiro), impressao } } });
+    const r = await window.api("/api/config", { method: "POST", body: { financeiro: { ...mesclarConfigFinanceiro(C().configFinanceiro), impressao: impressaoDoForm() } } });
     C().configFinanceiro = r.financeiro;
-    alert("Cabeçalho da impressão salvo.");
+    alert("Impressão das vias salva.");
   } catch (err) {
     alert(`Não foi salvo: ${err.message}`);
   }

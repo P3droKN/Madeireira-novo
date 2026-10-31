@@ -886,3 +886,25 @@ test("dois aparelhos no mesmo lançamento: impressão, cheque e estorno não apa
   // a trava é liberada: nada fica preso
   assert.equal([...base.dados.keys()].filter((c) => c.includes(":lanc:")).length, 0);
 });
+
+test("cliente: endereço, bairro, cidade, UF, CPF/CNPJ, IE e telefone fixo (para a via); campo não enviado fica como estava", async () => {
+  const { salvarCliente } = await import("../api/_dados.js");
+  const kv = kvFalso({});
+  const c = await salvarCliente(kv, K, { nome: "João", telefone: "(41) 99999-0000", fixo: "(41) 3333-0000", endereco: "Rua A, 1", bairro: "Centro", cidade: "Curitiba", uf: "pr", documento: "12345678900", ie: "" });
+  assert.deepEqual([c.uf, c.documento, c.fixo], ["PR", "123.456.789-00", "(41) 3333-0000"]);
+  const e = await salvarCliente(kv, K, { id: c.id, nome: "João Silva", documento: "73871956000132" });
+  assert.deepEqual([e.endereco, e.cidade, e.documento], ["Rua A, 1", "Curitiba", "73.871.956/0001-32"]);
+  await assert.rejects(salvarCliente(kv, K, { nome: "X", documento: "123" }), /CPF\/CNPJ inválido/);
+  await assert.rejects(salvarCliente(kv, K, { nome: "X", uf: "Paraná" }), /UF/);
+});
+
+test("Ajustes › Impressão: guarda cabeçalho, avisos, Pix e logo; logo que não é imagem é recusado", async () => {
+  const { salvarConfigFinanceiro, limparImpressao } = await import("../api/_dados.js");
+  const kv = kvFalso({});
+  const logo = "data:image/png;base64,iVBORw0KGgo=";
+  const r = await salvarConfigFinanceiro(kv, K, { impressao: { nome: "MERCADO DA MADEIRA", pix: "Pix CNPJ: 73.871.956/0001-32", avisos: "* A\n* B", logo } });
+  assert.equal(r.impressao.logo, logo);
+  assert.equal(r.impressao.avisos, "* A\n* B");
+  assert.throws(() => limparImpressao({ logo: "javascript:alert(1)" }), /Logo inválido/);
+  assert.throws(() => limparImpressao({ logo: "data:image/png;base64," + "A".repeat(300001) }), /grande demais/);
+});

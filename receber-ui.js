@@ -176,6 +176,21 @@ function renderClientes(alvo, r) {
       <div class="form-row">
         <div class="form-group"><label for="rc-cli-nome">${ed ? "Editar cliente" : "Novo cliente"}: nome</label><input type="text" id="rc-cli-nome" maxlength="120" required value="${esc(ed?.nome || "")}"></div>
         <div class="form-group"><label for="rc-cli-tel">WhatsApp com DDD (opcional)</label><input type="tel" id="rc-cli-tel" maxlength="20" placeholder="(47) 99999-1234" value="${esc(ed?.telefone || "")}"></div>
+        <div class="form-group"><label for="rc-cli-fixo">Telefone fixo (opcional)</label><input type="tel" id="rc-cli-fixo" maxlength="20" value="${esc(ed?.fixo || "")}"></div>
+      </div>
+      <details class="rc-cli-via" ${ed && (ed.endereco || ed.documento) ? "open" : ""}><summary>Endereço e documentos (saem na via)</summary>
+        <div class="form-row">
+          <div class="form-group"><label for="rc-cli-endereco">Endereço</label><input type="text" id="rc-cli-endereco" maxlength="160" value="${esc(ed?.endereco || "")}"></div>
+          <div class="form-group"><label for="rc-cli-bairro">Bairro</label><input type="text" id="rc-cli-bairro" maxlength="80" value="${esc(ed?.bairro || "")}"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label for="rc-cli-cidade">Cidade</label><input type="text" id="rc-cli-cidade" maxlength="80" value="${esc(ed?.cidade || "")}"></div>
+          <div class="form-group rc-cli-uf"><label for="rc-cli-uf">UF</label><input type="text" id="rc-cli-uf" maxlength="2" placeholder="PR" value="${esc(ed?.uf || "")}"></div>
+          <div class="form-group"><label for="rc-cli-documento">CPF/CNPJ</label><input type="text" id="rc-cli-documento" maxlength="20" inputmode="numeric" value="${esc(ed?.documento || "")}"></div>
+          <div class="form-group"><label for="rc-cli-ie">Inscr. estadual</label><input type="text" id="rc-cli-ie" maxlength="20" value="${esc(ed?.ie || "")}"></div>
+        </div>
+      </details>
+      <div class="form-row">
         <div class="form-group"><label for="rc-cli-obs">Observação</label><input type="text" id="rc-cli-obs" maxlength="500" placeholder="Ex: paga todo dia 10" value="${esc(ed?.obs || "")}"></div>
       </div>
       <div class="form-row">
@@ -216,6 +231,7 @@ async function salvarClienteForm(e) {
     await window.Clientes.salvar({
       id: ed?.id, nome: $("rc-cli-nome").value.trim(), telefone: tel, obs: $("rc-cli-obs").value.trim(),
       contaCorrente: cc, alertaLimite: cc ? $("rc-cli-limite").value.trim() : "", alertaDias: cc ? $("rc-cli-dias").value.trim() : "",
+      ...Object.fromEntries(["fixo", "endereco", "bairro", "cidade", "uf", "documento", "ie"].map((k) => [k, $(`rc-cli-${k}`).value.trim()])),
     });
   } catch (err) {
     return alert(`O cliente não foi salvo: ${err.message}`);

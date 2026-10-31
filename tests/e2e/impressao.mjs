@@ -69,7 +69,7 @@ await page.fill("#imp-cfg-nome", "Madeireira Teste"); await page.fill("#imp-cfg-
 await page.click("#aj-impressao-form button[type=submit]");
 await page.waitForTimeout(400);
 const cfg = JSON.parse((await db()).madeireira_config_financeiro);
-ok(cfg.impressao.nome === "Madeireira Teste" && cfg.impressao.cnpj === "" && cfg.cartao, "Ajustes › Impressão salva o cabeçalho (sem mexer no resto da configuração)");
+ok(cfg.impressao.nome === "Madeireira Teste" && cfg.impressao.pix.includes("73.871.956/0001-32") && cfg.impressao.avisos.includes("Conferir a mercadoria") && cfg.cartao, "Ajustes › Impressão salva o cabeçalho (o resto do modelo e da configuração continua)");
 
 // 2. Pedido de 5 itens com −3% (centavos quebrados), registrado: janela "Venda V-0001 registrada"
 await page.click("#btn-tab-vender");
@@ -81,17 +81,19 @@ const totalTela = nb(await page.inputValue("#total-final"));
 ok(await page.isVisible("#btn-imprimir-vias") && nb(await page.textContent("#btn-imprimir-vias")).includes("Imprimir 2 vias"), "Vender: botão 🖨 Imprimir 2 vias ao lado de Registrar e Salvar orçamento");
 await page.click("#btn-imprimir-vias");
 await page.waitForSelector("#modal-impressao", { state: "visible" });
-ok(nb(await page.textContent("#imp-previa-folha")).includes("PEDIDO (rascunho, ainda não registrado)"), "antes de registrar: prévia como rascunho, sem número");
+ok(!nb(await page.textContent("#imp-previa-folha")).includes("V-0"), "antes de registrar: prévia sem número");
 await page.click("#imp-fechar");
 await page.click("#btn-registrar-venda");
 await page.waitForSelector("#modal-impressao", { state: "visible" });
 ok(nb(await page.textContent("#imp-titulo")) === "Venda V-0001 registrada", "janela \"Venda V-0001 registrada\" (qualquer forma de pagamento)");
 ok(await page.isChecked('input[name="imp-modo"][value="duas"]'), "2 vias: loja + cliente vem marcado");
 const previa = nb(await page.textContent("#imp-previa-folha"));
-ok(previa.includes("Madeireira Teste") && previa.includes("VIA DA LOJA") && previa.includes("VIA DO CLIENTE") && previa.includes("PEDIDO Nº V-0001") && previa.includes("25/10/2026 às 14:32") && previa.includes("Consumidor"), "prévia: cabeçalho da loja, as 2 vias, número, data e hora, cliente \"Consumidor\"");
+ok(previa.includes("Madeireira Teste") && previa.includes("VIA DA LOJA") && previa.includes("VIA DO CLIENTE") && previa.includes("PEDIDO Nº") && previa.includes("V-0001") && previa.includes("DATA:25/10/2026") && previa.includes("CLIENTE:Consumidor"), "prévia: cabeçalho da loja, as 2 vias, número, data, cliente \"Consumidor\"");
+ok(previa.includes("Pix CNPJ: 73.871.956/0001-32 | Nicolodi e Cia Ltda") && previa.includes("TOTAL") && previa.includes("ASSINATURA:") && previa.includes("Valor Unitário"), "prévia no modelo do cartão: colunas, total geral, linha do Pix e assinatura");
+ok(!/logo|mascote/i.test(previa) && !(await page.locator("#imp-previa-folha img").count()), "sem logo cadastrado: nenhum quadro nem texto \"logo\"/\"mascote\"");
 // a soma das linhas de uma via fecha com o total
-const linhas = await page.$$eval("#imp-previa-folha .pv-via:first-child tbody tr td:last-child", (tds) => tds.map((t) => t.textContent));
-const totalVia = await page.textContent("#imp-previa-folha .pv-via:first-child tr.pv-total td:last-child");
+const linhas = await page.$$eval("#imp-previa-folha .pv-via:first-child tbody tr td:last-child", (tds) => tds.map((t) => t.textContent).filter((t) => t.trim()));
+const totalVia = await page.textContent("#imp-previa-folha .pv-via:first-child .pv-total strong");
 ok(linhas.length === 5 && linhas.reduce((s, t) => s + centavos(t), 0) === centavos(totalVia) && centavos(totalVia) === Math.round(Number(totalTela) * 100),
   `soma das 5 linhas impressas = total (${nb(totalVia)})`);
 await page.click("#imp-imprimir");
@@ -197,8 +199,39 @@ await page.fill("#orc-nome", "Carlos"); await page.fill("#orc-tel", "(47) 99999-
 await page.click("#orc-salvar-botao");
 await page.waitForSelector("#modal-impressao", { state: "visible" });
 const po = nb(await page.textContent("#imp-previa-folha"));
-ok(nb(await page.textContent("#imp-titulo")).includes("Orçamento ORC-0001 salvo") && po.includes("ORÇAMENTO Nº ORC-0001") && po.includes("Válido até") && !po.includes("Assinatura") && !po.includes("Forma de pagamento"),
+ok(nb(await page.textContent("#imp-titulo")).includes("Orçamento ORC-0001 salvo") && po.includes("ORÇAMENTO Nº") && po.includes("ORC-0001") && po.includes("VÁLIDO ATÉ:") && !po.includes("ASSINATURA") && !po.includes("Pagamento:") && po.includes("FONE:(47) 99999-1234"),
   "orçamento: janela \"Orçamento ORC-0001 salvo\", com Válido até, sem assinatura e sem forma de pagamento");
 await page.screenshot({ path: "impressao.png" });
 await page.click("#imp-fechar");
+
+// 10. Cadastro com endereço e documentos: os campos saem na via do orçamento
+const orc1 = JSON.parse((await db()).madeireira_orcamentos["ORC-0001"]);
+await fetch(URL + "/api/clientes", { method: "POST", headers: H, body: JSON.stringify({ cliente: { id: orc1.cliente.id, nome: "Carlos", telefone: "(47) 99999-1234", fixo: "(41) 3333-0000",
+  endereco: "Rua das Araucárias, 210", bairro: "Santa Felicidade", cidade: "Curitiba", uf: "pr", documento: "12345678900", ie: "ISENTO" } }) });
+await page.evaluate(() => window.Clientes.carregar());
+await page.evaluate((o) => window.Impressao.abrir({ orcamento: o }), orc1);
+const pc = nb(await page.textContent("#imp-previa-folha"));
+ok(["ENDEREÇO:Rua das Araucárias, 210", "BAIRRO:Santa Felicidade", "CIDADE:Curitiba", "ESTADO:PR", "FONE:(47) 99999-1234 / (41) 3333-0000", "CNPJ/CPF:123.456.789-00", "INSCR. EST.:ISENTO"].every((t) => pc.includes(t)),
+  "via com os dados do cadastro: endereço, bairro, cidade, UF, telefones, CPF e IE");
+const alturaSem = await page.evaluate(() => document.querySelector("#imp-previa-folha .pv-topo").getBoundingClientRect().height);
+await page.click("#imp-fechar");
+
+// 11. Logo (opcional): entra à esquerda do nome, sem aumentar a altura do cabeçalho
+const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAQklEQVR4nO3PQQ0AIBDAsIF/z6CCBxGzKmhn7ToHOHgdeKUBlQZUGlBpQKUBlQZUGlBpQKUBlQZUGlBpQKUBlQZUL2W/AH8bUqUAAAAASUVORK5CYII=", "base64");
+await page.click("#btn-tab-ajustes"); await sub("ajustes", "impressao");
+await page.setInputFiles("#imp-cfg-logo", { name: "logo.png", mimeType: "image/png", buffer: png });
+await page.waitForSelector("#imp-cfg-logo-atual:not([hidden])");
+await page.click("#aj-impressao-form button[type=submit]");
+await page.waitForTimeout(400);
+ok(JSON.parse((await db()).madeireira_config_financeiro).impressao.logo.startsWith("data:image/png;base64,"), "logo enviado em Ajustes › Impressão fica salvo");
+await page.evaluate((o) => window.Impressao.abrir({ orcamento: o }), orc1);
+const alturaCom = await page.evaluate(() => document.querySelector("#imp-previa-folha .pv-topo").getBoundingClientRect().height);
+ok(await page.locator("#imp-previa-folha .pv-via:first-child .pv-topo > img.pv-logo + .pv-marca").count() === 1 && Math.abs(alturaCom - alturaSem) < 2,
+  `com logo: imagem antes do nome, cabeçalho da mesma altura (${alturaSem.toFixed(0)} → ${alturaCom.toFixed(0)} px)`);
+await page.click("#imp-fechar");
+await page.click("#btn-tab-ajustes"); await sub("ajustes", "impressao");
+await page.click("#imp-cfg-logo-tirar");
+await page.click("#aj-impressao-form button[type=submit]");
+await page.waitForTimeout(400);
+ok(JSON.parse((await db()).madeireira_config_financeiro).impressao.logo === "", "\"Tirar o logo\" volta ao cabeçalho sem logo");
 await browser.close();

@@ -851,6 +851,17 @@ const dias = (v, nome) => {
   return n;
 };
 
+// Ajustes › Impressão: cabeçalho, avisos do rodapé, linha do Pix e o logo (opcional, imagem pequena)
+const CAMPOS_IMPRESSAO = { nome: 80, endereco: 160, cidade: 160, telefone: 60, whatsapp: 60, email: 100, instagram: 80, pix: 160, avisos: 600 };
+export function limparImpressao(i = {}) {
+  const r = Object.fromEntries(Object.entries(CAMPOS_IMPRESSAO).map(([campo, max]) => [campo, texto(i?.[campo], max).trim()]));
+  const logo = String(i?.logo || "");
+  if (logo && !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(logo)) throw erro(400, "Logo inválido: envie uma imagem PNG ou JPG.");
+  if (logo.length > 300000) throw erro(400, "Logo grande demais: use uma imagem menor (até uns 200 KB).");
+  r.logo = logo;
+  return r;
+}
+
 export async function salvarConfigFinanceiro(kv, k, config) {
   // Parte da configuração (ex.: só Financeiro ou só Impressão): o resto continua como está salvo
   const c = juntarConfig(desembrulhar(await kv.get(k.configFinanceiro)) || {}, config || {});
@@ -886,7 +897,7 @@ export async function salvarConfigFinanceiro(kv, k, config) {
   limpa.depreciacaoLigada = Boolean(c.depreciacaoLigada);
   limpa.estimativasContabeis = c.estimativasContabeis === true;
   // Cabeçalho das vias (Ajustes › Impressão)
-  limpa.impressao = { nome: texto(c.impressao?.nome, 80).trim(), telefone: texto(c.impressao?.telefone, 60).trim(), endereco: texto(c.impressao?.endereco, 160).trim(), cnpj: texto(c.impressao?.cnpj, 25).trim() };
+  limpa.impressao = limparImpressao(c.impressao);
   limpa.estoque = {
     inicial: Number(c.estoque.inicial) || 0,
     dataInicial: dataOk(c.estoque.dataInicial) ? c.estoque.dataInicial : null,
@@ -1097,6 +1108,23 @@ export async function atualizarOrcamento(kv, k, p) {
 
 // Cadastro de clientes (orçamentos e fiado). A chave é o WhatsApp (DDD + número);
 // cliente sem WhatsApp (comum no fiado) ganha um código C1, C2… Editar mantém a chave.
+// Dados do cliente que saem na via (endereço e documentos). Campo não enviado mantém o que já tinha.
+export const CAMPOS_VIA_CLIENTE = { fixo: 20, endereco: 160, bairro: 80, cidade: 80, uf: 20, documento: 20, ie: 20 };
+function dadosDaVia(c, atual) {
+  const r = {};
+  for (const [campo, max] of Object.entries(CAMPOS_VIA_CLIENTE)) {
+    r[campo] = c?.[campo] === undefined ? (atual?.[campo] || "") : texto(c[campo], max).trim();
+  }
+  r.uf = r.uf.toUpperCase();
+  if (r.uf && !/^[A-Z]{2}$/.test(r.uf)) throw erro(400, "Estado (UF) inválido: use as duas letras, ex. PR.");
+  if (r.documento) {
+    const d = r.documento.replace(/\D/g, "");
+    if (d.length !== 11 && d.length !== 14) throw erro(400, "CPF/CNPJ inválido: o CPF tem 11 números e o CNPJ 14.");
+    r.documento = d.length === 11 ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
+  }
+  return r;
+}
+
 export async function salvarCliente(kv, k, c) {
   const nome = texto(c?.nome, 120).trim();
   if (!nome) throw erro(400, "Informe o nome do cliente.");
@@ -1129,6 +1157,7 @@ export async function salvarCliente(kv, k, c) {
     contaCorrente: c.contaCorrente === undefined ? Boolean(atual?.contaCorrente) : c.contaCorrente === true,
     alertaLimite: limite === undefined ? (atual?.alertaLimite ?? null) : limite,
     alertaDias: dias === undefined ? (atual?.alertaDias ?? null) : dias,
+    ...dadosDaVia(c, atual),
     criadoEm: atual?.criadoEm || agora, atualizadoEm: agora,
   };
   await kv.hset(k.clientes, { [id]: cliente });
