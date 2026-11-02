@@ -107,6 +107,7 @@ let acumulado = { ...ACUMULADO_VAZIO };
 // Sem conexão com a nuvem: mostra a última cópia, mas não deixa gravar
 // (gravar com dados velhos apagaria lançamentos feitos em outro aparelho).
 let somenteLeitura = false;
+let proximosNumeros = null; // próxima venda e próximo orçamento (Ajustes › Dados)
 // Até o backup + migração, os lançamentos ficam na lista antiga, que é regravada inteira.
 let migrado = true;
 let backupBaixado = false;
@@ -124,6 +125,7 @@ async function carregarDados() {
         acumulado = Object.assign({ ...ACUMULADO_VAZIO }, data.acumulado || {});
         migrado = data.migrado;
         statusBanco = data.status || null;
+        proximosNumeros = data.proximos || null;
         configFinanceiro = data.configFinanceiro || {};
         saldosCaixa = data.saldos || { abertura: null, conferencias: [] };
         migradoV2 = Boolean(data.migradoV2);
@@ -203,6 +205,7 @@ function atualizarStatusBanco() {
     if (statusBanco.gravacaoBloqueada) partes.push('⛔ GRAVAÇÃO BLOQUEADA (banco de produção)');
     else if (statusBanco.travaConfigurada) partes.push('trava de produção: ativa');
     if (statusBanco.zerarPermitido) partes.push('⚠️ ZERAR LIGADO (desligar depois da virada)');
+    if (proximosNumeros) partes.push(`próxima venda: ${proximosNumeros.venda} · próximo orçamento: ${proximosNumeros.orcamento}`);
     el.textContent = partes.join(' · ');
     el.classList.toggle('texto-ruim', Boolean(statusBanco.gravacaoBloqueada || statusBanco.zerarPermitido));
     document.getElementById('zerar-bloco').hidden = !statusBanco.zerarPermitido;
@@ -225,7 +228,7 @@ document.getElementById('zerar-botao').addEventListener('click', async () => {
     if (!zerarBackupOk || document.getElementById('zerar-texto').value.trim() !== 'ZERAR') return;
     try {
         const r = await api('/api/zerar', { method: 'POST', body: { confirmacao: 'ZERAR' } });
-        alert(`Banco zerado.\n\nApagados: lançamentos, acumulado, abertura, clientes e orçamentos.\nMantidos: preços, ajustes da calculadora e configuração financeira.\nCópia do estado anterior: ${r.copia}\n\nPróximo passo: Importar o arquivo do sistema antigo.`);
+        alert(`Banco zerado.\n\nApagados: lançamentos, clientes, orçamentos, abertura, fiado anterior, conferências e contadores (a próxima venda é V-0001 e o próximo orçamento ORC-0001).\nMantidos: catálogo, custos, preços, ajustes, configuração financeira e Ajustes › Impressão.\nCópia do estado anterior: ${r.copia}\n\nPróximo passo: Ajustes › Saldos › abertura do dia. Depois, desligue o PERMITIR_ZERAR na Vercel.`);
     } catch (e) {
         alert(`O banco não foi zerado: ${e.message}`);
         return;

@@ -131,6 +131,10 @@ ok(o.status === "aberto" && page.dialogos.some((d) => d.includes('ORC-0001 volto
   await fecharVias(p, p.dialogos);
   await p.waitForTimeout(600);
   ok((await lanc()).length === antes + 1, "memória do aparelho cheia: a venda é gravada normalmente");
+  // Sem PERMITIR_ZERAR (o normal, depois da virada): o bloco Zerar não aparece e o servidor recusa
+  await p.click("#btn-tab-ajustes"); await p.click('.subtabs[data-grupo="ajustes"] .subtab[data-sub="dados"]');
+  const rz = await fetch(URL + "/api/zerar", { method: "POST", headers: H, body: JSON.stringify({ confirmacao: "ZERAR" }) });
+  ok(await p.isHidden("#zerar-bloco") && rz.status === 403, "sem PERMITIR_ZERAR: o botão Zerar some e o servidor recusa (403)");
   await ctx.close();
 }
 await browser.close();

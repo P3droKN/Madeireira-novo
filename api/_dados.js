@@ -108,6 +108,12 @@ async function estaMigrado(kv, k) {
   return Boolean(await kv.get(k.migrado));
 }
 
+// Próximos números (V-000X e ORC-000X), para conferir depois de zerar sem gastar um número com teste
+export async function proximosNumeros(kv, k) {
+  const seq = async (c) => Number(desembrulhar(await kv.get(c)) || 0) + 1;
+  return { venda: numeroVenda(await seq(k.vendaSeq)), orcamento: numeroOrcamento(await seq(k.orcSeq)) };
+}
+
 export async function lerTudo(kv, k) {
   const migrado = await estaMigrado(kv, k);
   const migradoV2 = Boolean(await kv.get(k.migradoV2));
@@ -171,8 +177,13 @@ export async function salvarCopia(kv, k, motivo) {
   return nome;
 }
 
-// Zerar banco (só para a virada): apaga o movimento e mantém os ajustes.
+// Zerar banco (só para a virada, sem trazer histórico): apaga o movimento e mantém catálogo, preços e ajustes.
 // Só funciona com PERMITIR_ZERAR=sim e com a trava de produção configurada (statusBanco().zerarPermitido).
+// Apaga: lançamentos (vendas, despesas, fiado anterior), lista antiga e acumulado ("Saldos passados"), clientes,
+// orçamentos, abertura, conferências e os contadores (a próxima venda é V-0001 e o próximo orçamento ORC-0001).
+// Mantém: preços de venda, ajustes da calculadora, configuração financeira (com Ajustes › Impressão).
+// Depois: o sistema fica pronto para lançar (sem "salvamento seguro" nem migração) e as cópias automáticas
+// antigas saem do banco; fica só a "antes-de-zerar" (o backup também é baixado no aparelho antes).
 export const CHAVES_ZERAR = ["finance", "acumulado", "lancamentos", "migrado", "trava", "migradoV2", "orcamentos", "orcSeq", "clientes", "cliSeq", "vendaSeq", "saldos", "conferencias"];
 export const CHAVES_MANTIDAS = ["precos", "config", "configFinanceiro", "backups"];
 
@@ -181,7 +192,16 @@ export async function zerarMovimento(kv, k, pedido, permitido) {
   if (pedido?.confirmacao !== "ZERAR") throw erro(400, 'Digite ZERAR para confirmar.');
   const copia = await salvarCopia(kv, k, "antes-de-zerar");
   await kv.del(...CHAVES_ZERAR.map((c) => k[c]));
-  return { copia, apagadas: CHAVES_ZERAR.map((c) => k[c]), mantidas: CHAVES_MANTIDAS.map((c) => k[c]) };
+  // Pronto para lançar: o formato novo vale desde já (nada a migrar)
+  const agora = new Date().toISOString();
+  await kv.set(k.migrado, { em: agora, quantidade: 0, zerado: true });
+  await kv.set(k.migradoV2, { em: agora, convertidos: 0, abertura: 0, zerado: true });
+  // Cópias automáticas antigas (com dados de teste) saem; fica a de agora
+  const antigas = ((await kv.lrange(k.backups, 0, -1)) || []).filter((n) => n !== copia);
+  if (antigas.length) await kv.del(...antigas);
+  await kv.del(k.backups);
+  await kv.lpush(k.backups, copia);
+  return { copia, apagadas: CHAVES_ZERAR.map((c) => k[c]), copiasApagadas: antigas.length, mantidas: CHAVES_MANTIDAS.map((c) => k[c]) };
 }
 
 export async function listarCopias(kv, k) {

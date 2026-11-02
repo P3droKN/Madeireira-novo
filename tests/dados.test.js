@@ -639,7 +639,7 @@ test("2C: configuração do fiado (ligado e prazo) é salva", async () => {
   await assert.rejects(salvarConfigFinanceiro(kv, K, { fiado: { prazoDias: 0 } }), /prazo do fiado/);
 });
 
-import { zerarMovimento, CHAVES_ZERAR } from "../api/_dados.js";
+import { zerarMovimento, CHAVES_ZERAR, salvarCopia } from "../api/_dados.js";
 
 test("abertura: valida fiado anterior (cadastro obrigatório, vencimento padrão) e cheque em carteira", () => {
   assert.throws(() => validarLancamentoV2({ id: "FA1", v: 2, conta: "fiado_anterior", value: 480, competencia: "2026-11-02", cliente: "Zé" }, {}), /cliente/);
@@ -663,12 +663,26 @@ test("zerar: só com permissão e ZERAR; apaga o movimento, mantém preços e aj
   await kv.set(K.configFinanceiro, { fiado: { ligado: true, prazoDias: 30 } });
   await assert.rejects(zerarMovimento(kv, K, { confirmacao: "ZERAR" }, false), /desligado/);
   await assert.rejects(zerarMovimento(kv, K, { confirmacao: "zerar" }, true), /Digite ZERAR/);
+  const velha = await salvarCopia(kv, K, "download"); // cópia automática antiga (com dados de teste)
+  await kv.set(K.vendaSeq, 37);
+  await kv.hset(K.conferencias, { c1: { conta: "gaveta" } });
   const r = await zerarMovimento(kv, K, { confirmacao: "ZERAR" }, true);
-  for (const c of CHAVES_ZERAR) assert.equal(kv.dados.has(K[c]), false, c);
+  for (const c of CHAVES_ZERAR.filter((c) => !["migrado", "migradoV2"].includes(c))) assert.equal(kv.dados.has(K[c]), false, c);
   assert.ok(kv.dados.has(K.precos) && kv.dados.has(K.config) && kv.dados.has(K.configFinanceiro), "preços e ajustes ficam");
   const copia = kv.dados.get(r.copia);
   assert.ok(copia.chaves.madeireira_orcamentos["ORC-0001"] && copia.chaves.madeireira_migrado_v1, "cópia de antes guardada");
-  assert.equal((await salvarOrcamento(kv, K, novoOrc(), {})).id, "ORC-0001", "contador recomeça");
+  // pronto para lançar: sem salvamento seguro nem migração pendentes
+  const t = await lerTudo(kv, K);
+  assert.ok(t.migrado && t.migradoV2, "marcado como pronto (nada a migrar)");
+  assert.deepEqual(t.financeItems, []);
+  // cópias antigas saem; fica só a "antes-de-zerar"
+  assert.equal(kv.dados.has(velha), false);
+  assert.deepEqual(await listarCopias(kv, K), [r.copia]);
+  assert.ok(r.copia.includes("antes-de-zerar"));
+  // contadores recomeçam
+  assert.equal((await salvarOrcamento(kv, K, novoOrc(), {})).id, "ORC-0001", "orçamento recomeça em ORC-0001");
+  const v = await salvarLancamentos(kv, K, [{ id: "N1", v: 2, conta: "venda_produtos", value: 100, competencia: "2026-11-02", pagamentos: [{ forma: "dinheiro", valor: 100 }] }]);
+  assert.equal(v.numeros.N1, "V-0001", "venda recomeça em V-0001");
 });
 
 test("conta corrente: cadastro guarda a marcação e os alertas; orçamento não apaga; venda e fiado anterior sem vencimento", async () => {

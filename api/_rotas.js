@@ -6,7 +6,7 @@ import {
   lerTudo, salvarLancamentos, excluirLancamento, reclassificar, atualizarCheque, salvarAcumulado,
   montarBackup, salvarCopia, listarCopias, lerCopia, lerPrecosEConfig, salvarPrecos,
   salvarConfig, salvarConfigFinanceiro, salvarAbertura, registrarConferencia,
-  importar, migrar, migrarV2, restaurar, marcarImpresso,
+  importar, migrar, migrarV2, restaurar, marcarImpresso, proximosNumeros,
   listarOrcamentos, salvarOrcamento, atualizarOrcamento, salvarCliente, listarClientes, zerarMovimento,
 } from "./_dados.js";
 import { CEPILHADO_PADRAO, montarCatalogo, chavePrecoValida, precosComIdsAtuais } from "../lib/catalogo.js";
@@ -39,6 +39,7 @@ export const ROTAS = {
       saldos,
       ambiente: chaves().ambiente,
       status: statusBanco(),
+      proximos: await proximosNumeros(kv(), chaves()),
       financeItems,
       estornados,
       acumulado: acumulado || { venda: 0, pix: 0, credito: 0, debito: 0, custo: 0, despesa: 0, func: 0, dinheiroCaixa: 0 },
