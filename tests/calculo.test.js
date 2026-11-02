@@ -147,7 +147,7 @@ test("totais do pedido: custo, venda e margem só com itens completos", () => {
 test("catálogo: todos os grupos do custos.json, sem preço de venda nenhum", () => {
   const nomes = cat.materiais.map((m) => m.id);
   for (const id of ["CEDRO_MESCLADO", "CEDRO_VERMELHO", "CAMBARA", "ITAUBA", "JEQUITIBA", "EUCALIPTO", "PINUS",
-    "EUCALIPTO_ROLICO", "MADEIRITE", "FORRO", "DECK", "ASSOALHO", "MEIA_CANA", "RODAPE", "BEIRAL",
+    "EUCALIPTO_ROLICO", "MADEIRITE", "FORRO", "DECK", "ASSOALHO", "MEIA_CANA", "RODAPE", "BEIRAL_CEDRO", "BEIRAL_PINUS",
     "CAIXILHO_TAUARI", "VISTAS_TAUARI", "PREGOS", "RETALHO"]) {
     assert.ok(nomes.includes(id), id);
   }
@@ -221,4 +221,19 @@ test("WhatsApp com frete: linha própria e soma no total", () => {
   assert.ok(t.includes("*Total: R$ 300,00*"));
   const sem = textoWhatsApp({ itens: [{ descricao: "Pinus", quantidade: "10 peças", precoUnitario: 25, unidade: "peça", vendaTotal: 250 }], totalItens: 250, frete: 0 });
   assert.ok(!/frete/i.test(sem) && sem.includes("*Total: R$ 250,00*"), "sem frete, nada muda");
+});
+
+test("beiral: cedro 13/19/23/29 cm e pinus 14/19 cm em ordem crescente, custo subindo com a medida; ids antigos (A, B…) viram os novos", async () => {
+  const { idAtual, precosComIdsAtuais } = await import("../lib/catalogo.js");
+  const m = (id) => cat.materiais.find((x) => x.id === id);
+  assert.equal(m("BEIRAL_CEDRO").nome, "Beiral cedro");
+  assert.deepEqual(m("BEIRAL_CEDRO").itens.map((i) => [i.rotuloDimensao, i.custo]), [["13 cm", 10.53], ["19 cm", 15], ["23 cm", 17.5], ["29 cm", 21.05]]);
+  assert.deepEqual(m("BEIRAL_PINUS").itens.map((i) => [i.rotuloDimensao, i.custo]), [["14 cm", 5], ["19 cm", 7.5]]);
+  assert.ok(!cat.materiais.some((x) => x.id === "BEIRAL"));
+  assert.equal(idAtual("BEIRAL|CEDRO_C"), "BEIRAL_CEDRO|23cm");
+  assert.equal(idAtual("PINUS|1x2x2.50"), "PINUS|1x2x2.50");
+  // preço gravado com o nome antigo continua valendo; se o item novo já tem preço próprio, vale o novo
+  assert.deepEqual(precosComIdsAtuais({ "BEIRAL|CEDRO_A|UNICO": 20, "BEIRAL|PINUS_B|UNICO": 12, "BEIRAL_PINUS|19cm|UNICO": 13 }),
+    { "BEIRAL_CEDRO|13cm|UNICO": 20, "BEIRAL_PINUS|19cm|UNICO": 13 });
+  assert.ok(!JSON.stringify(custos.duvidas).includes("BEIRAL"));
 });

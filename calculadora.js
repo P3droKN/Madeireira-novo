@@ -1,6 +1,6 @@
 // Aba Vender (pedido, modo balcão) e Ajustes › Preços. Os cálculos ficam em lib/calculo.js (calcularItem).
 import { criarEditorPagamentos } from "./pagamentos.js";
-import { montarCatalogo, chavePreco, UNIDADES, ACABAMENTOS, CEPILHADO_PADRAO } from "./lib/catalogo.js";
+import { montarCatalogo, chavePreco, UNIDADES, ACABAMENTOS, CEPILHADO_PADRAO, idAtual } from "./lib/catalogo.js";
 import { calcularItem, totalizarPedido, distribuirTotal, arred, MOTIVOS_AJUSTE, textoWhatsApp } from "./lib/calculo.js";
 
 const $ = (id) => document.getElementById(id);
@@ -91,8 +91,9 @@ function aplicarBalcao(ligado) {
   const b = $("btn-balcao");
   if (b) {
     b.setAttribute("aria-pressed", String(ligado));
-    b.textContent = ligado ? "👁 Balcão (custo escondido)" : "👁 Modo balcão";
-    b.title = ligado ? "Mostrar custo e margem de novo" : "Esconde custo e margem para o cliente não ver a tela";
+    // O nome é sempre só "Modo balcão" (nada de "custo" na tela que o cliente vê); ligado, o botão fica destacado
+    b.textContent = "👁 Modo balcão";
+    b.title = ligado ? "Modo balcão ligado (clique para desligar)" : "Modo balcão";
   }
   // Medidas no seletor: o custo aparece no texto da opção
   for (const opt of $("dimension").options) {
@@ -241,9 +242,39 @@ function adicionar(e) {
   $("dimension").value = m.itens.length === 1 ? m.itens[0].id : "";
   for (const id of ["quantity-pieces", "quantity-length", "valor-livre", "descricao-livre"]) $(id).value = "";
   aoEscolherMedida();
-  $("dimension").focus();
+  $("material").focus();
   renderPedido();
 }
+
+// ---------- Enter passa de um campo para o próximo ----------
+// Material → Medida → Acabamento (se houver) → Quantidade → Comprimento / valor (se houver). No último campo,
+// o Enter adiciona o item e volta para Material. O Enter nunca registra a venda, nunca salva orçamento e nunca
+// imprime. No celular, o "Próximo"/"Ir" do teclado manda o mesmo Enter (enterkeyhint).
+const visivel = (el) => el && !el.disabled && !el.closest("[hidden]") && el.offsetParent !== null;
+function camposDoItem() {
+  const acab = $("acabamento-group").hidden ? null : $("acabamento").querySelector("input:checked") || $("acabamento").querySelector("input");
+  return [$("material"), $("dimension"), acab, $("quantity-pieces"), $("quantity-length"), $("valor-livre"), $("descricao-livre")].filter(visivel);
+}
+function marcarTeclaEnter() {
+  const campos = camposDoItem();
+  campos.forEach((c, i) => c.setAttribute("enterkeyhint", i === campos.length - 1 ? "done" : "next"));
+}
+function enterNoItem(e) {
+  if (e.key !== "Enter" || e.isComposing) return;
+  const alvo = e.target;
+  if (!(alvo instanceof HTMLElement) || alvo.tagName === "BUTTON") return;
+  e.preventDefault(); // nada de enviar o formulário pelo Enter
+  const campos = camposDoItem();
+  const i = campos.indexOf(alvo);
+  if (i < 0) return;
+  // lista de escolha sem nada escolhido: fica nela
+  if (alvo.tagName === "SELECT" && !alvo.value) return;
+  const proximo = campos[i + 1];
+  if (proximo) { proximo.focus(); if (proximo.select && proximo.type !== "radio") proximo.select(); return; }
+  if (!$("btn-adicionar").disabled) adicionar(e);
+}
+$("calc-form").addEventListener("keydown", enterNoItem);
+$("calc-form").addEventListener("focusin", marcarTeclaEnter);
 
 // ---------- Pedido ----------
 
@@ -258,6 +289,7 @@ function restaurarPedido() {
     const salvo = JSON.parse(localStorage.getItem(PEDIDO_KEY) || "{}");
     const linhas = Array.isArray(salvo) ? salvo : salvo.linhas || [];
     estado.pedido = linhas
+      .map((l) => ({ ...l, itemId: idAtual(l.itemId) }))
       .filter((l) => estado.catalogo.itens.has(l.itemId))
       .map((l) => ({ precoManual: null, variacaoPct: null, motivo: "", ...l }));
     estado.motivoGeral = Array.isArray(salvo) ? "" : salvo.motivoGeral || "";
@@ -695,7 +727,7 @@ window.Calculadora = {
   async carregarOrcamento(orc, modo, precos = "orcamento") {
     if (!estado.catalogo) await carregar();
     if (estado.pedido.length && !confirm("O pedido atual será substituído pelo orçamento. Continuar?")) return false;
-    estado.pedido = orc.itens.filter((i) => estado.catalogo.itens.has(i.itemId)).map((i) => {
+    estado.pedido = orc.itens.map((i) => ({ ...i, itemId: idAtual(i.itemId) })).filter((i) => estado.catalogo.itens.has(i.itemId)).map((i) => {
       const item = estado.catalogo.itens.get(i.itemId);
       const livre = item.unidade === "valor_livre";
       const tabelaHoje = precoTabela(i.itemId, i.acabamento);
@@ -722,8 +754,9 @@ window.Calculadora = {
   async carregarVenda(l) {
     if (!estado.catalogo) await carregar();
     if (estado.pedido.length && !confirm("O pedido atual será substituído pela venda a corrigir. Continuar?")) return false;
-    const fora = (l.itens || []).filter((i) => !estado.catalogo.itens.has(i.itemId));
-    estado.pedido = (l.itens || []).filter((i) => estado.catalogo.itens.has(i.itemId)).map((i) => {
+    const itensVenda = (l.itens || []).map((i) => ({ ...i, itemId: idAtual(i.itemId) }));
+    const fora = itensVenda.filter((i) => !estado.catalogo.itens.has(i.itemId));
+    estado.pedido = itensVenda.filter((i) => estado.catalogo.itens.has(i.itemId)).map((i) => {
       const item = estado.catalogo.itens.get(i.itemId);
       const livre = item.unidade === "valor_livre";
       const linha = {

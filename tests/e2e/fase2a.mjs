@@ -123,6 +123,7 @@ await page.fill("#ff-fornecedor", "Celesc"); await page.dispatchEvent("#ff-forne
 ok(await page.isChecked('input[name="ff-pagocom"][value="picpay"]'), "sugere 'Pago com' pela última usada com o fornecedor (PicPay)");
 // Cheque emitido pelo PicPay
 await page.selectOption("#ff-conta", "compra_material");
+await page.fill("#ff-data", "2026-10-13"); // data fixa: o teste não depende do dia em que roda
 await page.fill("#ff-valor", "2500");
 await page.fill("#ff-fornecedor", "Madeiras do Sul"); await page.dispatchEvent("#ff-fornecedor", "change");
 await page.locator('label:has(input[name="ff-pagocom"][value="cheque_emitido"])').click();

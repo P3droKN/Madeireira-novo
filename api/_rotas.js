@@ -9,7 +9,7 @@ import {
   importar, migrar, migrarV2, restaurar, marcarImpresso,
   listarOrcamentos, salvarOrcamento, atualizarOrcamento, salvarCliente, listarClientes, zerarMovimento,
 } from "./_dados.js";
-import { CEPILHADO_PADRAO, montarCatalogo, chavePrecoValida } from "../lib/catalogo.js";
+import { CEPILHADO_PADRAO, montarCatalogo, chavePrecoValida, precosComIdsAtuais } from "../lib/catalogo.js";
 import { resumirLancamentos } from "../lib/resumo.js";
 import { hojeSP } from "../lib/datas.js";
 
@@ -96,7 +96,7 @@ export const ROTAS = {
       console.warn("KV indisponível para preços:", e.message);
       kvDisponivel = false;
     }
-    response.status(200).json({ custos, precos, config, kvDisponivel });
+    response.status(200).json({ custos, precos: precosComIdsAtuais(precos), config, kvDisponivel });
   }),
 
   // POST { config: {...} }      -> ajustes da calculadora (modificadores, cepilhado)

@@ -438,3 +438,11 @@ window.Orcamentos = {
 
 // Contador de "para cobrar" na aba, assim que houver senha/conexão
 setTimeout(() => { carregar(); }, 1500);
+
+// Salvar orçamento: o Enter só passa para o próximo campo (salvar é só pelo botão)
+document.getElementById("orc-salvar-form")?.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.isComposing || e.target.tagName === "BUTTON") return;
+  e.preventDefault();
+  const campos = [...e.currentTarget.querySelectorAll("input:not([type=radio]), input[type=radio]:checked")].filter((c) => !c.disabled && c.offsetParent !== null);
+  campos[campos.indexOf(e.target) + 1]?.focus();
+});
