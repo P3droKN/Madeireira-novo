@@ -20,9 +20,10 @@ const somarDias = (data, dias) => {
  * @param {boolean} [opcoes.semFiado] recebimento: sem a forma Fiado
  * @param {boolean} [opcoes.clienteExterno] a tela já tem um campo "Cliente" (o fiado usa ele)
  * @param {() => {ligado: boolean, prazoDias: number, data: string}} [opcoes.fiado] configuração do fiado e data da venda
- * @param {(nomeCliente: string) => boolean} [opcoes.contaCorrente] o cliente é de conta corrente? (fiado sem vencimento)
+ * @param {(nomeCliente: string) => ({semPrazo: boolean, dias: number|null}|null)} [opcoes.prazo] prazo do fiado do cliente
+ *   (cadastro): "sem prazo" (acerta quando juntar, sem vencimento) ou o prazo dele em dias
  */
-export function criarEditorPagamentos(el, { total = 0, semFiado = false, clienteExterno = false, fiado = null, contaCorrente = null } = {}) {
+export function criarEditorPagamentos(el, { total = 0, semFiado = false, clienteExterno = false, fiado = null, prazo = null } = {}) {
   let alvo = total;
   let linhas = [{ forma: "dinheiro", valor: total, parcelas: 2, cheque: {} }];
   let cliente = "";
@@ -31,11 +32,18 @@ export function criarEditorPagamentos(el, { total = 0, semFiado = false, cliente
   const formas = () => FORMAS_PADRAO.filter((f) => !f.soMigracao && (!f.fiado || (!semFiado && cfgFiado().ligado)));
   const restante = () => (centavos(alvo) - linhas.reduce((s, l) => s + centavos(l.valor), 0)) / 100;
   const temFiado = () => linhas.some((l) => l.forma === "fiado" && centavos(l.valor) > 0);
-  const ehContaCorrente = () => Boolean(contaCorrente && contaCorrente(cliente.trim()));
+  const prazoAtual = () => (prazo ? prazo(cliente.trim()) : null);
+  const ehContaCorrente = () => Boolean(prazoAtual()?.semPrazo);
+  // Vencimento sugerido: data da venda + o prazo do cliente (ou o padrão). Se a pessoa mudou a data, fica a dela.
+  const vencimentoSugerido = () => {
+    const c = cfgFiado();
+    return somarDias(c.data || hojeSP(), prazoAtual()?.dias || c.prazoDias || 30);
+  };
+  const ajustarVencimentos = () => { for (const l of linhas) if (l.forma === "fiado" && !l.vencManual) l.vencimento = vencimentoSugerido(); };
 
-  let ccDesenhado = null;
+  let prazoDesenhado = null;
   function render() {
-    ccDesenhado = ehContaCorrente();
+    prazoDesenhado = JSON.stringify(prazoAtual());
     el.innerHTML = `
       <div class="pagamentos">
         ${linhas.map((l, i) => `
@@ -56,9 +64,9 @@ export function criarEditorPagamentos(el, { total = 0, semFiado = false, cliente
             ${l.forma === "fiado" ? `
               <div class="pag-fiado">
                 ${clienteExterno ? '<span class="texto-suave">Cliente: use o campo "Cliente" acima (obrigatório no fiado).</span>'
-                  : `<input type="text" class="pag-fiado-cliente" list="clientes-lista" placeholder="Cliente (obrigatório)" value="${esc(cliente)}" aria-label="Cliente do fiado" autocomplete="off">`}
-                ${ehContaCorrente() ? '<span class="tag tag-cc">Conta corrente: sem vencimento</span>'
-                  : `<label class="texto-suave">Vence em <input type="date" class="pag-fiado-venc" value="${esc(l.vencimento || "")}" aria-label="Vencimento do fiado"></label>`}
+                  : `<input type="text" class="pag-fiado-cliente" list="clientes-lista" placeholder="Cliente (obrigatório)" value="${esc(cliente)}" aria-label="Cliente do fiado" autocomplete="off"><button type="button" class="btn-icon mini pag-cli-novo">+ cadastrar novo</button>`}
+                ${ehContaCorrente() ? '<span class="tag tag-cc">Sem prazo: acerta quando juntar</span>'
+                  : `<label class="texto-suave">Vence em <input type="date" class="pag-fiado-venc" value="${esc(l.vencimento || "")}" aria-label="Vencimento do fiado"></label>${prazoAtual()?.dias ? `<small class="texto-suave">prazo do cliente: ${prazoAtual().dias} dias</small>` : ""}`}
               </div>` : ""}
           </div>`).join("")}
         <div class="pag-rodape">
@@ -91,16 +99,13 @@ export function criarEditorPagamentos(el, { total = 0, semFiado = false, cliente
     const l = linhas[Number(linha.dataset.i)];
     if (e.target.classList.contains("pag-forma")) {
       l.forma = e.target.value;
-      if (l.forma === "fiado" && !l.vencimento) {
-        const c = cfgFiado();
-        l.vencimento = somarDias(c.data || hojeSP(), c.prazoDias || 30);
-      }
+      if (l.forma === "fiado" && !l.vencimento) l.vencimento = vencimentoSugerido();
       return render();
     }
     if (e.target.classList.contains("pag-parcelas")) l.parcelas = Number(e.target.value);
     if (e.target.classList.contains("pag-ch")) l.cheque[e.target.dataset.campo] = e.target.value;
-    if (e.target.classList.contains("pag-fiado-venc")) l.vencimento = e.target.value;
-    // Ao terminar de digitar o cliente: se for de conta corrente, some o vencimento
+    if (e.target.classList.contains("pag-fiado-venc")) { l.vencimento = e.target.value; l.vencManual = true; }
+    // Ao terminar de digitar o cliente: sem prazo esconde o vencimento; com prazo próprio, o vencimento acompanha
     if (e.target.classList.contains("pag-fiado-cliente")) { cliente = e.target.value; atualizar(); }
   });
   el.addEventListener("input", (e) => {
@@ -110,6 +115,10 @@ export function criarEditorPagamentos(el, { total = 0, semFiado = false, cliente
     atualizarStatus();
   });
   el.addEventListener("click", (e) => {
+    if (e.target.classList.contains("pag-cli-novo")) {
+      window.ClientesUI?.novo({ nome: cliente.trim() }).then((c) => { if (c) { cliente = c.nome; ajustarVencimentos(); render(); } });
+      return;
+    }
     if (e.target.classList.contains("pag-adicionar")) {
       const r = Math.max(0, restante());
       linhas.push({ forma: "pix_bradesco", valor: r, parcelas: 2, cheque: {} });
@@ -120,8 +129,8 @@ export function criarEditorPagamentos(el, { total = 0, semFiado = false, cliente
     }
   });
 
-  // Só redesenha se mudou (conta corrente ou não): não apaga o que está sendo digitado
-  function atualizar() { if (ehContaCorrente() !== ccDesenhado) render(); }
+  // Só redesenha se o prazo mudou (outro cliente): não apaga o que está sendo digitado
+  function atualizar() { if (JSON.stringify(prazoAtual()) !== prazoDesenhado) { ajustarVencimentos(); render(); } }
 
   render();
 
@@ -141,6 +150,7 @@ export function criarEditorPagamentos(el, { total = 0, semFiado = false, cliente
     // Cliente sugerido (ex.: venda de um orçamento)
     definirCliente(nome) {
       cliente = nome || "";
+      ajustarVencimentos();
       render();
     },
     // Corrigir uma venda: volta as formas gravadas (valor, parcelas, cheque, vencimento do fiado)

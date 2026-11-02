@@ -165,3 +165,22 @@ test("conta corrente: sem vencimento, nunca atrasado; em aberto há X dias; abat
   assert.ok(normal.dividas.every((d) => d.vencimento));
   assert.ok(textoCobrancaFiado(c, "2026-10-15").includes("• 10/09/2026 – R$ 100,00") && !textoCobrancaFiado(c, "2026-10-15").includes("vence"), "cobrança da conta corrente sem vencimento");
 });
+
+test("mesmo cliente em duas linhas: lançamento só com o nome vai para o cliente cadastrado com esse nome", () => {
+  const semId = { ...venda("v2", "2026-10-05", [fiado(300, "2026-11-04")]), clienteId: undefined, cliente: "carlos  souza" };
+  const r = contasAReceber([venda("v1", "2026-10-01", [fiado(500, "2026-10-20")]), semId], {}, "2026-10-10", clientes);
+  assert.equal(r.porCliente.length, 1);
+  assert.equal(r.porCliente[0].aberto, 800);
+  // dois cadastrados com o mesmo nome: não adivinha (fica separado pelo nome)
+  const dois = [...clientes, { id: "C9", nome: "Carlos Souza" }];
+  assert.equal(contasAReceber([venda("v1", "2026-10-01", [fiado(500, "2026-10-20")]), semId], {}, "2026-10-10", dois).porCliente.length, 2);
+});
+
+test("prazo do cliente: 'outro' prazo vence em data + dias dele; sem prazo não vence; padrão vem da configuração", async () => {
+  const { prazoDoCliente, vencimentoFiado } = await import("../lib/receber.js");
+  assert.deepEqual(prazoDoCliente({ prazoDias: 15 }, {}), { semPrazo: false, dias: 15, padrao: 30, proprio: true });
+  assert.deepEqual(prazoDoCliente({ contaCorrente: true, prazoDias: 15 }, {}), { semPrazo: true, dias: null, padrao: 30 });
+  assert.equal(prazoDoCliente({}, { fiado: { prazoDias: 20 } }).dias, 20);
+  assert.equal(vencimentoFiado({ forma: "fiado" }, "2026-10-01", { fiado: { prazoDias: 30 } }, { prazoDias: 15 }), "2026-10-16");
+  assert.equal(vencimentoFiado({ forma: "fiado", fiado: { vencimento: "2026-10-05" } }, "2026-10-01", {}, { prazoDias: 15 }), "2026-10-05");
+});

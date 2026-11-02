@@ -922,3 +922,72 @@ test("Ajustes › Impressão: guarda cabeçalho, avisos, Pix e logo; logo que n�
   assert.throws(() => limparImpressao({ logo: "javascript:alert(1)" }), /Logo inválido/);
   assert.throws(() => limparImpressao({ logo: "data:image/png;base64," + "A".repeat(300001) }), /grande demais/);
 });
+
+test("cliente: prazo (padrão, outro, sem prazo), duas observações (a antiga vira a do fiado), inativar", async () => {
+  const { normalizarCliente, situacaoCliente } = await import("../api/_dados.js");
+  const kv = kvFalso({});
+  // cadastro antigo: uma observação só
+  await kv.hset(K.clientes, { C7: { id: "C7", nome: "Seu Bento", telefone: "", obs: "paga todo dia 10", contaCorrente: true } });
+  const velho = (await listarClientes(kv, K)).clientes[0];
+  assert.deepEqual([velho.obs, velho.obsFiado], ["", "paga todo dia 10"]);
+  assert.deepEqual(normalizarCliente({ id: "x", obs: "a", obsFiado: "b" }), { id: "x", obs: "a", obsFiado: "b" });
+  // editar sem mandar as observações mantém as duas
+  const e = await salvarCliente(kv, K, { id: "C7", nome: "Seu Bento", obs: "entrega de manhã" });
+  assert.deepEqual([e.obs, e.obsFiado, e.contaCorrente], ["entrega de manhã", "paga todo dia 10", true]);
+  // outro prazo
+  const c = await salvarCliente(kv, K, { nome: "Dona Lu", prazoDias: 15 });
+  assert.deepEqual([c.prazoDias, c.contaCorrente], [15, false]);
+  await assert.rejects(salvarCliente(kv, K, { nome: "X", prazoDias: 0 }), /prazo para pagar/);
+  // sem prazo zera o prazo próprio; voltar ao padrão
+  assert.equal((await salvarCliente(kv, K, { id: c.id, nome: "Dona Lu", contaCorrente: true, prazoDias: 15 })).prazoDias, null);
+  assert.equal((await salvarCliente(kv, K, { id: c.id, nome: "Dona Lu", contaCorrente: false, prazoDias: "" })).prazoDias, null);
+  // inativar e reativar; editar não reativa
+  assert.equal((await situacaoCliente(kv, K, c.id, true)).inativo, true);
+  assert.equal((await salvarCliente(kv, K, { id: c.id, nome: "Dona Lu" })).inativo, true);
+  assert.equal((await situacaoCliente(kv, K, c.id, false)).inativo, false);
+});
+
+test("excluir cliente para sempre: só com EXCLUIR, sem dívida e sem cheque na carteira; vendas guardam o nome; orçamentos abertos saem", async () => {
+  const { excluirCliente, impactoExcluirCliente } = await import("../api/_dados.js");
+  const kv = kvFalso({ [K.finance]: [] });
+  await migrar(kv, K);
+  await kv.set(K.migradoV2, { em: "x" });
+  const c = await salvarCliente(kv, K, { nome: "Carlos Souza", telefone: "(47) 99999-1234" });
+  await salvarLancamentos(kv, K, [{ id: "F1", v: 2, conta: "venda_produtos", value: 100, competencia: "2026-10-01", clienteId: c.id, cliente: c.nome, pagamentos: [{ forma: "fiado", valor: 100, fiado: { vencimento: "2026-10-31" } }] }]);
+  const o1 = await salvarOrcamento(kv, K, novoOrc(), {});
+  const o2 = await salvarOrcamento(kv, K, novoOrc(), {});
+  await kv.hset(K.orcamentos, { [o2.id]: { ...(await kv.hget(K.orcamentos, o2.id)), status: "fechado", vendaId: "F1" } });
+  await assert.rejects(excluirCliente(kv, K, { id: c.id }), /Digite EXCLUIR/);
+  await assert.rejects(excluirCliente(kv, K, { id: c.id, confirmacao: "EXCLUIR" }), /Receba ou estorne o saldo de R\$ 100,00/);
+  // recebe tudo, mas em cheque que ainda não compensou
+  await salvarLancamentos(kv, K, [{ id: "R1", v: 2, conta: "recebimento", value: 100, competencia: "2026-10-05", clienteId: c.id, cliente: c.nome, pagamentos: [{ forma: "cheque", valor: 100, cheque: { compensacao: "2099-01-10" } }] }]);
+  await assert.rejects(excluirCliente(kv, K, { id: c.id, confirmacao: "EXCLUIR" }), /cheques na carteira/);
+  await kv.hset(K.lancamentos, { R1: { ...(await kv.hget(K.lancamentos, "R1")), pagamentos: [{ forma: "pix_bradesco", valor: 100 }] } });
+  const imp = await impactoExcluirCliente(kv, K, c.id);
+  assert.deepEqual([imp.deve, imp.vendas, imp.orcamentosApagados, imp.orcamentosConvertidos], [0, 2, 1, 1]);
+  const r = await excluirCliente(kv, K, { id: c.id, confirmacao: "EXCLUIR" });
+  assert.deepEqual([r.vendas, r.orcamentosApagados], [2, 1]);
+  assert.equal(await kv.hget(K.clientes, c.id), null);
+  const f1 = await kv.hget(K.lancamentos, "F1");
+  assert.deepEqual([f1.clienteId, f1.cliente, f1.clienteExcluido], [undefined, "Carlos Souza", true]);
+  assert.equal(await kv.hget(K.orcamentos, o1.id), null, "orçamento em aberto apagado");
+  assert.equal((await kv.hget(K.orcamentos, o2.id)).cliente.excluido, true, "convertido fica, com o nome em texto");
+});
+
+test("orçamento: excluir para sempre (não o convertido) e esvaziar lixeira; o número não volta", async () => {
+  const kv = kvFalso({});
+  const a = await salvarOrcamento(kv, K, novoOrc(), {});
+  const b = await salvarOrcamento(kv, K, novoOrc(), {});
+  const c = await salvarOrcamento(kv, K, novoOrc(), {});
+  await assert.rejects(atualizarOrcamento(kv, K, { id: a.id, acao: "excluir_sempre" }), /Digite EXCLUIR/);
+  await atualizarOrcamento(kv, K, { id: a.id, acao: "excluir_sempre", confirmacao: "EXCLUIR" });
+  assert.equal(await kv.hget(K.orcamentos, a.id), null);
+  await kv.hset(K.orcamentos, { [c.id]: { ...(await kv.hget(K.orcamentos, c.id)), status: "fechado" } });
+  await assert.rejects(atualizarOrcamento(kv, K, { id: c.id, acao: "excluir_sempre", confirmacao: "EXCLUIR" }), /convertido em venda/);
+  await atualizarOrcamento(kv, K, { id: b.id, acao: "excluir" });
+  const r = await atualizarOrcamento(kv, K, { acao: "esvaziar_lixeira", confirmacao: "EXCLUIR" });
+  assert.deepEqual(r.apagados, [b.id]);
+  assert.equal(await kv.hget(K.orcamentos, b.id), null);
+  assert.ok(await kv.hget(K.orcamentos, c.id));
+  assert.equal((await salvarOrcamento(kv, K, novoOrc(), {})).id, "ORC-0004", "o número não é reaproveitado");
+});

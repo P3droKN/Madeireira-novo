@@ -2,6 +2,7 @@
 // (sem importar histórico, sem migrar) → abertura do dia com cheques um por um e fiado da pasta → V-0001 e ORC-0001.
 // Servidor: SEED (dados de teste), BANCO_PRODUCAO_HOST (trava ativa, outro banco) e PERMITIR_ZERAR=sim.
 import { createRequire } from "node:module";
+import { salvarCadastro } from "./janela.mjs";
 const require = createRequire("/opt/node-tools/node_modules/");
 const { chromium } = require("playwright");
 const URL = "http://localhost:4321";
@@ -88,8 +89,8 @@ await page.waitForFunction(() => document.getElementById("aj-abertura").textCont
 ok(await page.inputValue("#cx-ab-gaveta") === "300" && await page.inputValue("#cx-ab-bradesco") === "5000", "o que já foi digitado na abertura continua depois de lançar o cheque");
 ok(nb(await page.textContent("#cx-ab-cheques")) === "R$ 250,00", "cheques em carteira: só o lançado na abertura (R$ 250)");
 await page.fill("#cx-fa-cliente", "Zé da Obra"); await page.fill("#cx-fa-valor", "480");
-respostas.push("");
 await page.click("#cx-ab-fiado button[type=submit]");
+await salvarCadastro(page);
 await page.waitForFunction(() => document.getElementById("aj-abertura").textContent.includes("Zé da Obra"));
 ok(nb(await page.textContent("#aj-abertura")).includes("Fiado anterior (pasta)R$ 480,00"), "fiado anterior lançado: Zé da Obra R$ 480");
 await page.click("#cx-abertura button[type=submit]");

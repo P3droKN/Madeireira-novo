@@ -5,6 +5,9 @@ import { contaPorId, naturezaDaConta, PAGO_COM, mesclarConfigFinanceiro, juntarC
 import { converterLancamento, lancamentosDeAbertura, categoriaLegada, sugestaoDe } from "../lib/migracaoV2.js";
 import { numeroOrcamento, normalizarTelefone, somarDias, ORIGENS, MOTIVOS_PERDA } from "../lib/orcamentos.js";
 import { dataSP, hojeSP } from "../lib/datas.js";
+import { contasAReceber } from "../lib/receber.js";
+
+const brl = (v) => "R$ " + Number(v || 0).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
 const CATEGORIAS = { venda: "income", custo: "expense", funcionario: "expense", despesa: "expense" };
 const METODOS = ["dinheiro", "pix", "bradesco", "debito", "credito", "cheque"];
@@ -1055,7 +1058,25 @@ export async function salvarOrcamento(kv, k, d, cfgSalva) {
 // Situações: Em aberto -> Fechado (virou venda) ou Perdido. Quem muda a situação são as ações:
 // contato, perdido, fechar, reabrir, precos (atualizar pela tabela), excluir e restaurar (lixeira).
 // "aguardando" (dados antigos) conta como Em aberto.
+// Excluir para sempre: apaga do banco de vez (o número não volta a ser usado). Convertido em venda, não.
+// Esvaziar lixeira: apaga de vez todos os que estão na lixeira.
+export async function excluirOrcamentosParaSempre(kv, k, p) {
+  if (p?.confirmacao !== "EXCLUIR") throw erro(400, "Digite EXCLUIR para confirmar.");
+  const todos = Object.values((await kv.hgetall(k.orcamentos)) || {}).map(desembrulhar).filter(Boolean);
+  let alvo;
+  if (p.acao === "esvaziar_lixeira") alvo = todos.filter((o) => o.excluidoEm && o.status !== "fechado");
+  else {
+    const o = todos.find((x) => x.id === String(p.id || ""));
+    if (!o) throw erro(404, "Orçamento não encontrado.");
+    if (o.status === "fechado") throw erro(409, "Orçamento convertido em venda não pode ser excluído. Para desfazer, estorne a venda no Caixa.");
+    alvo = [o];
+  }
+  if (alvo.length) await kv.hdel(k.orcamentos, ...alvo.map((o) => o.id));
+  return { apagados: alvo.map((o) => o.id) };
+}
+
 export async function atualizarOrcamento(kv, k, p) {
+  if (p?.acao === "excluir_sempre" || p?.acao === "esvaziar_lixeira") return { ...(await excluirOrcamentosParaSempre(kv, k, p)), id: p.id || null };
   const orc = desembrulhar(await kv.hget(k.orcamentos, String(p?.id || "")));
   if (!orc) throw erro(404, "Orçamento não encontrado.");
   const agora = new Date().toISOString();
@@ -1172,20 +1193,93 @@ export async function salvarCliente(kv, k, c) {
   };
   const limite = opcional(c.alertaLimite, 0.01, 1e7, "limite em R$", false);
   const dias = opcional(c.alertaDias, 1, 3650, "dias sem pagar", true);
+  // Prazo para pagar o fiado: null = o padrão (Ajustes › Financeiro); número = outro prazo em dias.
+  // "Sem prazo" (acerta quando juntar) é o contaCorrente: sem vencimento, com alerta de limite e dias.
+  const prazo = opcional(c.prazoDias, 1, 3650, "prazo para pagar", true);
+  const antes = atual ? normalizarCliente(atual) : null;
   const cliente = {
-    id, nome, telefone: t ? t.formatado : "", obs: texto(c.obs ?? atual?.obs, 500),
+    id, nome, telefone: t ? t.formatado : "",
+    obs: texto(c.obs ?? antes?.obs, 500), // observação do atendimento
+    obsFiado: texto(c.obsFiado ?? antes?.obsFiado, 500),
     contaCorrente: c.contaCorrente === undefined ? Boolean(atual?.contaCorrente) : c.contaCorrente === true,
+    prazoDias: prazo === undefined ? (atual?.prazoDias ?? null) : prazo,
     alertaLimite: limite === undefined ? (atual?.alertaLimite ?? null) : limite,
     alertaDias: dias === undefined ? (atual?.alertaDias ?? null) : dias,
     ...dadosDaVia(c, atual),
+    inativo: Boolean(atual?.inativo),
     criadoEm: atual?.criadoEm || agora, atualizadoEm: agora,
   };
+  if (cliente.contaCorrente) cliente.prazoDias = null;
   await kv.hset(k.clientes, { [id]: cliente });
   return cliente;
 }
 
+// Cadastro antigo tinha uma observação só (quase sempre sobre o fiado): ela vira a "observação do fiado"
+export function normalizarCliente(c) {
+  if (!c || "obsFiado" in c) return c;
+  return { ...c, obs: "", obsFiado: c.obs || "" };
+}
+
 export async function listarClientes(kv, k) {
-  return { clientes: Object.values((await kv.hgetall(k.clientes)) || {}).map(desembrulhar).filter(Boolean).sort((a, b) => a.nome.localeCompare(b.nome)) };
+  return { clientes: Object.values((await kv.hgetall(k.clientes)) || {}).map(desembrulhar).filter(Boolean).map(normalizarCliente).sort((a, b) => a.nome.localeCompare(b.nome)) };
+}
+
+// Inativar / reativar: some das buscas do Vender e dos orçamentos; o histórico fica
+export async function situacaoCliente(kv, k, id, inativo) {
+  const atual = desembrulhar(await kv.hget(k.clientes, String(id || "")));
+  if (!atual) throw erro(404, "Cliente não encontrado.");
+  const novo = { ...normalizarCliente(atual), inativo: Boolean(inativo), atualizadoEm: new Date().toISOString() };
+  await kv.hset(k.clientes, { [novo.id]: novo });
+  return novo;
+}
+
+// O que acontece ao excluir um cliente para sempre: quanto ele deve, cheques dele na carteira,
+// quantas vendas guardam o nome e quantos orçamentos (não convertidos) saem junto
+export async function impactoExcluirCliente(kv, k, id, hoje = hojeSP()) {
+  const cli = desembrulhar(await kv.hget(k.clientes, String(id || "")));
+  if (!cli) throw erro(404, "Cliente não encontrado.");
+  const { financeItems } = await lerTudo(kv, k);
+  const cfg = desembrulhar(await kv.get(k.configFinanceiro)) || {};
+  const r = contasAReceber(financeItems, cfg, hoje, [cli]);
+  const deve = r.porCliente.find((c) => c.clienteId === cli.id)?.aberto || 0;
+  const cheques = financeItems.filter((l) => String(l.clienteId) === cli.id).flatMap((l) => (l.pagamentos || [])
+    .filter((p) => p.forma === "cheque" && !p.cheque?.devolvidoEm && (p.cheque?.compensacao || "") > hoje));
+  const chequesValor = Math.round(cheques.reduce((s, p) => s + Number(p.valor || 0) * 100, 0)) / 100;
+  const orcs = Object.values((await kv.hgetall(k.orcamentos)) || {}).map(desembrulhar).filter((o) => o && String(o.cliente?.id) === cli.id);
+  return {
+    cliente: cli, deve, chequesValor,
+    vendas: financeItems.filter((l) => String(l.clienteId) === cli.id).length,
+    orcamentosApagados: orcs.filter((o) => o.status !== "fechado").length,
+    orcamentosConvertidos: orcs.filter((o) => o.status === "fechado").length,
+  };
+}
+
+// Excluir para sempre (só sem dívida e sem cheque na carteira): apaga o cadastro e os orçamentos não
+// convertidos; vendas e recebimentos ficam com o nome em texto ("cliente excluído").
+export async function excluirCliente(kv, k, p) {
+  if (p?.confirmacao !== "EXCLUIR") throw erro(400, "Digite EXCLUIR para confirmar.");
+  const imp = await impactoExcluirCliente(kv, k, p.id);
+  if (imp.deve > 0.004) throw erro(409, `Receba ou estorne o saldo de ${brl(imp.deve)} antes de excluir.`);
+  if (imp.chequesValor > 0.004) throw erro(409, `${imp.cliente.nome} tem ${brl(imp.chequesValor)} em cheques na carteira. Espere compensar (ou registre a devolução) antes de excluir.`);
+  const id = imp.cliente.id;
+  const agora = new Date().toISOString();
+  const hash = (await kv.hgetall(k.lancamentos)) || {};
+  const soltar = {};
+  for (const bruto of Object.values(hash)) {
+    const l = desembrulhar(bruto);
+    if (!l || String(l.clienteId) !== id) continue;
+    const { clienteId, ...resto } = l;
+    soltar[l.id] = { ...resto, cliente: l.cliente || imp.cliente.nome, clienteExcluido: true, atualizadoEm: agora, versao: Number(l.versao || 0) + 1 };
+  }
+  if (Object.keys(soltar).length) await kv.hset(k.lancamentos, soltar);
+  const orcs = Object.values((await kv.hgetall(k.orcamentos)) || {}).map(desembrulhar).filter((o) => o && String(o.cliente?.id) === id);
+  const apagar = orcs.filter((o) => o.status !== "fechado").map((o) => o.id);
+  if (apagar.length) await kv.hdel(k.orcamentos, ...apagar);
+  const convertidos = {};
+  for (const o of orcs.filter((o) => o.status === "fechado")) convertidos[o.id] = { ...o, cliente: { nome: o.cliente.nome, telefone: o.cliente.telefone || "", excluido: true } };
+  if (Object.keys(convertidos).length) await kv.hset(k.orcamentos, convertidos);
+  await kv.hdel(k.clientes, id);
+  return { excluido: id, vendas: Object.keys(soltar).length, orcamentosApagados: apagar.length };
 }
 
 

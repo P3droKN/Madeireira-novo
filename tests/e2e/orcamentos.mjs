@@ -205,7 +205,7 @@ ok(conf.includes("Excluir ORC-0003 de Carlos Souza?") && conf.includes("erro ou 
 ok((await linhaOrc("ORC-0003").count()) === 0 && (await orc("ORC-0003")).excluidoEm, "excluído some da lista, mas continua guardado (lixeira)");
 ok(nb(await page.textContent("#orc-indicadores")).includes("R$ 0,00"), "excluído não conta nos indicadores");
 ok((await page.textContent("#orc-lixeira-link")).includes("Lixeira (1)"), "link da Lixeira mostra 1");
-ok(nb(await page.textContent(".legenda-cores")).includes("Perdido = o cliente não fechou") && nb(await page.textContent(".legenda-cores")).includes("Excluir = foi erro ou teste"), "a tela explica a diferença entre Perdido e Excluir");
+ok(nb(await page.textContent(".legenda-cores")).includes("Perdido = o cliente não fechou") && nb(await page.textContent(".legenda-cores")).includes("Excluir = vai para a lixeira por 30 dias") && nb(await page.textContent(".legenda-cores")).includes("Excluir para sempre = apaga de vez"), "a tela explica a diferença entre Perdido, Excluir e Excluir para sempre");
 await page.click("#orc-lixeira-link");
 ok(await page.isVisible("#orc-lixeira") && (await page.locator("#orc-lixeira-body tr", { hasText: "ORC-0003" }).count()) === 1, "Lixeira lista o ORC-0003");
 await page.locator("#orc-lixeira-body tr", { hasText: "ORC-0003" }).locator('[data-acao="restaurar"]').click();

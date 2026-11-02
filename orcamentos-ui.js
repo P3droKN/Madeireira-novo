@@ -117,7 +117,7 @@ function renderLista() {
       podeReabrir(o) ? `<button data-acao="reabrir" data-id="${esc(o.id)}">Reabrir</button>` : "",
       o.status === "fechado"
         ? '<small class="menu-nota">Excluir: não dá, virou venda. Para desfazer, estorne a venda no Caixa.</small>'
-        : `<button data-acao="excluir" data-id="${esc(o.id)}" class="item-perigo">Excluir</button>`,
+        : `<button data-acao="excluir" data-id="${esc(o.id)}" class="item-perigo">Excluir (lixeira)</button><button data-acao="excluir_sempre" data-id="${esc(o.id)}" class="item-perigo">Excluir para sempre</button>`,
     ].filter(Boolean).join("");
     acoes.push(`<details class="menu-mais"><summary class="btn-icon mini" aria-label="Mais ações">⋯</summary><div class="menu-itens">${mais}</div></details>`);
     const selo = o.status === "perdido"
@@ -148,7 +148,7 @@ function renderLixeira() {
   $("orc-lixeira-body").innerHTML = lista.map((o) => `<tr>
       <td><strong>${esc(o.id)}</strong></td><td>${esc(o.cliente?.nome)}<small>${esc(o.cliente?.telefone)}</small></td>
       <td>${dataBR(o.data)}</td><td class="num">${moeda(o.total)}</td><td>${dataHora(o.excluidoEm)}</td>
-      <td><button class="btn-icon mini" data-acao="restaurar" data-id="${esc(o.id)}">Restaurar</button></td>
+      <td class="orc-acoes"><button class="btn-icon mini" data-acao="restaurar" data-id="${esc(o.id)}">Restaurar</button><button class="btn-icon mini item-perigo" data-acao="excluir_sempre" data-id="${esc(o.id)}">Excluir definitivamente</button></td>
     </tr>`).join("") || '<tr><td colspan="6" class="texto-suave">A lixeira está vazia.</td></tr>';
 }
 
@@ -197,6 +197,30 @@ function abrirModal(id) {
   for (const m of ["modal-orc-salvar", "modal-orc-whats", "modal-orc-perdido", "modal-orc-precos", "modal-orc-converter"]) $(m).style.display = m === id ? "flex" : "none";
 }
 function fecharModais() { abrirModal(null); }
+
+// Excluir para sempre (um orçamento) e Esvaziar lixeira: apagam do banco de vez (digitando EXCLUIR).
+// O número não volta a ser usado.
+async function excluirParaSempre(o) {
+  const ok = await window.CaixaUI.confirmarExcluir(`Excluir ${o.id} para sempre?`, `${o.cliente?.nome || "Cliente"} · ${moeda(o.total)}. O orçamento é apagado de vez e não dá para restaurar. O número ${o.id} não volta a ser usado.`);
+  if (!ok) return;
+  try {
+    await window.api("/api/orcamentos", { method: "PATCH", body: { id: o.id, acao: "excluir_sempre", confirmacao: "EXCLUIR" } });
+    estado.orcamentos = estado.orcamentos.filter((x) => x.id !== o.id);
+    renderTudo();
+  } catch (e) { alert(`Não foi excluído: ${e.message}`); }
+}
+async function esvaziarLixeira() {
+  const n = estado.orcamentos.filter((o) => o.excluidoEm && o.status !== "fechado").length;
+  if (!n) return alert("A lixeira já está vazia.");
+  const ok = await window.CaixaUI.confirmarExcluir("Esvaziar a lixeira?", `${n} orçamento(s) da lixeira serão apagados de vez (inclusive os com mais de 30 dias). Não dá para restaurar.`);
+  if (!ok) return;
+  try {
+    const r = await window.api("/api/orcamentos", { method: "PATCH", body: { acao: "esvaziar_lixeira", confirmacao: "EXCLUIR" } });
+    const fora = new Set(r.orcamento?.apagados || []);
+    estado.orcamentos = estado.orcamentos.filter((x) => !fora.has(x.id));
+    renderTudo();
+  } catch (e) { alert(`A lixeira não foi esvaziada: ${e.message}`); }
+}
 
 async function patch(corpo) {
   const r = await window.api("/api/orcamentos", { method: "PATCH", body: corpo });
@@ -289,6 +313,7 @@ async function acao(nome, id) {
     return patch({ id, acao: "excluir" }).catch((e) => alert(`Não foi excluído: ${e.message}`));
   }
   if (nome === "restaurar") return patch({ id, acao: "restaurar" }).catch((e) => alert(`Não foi restaurado: ${e.message}`));
+  if (nome === "excluir_sempre") return excluirParaSempre(o);
   if (nome === "converter") {
     estado.atual = { orc: o };
     const s = situacao(o, hoje(), cfgOrc());
@@ -308,13 +333,15 @@ function abrirSalvar() {
   const editando = v?.modo === "editar";
   $("orc-salvar-titulo").textContent = editando ? `Salvar alterações no ${v.id}` : v?.modo === "duplicar" ? `Novo orçamento (cópia do ${v.id})` : "Salvar como orçamento";
   $("orc-salvar-resumo").textContent = `${f.itens.length} ${f.itens.length === 1 ? "item" : "itens"} · total ${moeda(f.total)}`;
-  $("orc-nome").value = v?.cliente?.nome || "";
-  $("orc-tel").value = v?.cliente?.telefone || "";
+  // Cliente: o do orçamento sendo editado ou o escolhido na ficha (Clientes › Novo orçamento)
+  const cp = window.Calculadora?.clientePedido?.();
+  $("orc-nome").value = v?.cliente?.nome || cp?.nome || "";
+  $("orc-tel").value = v?.cliente?.telefone || cp?.telefone || "";
   $("orc-obs").value = v?.obs || "";
   $("orc-validade").value = v?.validadeDias || cfgOrc().validadeDias;
   const origem = v?.origem || "balcao";
   document.querySelectorAll('input[name="orc-origem"]').forEach((r) => { r.checked = r.value === origem; });
-  $("orc-clientes").innerHTML = estado.clientes.map((c) => `<option value="${esc(c.nome)}">${esc(c.telefone)}</option>`).join("");
+  $("orc-clientes").innerHTML = estado.clientes.filter((c) => !c.inativo).map((c) => `<option value="${esc(c.nome)}">${esc(c.telefone)}</option>`).join("");
   validarTelefone();
   abrirModal("modal-orc-salvar");
   $("orc-nome").focus();
@@ -370,6 +397,7 @@ $("orc-abas").addEventListener("change", () => { estado.soSino = false; renderTu
 $("orc-sino-limpar").addEventListener("click", () => verCobrar(false));
 $("orc-lixeira-link").addEventListener("click", () => mostrarLixeira(true));
 $("orc-lixeira-voltar").addEventListener("click", () => mostrarLixeira(false));
+$("orc-lixeira-esvaziar").addEventListener("click", esvaziarLixeira);
 $("orc-lixeira-body").addEventListener("click", (e) => {
   const b = e.target.closest("[data-acao]");
   if (b) acao(b.dataset.acao, b.dataset.id);
@@ -406,6 +434,14 @@ $("orc-precos-aplicar").addEventListener("click", aplicarPrecos);
 $("orc-converter-orcamento").addEventListener("click", () => carregarNaCalculadora(estado.atual.orc, "converter", "orcamento"));
 $("orc-converter-atuais").addEventListener("click", () => carregarNaCalculadora(estado.atual.orc, "converter", "atuais"));
 $("orc-salvar-form").addEventListener("submit", salvar);
+$("orc-cli-novo").addEventListener("click", async () => {
+  const c = await window.ClientesUI?.novo({ nome: $("orc-nome").value.trim(), telefone: $("orc-tel").value.trim() });
+  if (!c) return;
+  $("orc-nome").value = c.nome;
+  $("orc-tel").value = c.telefone || $("orc-tel").value;
+  validarTelefone();
+  await carregar();
+});
 $("orc-tel").addEventListener("input", () => {
   const t = validarTelefone();
   if (t.ok && !$("orc-nome").value.trim()) {

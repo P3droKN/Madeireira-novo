@@ -152,6 +152,7 @@ async function carregarDados() {
     atualizarAviso();
     atualizarStatusBanco();
     if (window.Financeiro) window.Financeiro.atualizar();
+    if (window.ClientesUI) window.ClientesUI.atualizar();
 }
 
 // Acesso das abas Caixa, Relatórios e Ajustes (módulos) aos dados carregados aqui
@@ -389,6 +390,11 @@ async function registrarVendaAgora(opcoes = {}) {
     } else if (vinculo && (vinculo.modo === 'converter' || vinculo.modo === 'corrigir') && vinculo.cliente?.nome) {
         vendaItem.cliente = vinculo.cliente.nome;
         if (vinculo.cliente.id) vendaItem.clienteId = vinculo.cliente.id;
+    } else if (window.Calculadora.clientePedido()) {
+        // Cliente escolhido na ficha (Clientes › Nova venda): a venda fica no histórico dele e sai na via
+        const cp = window.Calculadora.clientePedido();
+        vendaItem.cliente = cp.nome;
+        vendaItem.clienteId = cp.id;
     }
     if (!(await gravarLancamentos([vendaItem]))) return;
     vendaPendenteId = null;

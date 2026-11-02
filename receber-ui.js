@@ -1,5 +1,6 @@
 // Caixa › A receber (fiado): quanto cada cliente deve, atrasos, receber (total ou parcial),
-// cobrar no WhatsApp e o cadastro de clientes. Relatórios › A receber (para imprimir). Fase 2C.
+// cobrar no WhatsApp; o cadastro fica em Clientes e Orçamentos › Clientes (aqui só o link "abrir ficha").
+// Relatórios › A receber (para imprimir). "Sem prazo" é o cliente que acerta quando juntar (no código, contaCorrente).
 import { contasAReceber, abertasDoCliente, textoCobrancaFiado } from "./lib/receber.js";
 import { cheques } from "./lib/caixa.js";
 import { linkWhatsApp, normalizarTelefone, somarDias } from "./lib/orcamentos.js";
@@ -16,7 +17,7 @@ const C = () => window.Caixa;
 const hoje = () => C()?.hoje() || hojeSP();
 const centavos = (v) => Math.round(Number(v || 0) * 100);
 
-const estado = { visao: "dividas", busca: "", quitados: false, abertos: new Set(), atual: null, editor: null, editandoCliente: null, el: null };
+const estado = { busca: "", quitados: false, abertos: new Set(), atual: null, editor: null, el: null };
 
 function calcular() {
   const r = contasAReceber(C().itens, C().configFinanceiro, hoje(), window.Clientes?.lista || []);
@@ -52,22 +53,18 @@ function render(el) {
   const atrasados = r.porCliente.filter((c) => c.atrasado > 0).length;
   el.innerHTML = `
   <div class="saldos-grid receber-cards">
-    <div class="total-bloco"><span>A receber</span><strong>${moeda(r.totalAberto)}</strong><small class="texto-suave">${r.porCliente.filter((c) => c.aberto > 0).length} cliente(s)</small>${r.totalContaCorrente ? `<small class="texto-suave">conta corrente ${moeda(r.totalContaCorrente)} · com vencimento ${moeda(r.totalComVencimento)}</small>` : ""}${r.comAlerta ? `<small><span class="tag tag-alerta">⚠ ${r.comAlerta} conta(s) corrente(s) com alerta</span></small>` : ""}</div>
+    <div class="total-bloco"><span>A receber</span><strong>${moeda(r.totalAberto)}</strong><small class="texto-suave">${r.porCliente.filter((c) => c.aberto > 0).length} cliente(s)</small>${r.totalContaCorrente ? `<small class="texto-suave">sem prazo ${moeda(r.totalContaCorrente)} · com prazo ${moeda(r.totalComVencimento)}</small>` : ""}${r.comAlerta ? `<small><span class="tag tag-alerta">⚠ ${r.comAlerta} cliente(s) sem prazo com alerta</span></small>` : ""}</div>
     <div class="total-bloco"><span>Atrasado</span><strong class="${r.totalAtrasado ? "type-expense" : ""}">${moeda(r.totalAtrasado)}</strong><small class="texto-suave">${atrasados} cliente(s) com atraso</small></div>
     <div class="total-bloco"><span>Cheques em carteira</span><strong>${moeda(carteira)}</strong><small class="texto-suave">a compensar</small></div>
     <div class="total-bloco destaque"><span>Total na rua</span><strong>${moeda(naRua)}</strong><small class="texto-suave">fiado + cheques em carteira</small></div>
   </div>
   <section class="glass-panel">
     <div class="painel-titulo receber-topo">
-      <div class="segmentado" id="rc-visao" role="radiogroup" aria-label="Visão">
-        <label><input type="radio" name="rc-visao" value="dividas" ${estado.visao === "dividas" ? "checked" : ""}><span>A receber por cliente</span></label>
-        <label><input type="radio" name="rc-visao" value="clientes" ${estado.visao === "clientes" ? "checked" : ""}><span>Clientes (cadastro)</span></label>
-      </div>
+      <h2>A receber por cliente</h2>
       <input type="search" id="rc-busca" class="orc-busca" placeholder="🔎 nome ou telefone" value="${esc(estado.busca)}" aria-label="Buscar cliente">
     </div>
     <div id="rc-conteudo"></div>
   </section>`;
-  el.querySelector("#rc-visao").addEventListener("change", (e) => { estado.visao = e.target.value; renderConteudo(); });
   el.querySelector("#rc-busca").addEventListener("input", (e) => { estado.busca = e.target.value; renderConteudo(); });
   renderConteudo(r);
 }
@@ -82,19 +79,18 @@ const confere = (nome, tel) => {
 function renderConteudo(rPronto) {
   const alvo = $("rc-conteudo");
   if (!alvo) return;
-  if (estado.visao === "clientes") return renderClientes(alvo, rPronto || calcular().r);
   const r = rPronto || calcular().r;
   const lista = r.porCliente.filter((c) => (estado.quitados || c.aberto > 0 || c.credito > 0) && confere(c.cliente, c.telefone));
   const cc = lista.filter((c) => c.contaCorrente);
   const comVenc = lista.filter((c) => !c.contaCorrente);
   alvo.innerHTML = `
     <label class="check texto-suave"><input type="checkbox" id="rc-quitados" ${estado.quitados ? "checked" : ""}> Mostrar também quem já pagou tudo</label>
-    <div class="receber-secao-titulo"><h3>Conta corrente</h3><span class="texto-suave">sem vencimento: nunca fica atrasado · ${moeda(r.totalContaCorrente)}</span></div>
+    <div class="receber-secao-titulo"><h3>Sem prazo</h3><span class="texto-suave">acerta quando juntar: nunca fica atrasado, segue o alerta de limite e de dias · ${moeda(r.totalContaCorrente)}</span></div>
     <div class="table-container"><table class="tabela-fin tabela-receber" id="rc-tabela-cc">
       <thead><tr><th>Cliente</th><th class="num">Em aberto</th><th>Em aberto há</th><th>Último pagamento</th><th>Alerta</th><th>Ações</th></tr></thead>
-      <tbody>${cc.map((c) => linhaCliente(c)).join("") || '<tr><td colspan="6" class="texto-suave">Nenhum cliente de conta corrente em aberto. Marque "Conta corrente" no cadastro do cliente (Clientes).</td></tr>'}</tbody>
+      <tbody>${cc.map((c) => linhaCliente(c)).join("") || '<tr><td colspan="6" class="texto-suave">Nenhum cliente sem prazo em aberto. O prazo de cada cliente fica no cadastro (Clientes e Orçamentos › Clientes).</td></tr>'}</tbody>
     </table></div>
-    <div class="receber-secao-titulo"><h3>Fiado com vencimento</h3><span class="texto-suave">${moeda(r.totalComVencimento)}</span></div>
+    <div class="receber-secao-titulo"><h3>Fiado com prazo</h3><span class="texto-suave">${moeda(r.totalComVencimento)}</span></div>
     <div class="table-container"><table class="tabela-fin tabela-receber" id="rc-tabela-venc">
       <thead><tr><th>Cliente</th><th class="num">Em aberto</th><th class="num">Atrasado</th><th class="num">Maior atraso</th><th>Próximo vencimento</th><th>Ações</th></tr></thead>
       <tbody>${comVenc.map((c) => linhaCliente(c)).join("") || '<tr><td colspan="6" class="texto-suave">Ninguém devendo. As vendas em Fiado aparecem aqui.</td></tr>'}</tbody>
@@ -129,25 +125,18 @@ const textoAlerta = (c) => [c.alertaLimite != null ? `limite ${moeda(c.alertaLim
 // Venda com itens que dá para imprimir de novo (as 2 vias)
 const vendaDa = (d) => (d.tipo === "fiado" ? C().itens.find((l) => String(l.id) === String(d.origemId) && l.conta === "venda_produtos") : null);
 
-// Conta corrente e alertas, direto no detalhe do cliente (o mesmo que Clientes › Editar)
-function formAlerta(c) {
-  if (!c.clienteId) return '<p class="texto-suave">Cliente sem cadastro: cadastre em Clientes para usar conta corrente e alertas.</p>';
-  return `<form class="rc-alerta-form fin-form" data-cliente="${esc(c.clienteId)}">
-    <div class="form-row">
-      <div class="form-group"><label class="check"><input type="checkbox" class="rc-al-cc" ${c.contaCorrente ? "checked" : ""}> Conta corrente (sem vencimento)</label></div>
-      <div class="form-group"><label>Alerta: limite em R$</label><input type="number" class="rc-al-limite" step="0.01" min="0" inputmode="decimal" placeholder="em branco = sem alerta" value="${c.alertaLimite ?? ""}" ${c.contaCorrente ? "" : "disabled"}></div>
-      <div class="form-group"><label>Alerta: dias sem pagar</label><input type="number" class="rc-al-dias" step="1" min="1" inputmode="numeric" placeholder="em branco = sem alerta" value="${c.alertaDias ?? ""}" ${c.contaCorrente ? "" : "disabled"}></div>
-      <div class="form-group"><button type="submit" class="btn-icon">Salvar alerta</button></div>
-    </div>
-  </form>`;
+// Prazo, alertas e dados do cliente ficam na ficha (Clientes e Orçamentos › Clientes)
+function linkFicha(c) {
+  if (!c.clienteId) return '<p class="texto-suave">Cliente sem cadastro: cadastre em Clientes e Orçamentos › Clientes para definir o prazo e os alertas.</p>';
+  return `<p><button type="button" class="link-suave" data-rc-ficha="${esc(c.clienteId)}">Abrir ficha do cliente ›</button> <span class="texto-suave">prazo: ${c.contaCorrente ? "sem prazo" : "com prazo"}${c.contaCorrente ? ` · alerta: ${esc(textoAlerta(c))}` : ""}</span></p>`;
 }
 
 function detalheCliente(c) {
   return `<div class="receber-detalhe">
-    ${formAlerta(c)}
+    ${linkFicha(c)}
     <table class="tabela-fin">
       <thead><tr><th>Data</th><th>O quê</th><th>Vencimento</th><th class="num">Valor</th><th class="num">Pago</th><th class="num">Em aberto</th><th>Situação</th></tr></thead>
-      <tbody>${c.dividas.map((d) => `<tr><td>${dataBR(d.data)}</td><td>${vendaDa(d)?.numero ? `<strong>${esc(vendaDa(d).numero)}</strong> · ` : ""}${esc(d.descricao)}${vendaDa(d) ? ` <button class="btn-icon mini" data-rc-via="${esc(d.origemId)}" title="Imprimir as vias desta venda">🖨 Vias</button> <button class="btn-icon mini" data-rc-corrigir="${esc(d.origemId)}" title="Abrir a venda de volta para corrigir (mantém o número)">Corrigir</button>` : ""}</td><td>${c.contaCorrente ? "conta corrente" : dataBR(d.vencimento)}</td>
+      <tbody>${c.dividas.map((d) => `<tr><td>${dataBR(d.data)}</td><td>${vendaDa(d)?.numero ? `<strong>${esc(vendaDa(d).numero)}</strong> · ` : ""}${esc(d.descricao)}${vendaDa(d) ? ` <button class="btn-icon mini" data-rc-via="${esc(d.origemId)}" title="Imprimir as vias desta venda">🖨 Vias</button> <button class="btn-icon mini" data-rc-corrigir="${esc(d.origemId)}" title="Abrir a venda de volta para corrigir (mantém o número)">Corrigir</button>` : ""}</td><td>${c.contaCorrente ? "sem prazo" : dataBR(d.vencimento)}</td>
         <td class="num">${moeda(d.valor)}</td><td class="num">${d.pago ? moeda(d.pago) : "—"}</td><td class="num"><strong>${moeda(d.aberto)}</strong></td><td>${situacaoTag(d)}</td></tr>`).join("")
         || '<tr><td colspan="7" class="texto-suave">Sem compras no fiado.</td></tr>'}</tbody>
     </table>
@@ -165,81 +154,6 @@ function detalheCliente(c) {
 const NOMES_FORMA = Object.fromEntries(FORMAS_PADRAO.map((f) => [f.id, f.nome.replace(/\s*\(.*\)$/, "")]));
 const nomeForma = (f) => NOMES_FORMA[f] || f;
 
-// ---------- Clientes (cadastro) ----------
-
-function renderClientes(alvo, r) {
-  const saldo = Object.fromEntries(r.porCliente.filter((c) => c.clienteId).map((c) => [c.clienteId, c]));
-  const lista = (window.Clientes?.lista || []).filter((c) => confere(c.nome, c.telefone));
-  const ed = estado.editandoCliente;
-  alvo.innerHTML = `
-    <form id="rc-cliente-form" class="fin-form rc-cliente-form">
-      <div class="form-row">
-        <div class="form-group"><label for="rc-cli-nome">${ed ? "Editar cliente" : "Novo cliente"}: nome</label><input type="text" id="rc-cli-nome" maxlength="120" required value="${esc(ed?.nome || "")}"></div>
-        <div class="form-group"><label for="rc-cli-tel">WhatsApp com DDD (opcional)</label><input type="tel" id="rc-cli-tel" maxlength="20" placeholder="(47) 99999-1234" value="${esc(ed?.telefone || "")}"></div>
-        <div class="form-group"><label for="rc-cli-fixo">Telefone fixo (opcional)</label><input type="tel" id="rc-cli-fixo" maxlength="20" value="${esc(ed?.fixo || "")}"></div>
-      </div>
-      <details class="rc-cli-via" ${ed && (ed.endereco || ed.documento) ? "open" : ""}><summary>Endereço e documentos (saem na via)</summary>
-        <div class="form-row">
-          <div class="form-group"><label for="rc-cli-endereco">Endereço</label><input type="text" id="rc-cli-endereco" maxlength="160" value="${esc(ed?.endereco || "")}"></div>
-          <div class="form-group"><label for="rc-cli-bairro">Bairro</label><input type="text" id="rc-cli-bairro" maxlength="80" value="${esc(ed?.bairro || "")}"></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label for="rc-cli-cidade">Cidade</label><input type="text" id="rc-cli-cidade" maxlength="80" value="${esc(ed?.cidade || "")}"></div>
-          <div class="form-group rc-cli-uf"><label for="rc-cli-uf">UF</label><input type="text" id="rc-cli-uf" maxlength="2" placeholder="PR" value="${esc(ed?.uf || "")}"></div>
-          <div class="form-group"><label for="rc-cli-documento">CPF/CNPJ</label><input type="text" id="rc-cli-documento" maxlength="20" inputmode="numeric" value="${esc(ed?.documento || "")}"></div>
-          <div class="form-group"><label for="rc-cli-ie">Inscr. estadual</label><input type="text" id="rc-cli-ie" maxlength="20" value="${esc(ed?.ie || "")}"></div>
-        </div>
-      </details>
-      <div class="form-row">
-        <div class="form-group"><label for="rc-cli-obs">Observação</label><input type="text" id="rc-cli-obs" maxlength="500" placeholder="Ex: paga todo dia 10" value="${esc(ed?.obs || "")}"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label class="check"><input type="checkbox" id="rc-cli-cc" ${ed?.contaCorrente ? "checked" : ""}> Conta corrente (sem vencimento)</label>
-          <small class="texto-suave">Cliente antigo e de confiança: o fiado não vence e nunca aparece como atrasado.</small></div>
-        <div class="form-group rc-cli-alerta"><label for="rc-cli-limite">Alerta: limite em R$</label><input type="number" id="rc-cli-limite" step="0.01" min="0" inputmode="decimal" placeholder="em branco = sem alerta" value="${ed?.alertaLimite ?? ""}"></div>
-        <div class="form-group rc-cli-alerta"><label for="rc-cli-dias">Alerta: dias sem pagar</label><input type="number" id="rc-cli-dias" step="1" min="1" inputmode="numeric" placeholder="em branco = sem alerta" value="${ed?.alertaDias ?? ""}"></div>
-      </div>
-      <div class="export-actions">
-        ${ed ? '<button type="button" class="btn-icon" id="rc-cli-cancelar">Cancelar</button>' : ""}
-        <button type="submit" class="btn-primary">${ed ? "Salvar alterações" : "+ Cadastrar cliente"}</button>
-      </div>
-    </form>
-    <div class="table-container"><table class="tabela-fin">
-      <thead><tr><th>Cliente</th><th>Tipo</th><th>WhatsApp</th><th>Observação</th><th class="num">Em aberto</th><th></th></tr></thead>
-      <tbody>${lista.map((c) => `<tr><td><strong>${esc(c.nome)}</strong></td>
-        <td>${c.contaCorrente ? `<span class="tag tag-cc">Conta corrente</span><small>${esc(textoAlerta(c))}</small>` : '<span class="texto-suave">Fiado com vencimento</span>'}</td>
-        <td>${esc(c.telefone || "—")}</td><td>${esc(c.obs || "")}</td>
-        <td class="num">${saldo[c.id]?.aberto ? moeda(saldo[c.id].aberto) : "—"}</td>
-        <td><button class="btn-icon mini" data-rc-editar="${esc(c.id)}">Editar</button></td></tr>`).join("")
-        || '<tr><td colspan="6" class="texto-suave">Nenhum cliente cadastrado.</td></tr>'}</tbody>
-    </table></div>
-    <p class="texto-suave">O mesmo cadastro dos orçamentos. Cliente sem WhatsApp fica com um código (C1, C2…).</p>`;
-  $("rc-cliente-form").addEventListener("submit", salvarClienteForm);
-  $("rc-cli-cancelar")?.addEventListener("click", () => { estado.editandoCliente = null; renderConteudo(); });
-  const mostrarAlertas = () => document.querySelectorAll(".rc-cli-alerta").forEach((g) => { g.hidden = !$("rc-cli-cc").checked; });
-  $("rc-cli-cc").addEventListener("change", mostrarAlertas);
-  mostrarAlertas();
-}
-
-async function salvarClienteForm(e) {
-  e.preventDefault();
-  const tel = $("rc-cli-tel").value.trim();
-  if (tel && !normalizarTelefone(tel).ok) return alert(normalizarTelefone(tel).erro);
-  const ed = estado.editandoCliente;
-  try {
-    const cc = $("rc-cli-cc").checked;
-    await window.Clientes.salvar({
-      id: ed?.id, nome: $("rc-cli-nome").value.trim(), telefone: tel, obs: $("rc-cli-obs").value.trim(),
-      contaCorrente: cc, alertaLimite: cc ? $("rc-cli-limite").value.trim() : "", alertaDias: cc ? $("rc-cli-dias").value.trim() : "",
-      ...Object.fromEntries(["fixo", "endereco", "bairro", "cidade", "uf", "documento", "ie"].map((k) => [k, $(`rc-cli-${k}`).value.trim()])),
-    });
-  } catch (err) {
-    return alert(`O cliente não foi salvo: ${err.message}`);
-  }
-  estado.editandoCliente = null;
-  render(estado.el);
-}
-
 // ---------- Receber ----------
 
 function abrirReceber(c) {
@@ -248,7 +162,7 @@ function abrirReceber(c) {
   estado.idReceb = null; // recebimento novo; numa nova tentativa (falha de internet) o mesmo identificador
   const abertas = c.dividas.filter((d) => d.aberto > 0);
   $("rc-receber-titulo").textContent = `Receber de ${c.cliente}`;
-  $("rc-receber-info").innerHTML = `Em aberto: <strong>${moeda(c.aberto)}</strong>${c.atrasado ? ` · atrasado ${moeda(c.atrasado)}` : ""}${c.contaCorrente && c.aberto ? ` · conta corrente, em aberto há ${c.diasEmAberto} dia(s)` : ""}`;
+  $("rc-receber-info").innerHTML = `Em aberto: <strong>${moeda(c.aberto)}</strong>${c.atrasado ? ` · atrasado ${moeda(c.atrasado)}` : ""}${c.contaCorrente && c.aberto ? ` · sem prazo, em aberto há ${c.diasEmAberto} dia(s)` : ""}`;
   $("rc-valor").value = c.aberto.toFixed(2);
   $("rc-data").value = hoje();
   $("rc-desc").value = "";
@@ -303,24 +217,24 @@ function relatorio(el) {
   const cc = r.porCliente.filter((c) => c.aberto > 0 && c.contaCorrente);
   el.innerHTML = `
   <section class="glass-panel">
-    <div class="painel-titulo"><h2>Conta corrente</h2><span class="texto-suave">posição de ${dataBR(hoje())} · sem vencimento</span></div>
+    <div class="painel-titulo"><h2>Sem prazo</h2><span class="texto-suave">posição de ${dataBR(hoje())} · acerta quando juntar</span></div>
     <div class="table-container"><table class="tabela-fin">
       <thead><tr><th>Cliente</th><th>WhatsApp</th><th class="num">Em aberto</th><th>Em aberto há</th><th>Último pagamento</th><th>Alerta</th></tr></thead>
       <tbody>${cc.map((c) => `<tr><td>${esc(c.cliente)}</td><td>${esc(c.telefone || "—")}</td><td class="num">${moeda(c.aberto)}</td>
         <td>${c.diasEmAberto} dia(s) (desde ${dataBR(c.emAbertoDesde)})</td><td>${c.ultimoPagamento ? dataBR(c.ultimoPagamento) : "—"}</td>
         <td>${c.alertas.map((a) => `⚠ ${esc(a.texto)}`).join("; ") || "—"}</td></tr>`).join("")
-        || '<tr><td colspan="6" class="texto-suave">Nenhuma conta corrente em aberto.</td></tr>'}</tbody>
-      <tfoot><tr class="dre-total"><td colspan="2">Total conta corrente</td><td class="num">${moeda(r.totalContaCorrente)}</td><td colspan="3"></td></tr></tfoot>
+        || '<tr><td colspan="6" class="texto-suave">Nenhum cliente sem prazo em aberto.</td></tr>'}</tbody>
+      <tfoot><tr class="dre-total"><td colspan="2">Total sem prazo</td><td class="num">${moeda(r.totalContaCorrente)}</td><td colspan="3"></td></tr></tfoot>
     </table></div>
   </section>
   <section class="glass-panel">
-    <div class="painel-titulo"><h2>Fiado com vencimento</h2><span class="texto-suave">posição de ${dataBR(hoje())}</span></div>
+    <div class="painel-titulo"><h2>Fiado com prazo</h2><span class="texto-suave">posição de ${dataBR(hoje())}</span></div>
     <div class="table-container"><table class="tabela-fin">
       <thead><tr><th>Cliente</th><th>WhatsApp</th><th class="num">Em aberto</th><th class="num">Atrasado</th><th class="num">Maior atraso</th><th>Próximo vencimento</th></tr></thead>
       <tbody>${lista.map((c) => `<tr><td>${esc(c.cliente)}</td><td>${esc(c.telefone || "—")}</td><td class="num">${moeda(c.aberto)}</td>
         <td class="num">${c.atrasado ? moeda(c.atrasado) : "—"}</td><td class="num">${c.maiorAtraso ? `${c.maiorAtraso} dia(s)` : "—"}</td><td>${c.proximoVencimento ? dataBR(c.proximoVencimento) : "—"}</td></tr>`).join("")
         || '<tr><td colspan="6" class="texto-suave">Nada a receber.</td></tr>'}</tbody>
-      <tfoot><tr class="dre-total"><td colspan="2">Total com vencimento</td><td class="num">${moeda(r.totalComVencimento)}</td><td class="num">${moeda(r.totalAtrasado)}</td><td colspan="2"></td></tr></tfoot>
+      <tfoot><tr class="dre-total"><td colspan="2">Total com prazo</td><td class="num">${moeda(r.totalComVencimento)}</td><td class="num">${moeda(r.totalAtrasado)}</td><td colspan="2"></td></tr></tfoot>
     </table></div>
   </section>
   <section class="glass-panel">
@@ -341,8 +255,9 @@ function relatorio(el) {
 // ---------- Eventos ----------
 
 document.addEventListener("click", (e) => {
-  const b = e.target.closest("[data-rc], [data-rc-estornar], [data-rc-editar], [data-rc-via], [data-rc-corrigir]");
+  const b = e.target.closest("[data-rc], [data-rc-estornar], [data-rc-ficha], [data-rc-via], [data-rc-corrigir]");
   if (!b || !estado.el?.contains(b)) return;
+  if (b.dataset.rcFicha) return window.ClientesUI?.abrirFicha(b.dataset.rcFicha);
   if (b.dataset.rcCorrigir) return window.Vendas?.corrigir(b.dataset.rcCorrigir);
   if (b.dataset.rcVia) {
     window.Vendas?.vias(b.dataset.rcVia);
@@ -350,12 +265,6 @@ document.addEventListener("click", (e) => {
   }
   if (b.dataset.rcEstornar) {
     if (confirm("Estornar este recebimento? O valor volta a ficar em aberto para o cliente.")) C().excluir(b.dataset.rcEstornar, { confirmado: true });
-    return;
-  }
-  if (b.dataset.rcEditar) {
-    estado.editandoCliente = window.Clientes.porId(b.dataset.rcEditar);
-    renderConteudo();
-    $("rc-cli-nome")?.focus();
     return;
   }
   const chave = b.closest("tr")?.dataset.chave;
@@ -368,30 +277,8 @@ document.addEventListener("click", (e) => {
     renderConteudo();
   }
 });
-document.addEventListener("change", (e) => {
-  if (!e.target.classList.contains("rc-al-cc")) return;
-  const f = e.target.closest("form");
-  f.querySelectorAll(".rc-al-limite, .rc-al-dias").forEach((i) => { i.disabled = !e.target.checked; });
-});
-document.addEventListener("submit", async (e) => {
-  const f = e.target.closest(".rc-alerta-form");
-  if (!f) return;
-  e.preventDefault();
-  const cad = window.Clientes.porId(f.dataset.cliente);
-  if (!cad) return alert("Cliente não encontrado no cadastro.");
-  const cc = f.querySelector(".rc-al-cc").checked;
-  try {
-    await window.Clientes.salvar({
-      id: cad.id, nome: cad.nome, telefone: cad.telefone || "", obs: cad.obs || "", contaCorrente: cc,
-      alertaLimite: cc ? f.querySelector(".rc-al-limite").value.trim() : "", alertaDias: cc ? f.querySelector(".rc-al-dias").value.trim() : "",
-    });
-  } catch (err) {
-    return alert(`O alerta não foi salvo: ${err.message}`);
-  }
-  renderConteudo();
-});
 $("rc-receber-form").addEventListener("submit", travar(salvarRecebimento));
 $("rc-receber-cancelar").addEventListener("click", fecharReceber);
 $("rc-valor").addEventListener("input", (e) => estado.editor?.definirTotal(num(e.target.value) || 0));
 
-window.ReceberUI = { render, relatorio, abertasDoCliente };
+window.ReceberUI = { render, relatorio, abertasDoCliente, abrirReceber, cobrar };

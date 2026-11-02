@@ -8,6 +8,7 @@ import {
   salvarConfig, salvarConfigFinanceiro, salvarAbertura, registrarConferencia,
   importar, migrar, migrarV2, restaurar, marcarImpresso, proximosNumeros,
   listarOrcamentos, salvarOrcamento, atualizarOrcamento, salvarCliente, listarClientes, zerarMovimento,
+  situacaoCliente, impactoExcluirCliente, excluirCliente,
 } from "./_dados.js";
 import { CEPILHADO_PADRAO, montarCatalogo, chavePrecoValida, precosComIdsAtuais } from "../lib/catalogo.js";
 import { resumirLancamentos } from "../lib/resumo.js";
@@ -143,11 +144,26 @@ export const ROTAS = {
   }),
 
   // Cadastro de clientes (orçamentos e fiado)
-  // GET               -> { clientes }
-  // POST { cliente }  -> cria (pelo WhatsApp, ou C1, C2… sem WhatsApp) ou edita (com id)
-  clientes: rota(["GET", "POST"], async (request, response) => {
-    if (request.method === "GET") return response.status(200).json(await listarClientes(kv(), chaves()));
-    response.status(200).json({ cliente: await salvarCliente(kv(), chaves(), request.body?.cliente) });
+  // GET                 -> { clientes }
+  // GET ?impacto=<id>   -> o que acontece ao excluir (dívida, cheques, vendas, orçamentos)
+  // POST { cliente }    -> cria (pelo WhatsApp, ou C1, C2… sem WhatsApp) ou edita (com id)
+  // PATCH { id, acao }  -> inativar, reativar, excluir (com confirmacao: "EXCLUIR")
+  clientes: rota(["GET", "POST", "PATCH"], async (request, response) => {
+    const k = chaves();
+    if (request.method === "GET") {
+      if (request.query.impacto) {
+        const { cliente, ...imp } = await impactoExcluirCliente(kv(), k, String(request.query.impacto));
+        return response.status(200).json({ ...imp, nome: cliente.nome });
+      }
+      return response.status(200).json(await listarClientes(kv(), k));
+    }
+    if (request.method === "PATCH") {
+      const b = request.body || {};
+      if (b.acao === "inativar" || b.acao === "reativar") return response.status(200).json({ cliente: await situacaoCliente(kv(), k, b.id, b.acao === "inativar") });
+      if (b.acao === "excluir") return response.status(200).json(await excluirCliente(kv(), k, b));
+      return response.status(400).json({ error: "Ação inválida." });
+    }
+    response.status(200).json({ cliente: await salvarCliente(kv(), k, request.body?.cliente) });
   }),
 
   // POST { alteracoes: { "<item>|<acabamento>": preço ou null } }

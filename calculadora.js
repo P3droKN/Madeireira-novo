@@ -18,7 +18,7 @@ const configFiado = () => {
 };
 const editorPagamentos = criarEditorPagamentos(document.getElementById("calc-pagamentos"), {
   fiado: configFiado,
-  contaCorrente: (nome) => Boolean(window.Clientes?.ehContaCorrente(nome)),
+  prazo: (nome) => window.Clientes?.prazoDe(nome) || null,
 });
 
 const estado = {
@@ -474,6 +474,15 @@ function pedirOutro(atual) {
 
 // ---------- Orçamentos ----------
 
+function renderClientePedido() {
+  const el = $("calc-cliente");
+  if (!el) return;
+  const c = estado.clientePedido;
+  el.hidden = !c;
+  el.innerHTML = c ? `Cliente: <strong>${esc(c.nome)}</strong> <button type="button" class="btn-icon mini" id="calc-cliente-tirar">✕ tirar</button>` : "";
+  $("calc-cliente-tirar")?.addEventListener("click", () => window.Calculadora.definirClientePedido(null));
+}
+
 function renderVinculo() {
   const el = $("orc-vinculo");
   const v = estado.vinculo;
@@ -698,10 +707,19 @@ window.Calculadora = {
     // Depois de corrigir uma venda antiga, a data volta para hoje
     if (estado.vinculo?.modo === "corrigir" && $("direct-sale-date") && window.Caixa?.hoje) $("direct-sale-date").value = window.Caixa.hoje();
     estado.vinculo = null;
+    estado.clientePedido = null;
     editorPagamentos.reiniciar(0);
     $("calc-nfe").value = "";
     renderPedido();
   },
+
+  // Cliente escolhido na ficha (Clientes › Nova venda / Novo orçamento): vai na venda e no orçamento
+  definirClientePedido(c) {
+    estado.clientePedido = c ? { id: c.id, nome: c.nome, telefone: c.telefone || "" } : null;
+    editorPagamentos.definirCliente(c?.nome || "");
+    renderClientePedido();
+  },
+  clientePedido: () => estado.clientePedido || null,
 
   // Formas de pagamento da venda (lança erro se a soma não fechar com o total)
   pagamentos() {

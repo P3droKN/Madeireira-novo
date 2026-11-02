@@ -13,7 +13,7 @@
             <div class="topo-app"><h1>Sistema Madeireira</h1><button type="button" class="btn-icon mini" id="btn-sair" title="Sair deste aparelho: apaga a senha e a cópia dos dados guardadas aqui">Sair</button></div>
             <nav class="tabs">
                 <button class="tab-btn active" id="btn-tab-vender" onclick="switchTab('vender')">Vender</button>
-                <button class="tab-btn" id="btn-tab-orcamentos" onclick="switchTab('orcamentos')">Orçamentos <span class="contador" id="orc-contador" hidden></span></button>
+                <button class="tab-btn" id="btn-tab-orcamentos" onclick="switchTab('orcamentos')">Clientes e Orçamentos <span class="contador" id="orc-contador" hidden></span></button>
                 <button class="tab-btn" id="btn-tab-caixa" onclick="switchTab('caixa')">Caixa</button>
                 <button class="tab-btn" id="btn-tab-relatorios" onclick="switchTab('relatorios')">Relatórios</button>
                 <button class="tab-btn" id="btn-tab-ajustes" onclick="switchTab('ajustes')">Ajustes</button>
@@ -168,6 +168,7 @@
                                 <input type="text" id="calc-nfe" maxlength="20" inputmode="numeric" placeholder="Ex: 1234">
                             </div>
                         </div>
+                        <div class="calc-cliente" id="calc-cliente" hidden></div>
                         <div class="botoes-finalizar">
                             <button class="btn-icon btn-orcamento" id="btn-salvar-orcamento" onclick="Orcamentos.abrirSalvar()">💾 Salvar como orçamento</button>
                             <button class="btn-icon" id="btn-registrar-venda" onclick="registerDirectSale()" title="Grava a venda (V-000X). As vias podem ser impressas depois.">Registrar venda</button>
@@ -180,6 +181,12 @@
 
             <!-- ABA: ORÇAMENTOS -->
             <div id="tab-orcamentos" class="tab-content" style="display: none;">
+                <nav class="subtabs" id="co-subtabs" aria-label="Clientes e Orçamentos">
+                    <button class="subtab ativo" data-co="orcamentos">Orçamentos</button>
+                    <button class="subtab" data-co="clientes">Clientes</button>
+                </nav>
+                <div id="co-clientes" hidden></div>
+                <div id="co-orcamentos">
                 <div class="orc-indicadores" id="orc-indicadores"></div>
                 <section class="glass-panel" id="orc-painel-lista">
                     <div class="painel-titulo orc-topo">
@@ -208,12 +215,12 @@
                         </table>
                     </div>
                     <p class="texto-suave legenda-cores"><span id="orc-legenda-sino">🔔 = em aberto há 3 ou mais dias sem contato</span> · <span class="bolinha vermelho"></span> vencido: continua em aberto, só confira os preços<br>
-                        <strong>Perdido</strong> = o cliente não fechou (conta nos indicadores) · <strong>Excluir</strong> = foi erro ou teste (some da lista e dos indicadores; fica 30 dias na Lixeira)</p>
+                        <strong>Perdido</strong> = o cliente não fechou (conta nos indicadores) · <strong>Excluir</strong> = vai para a lixeira por 30 dias (dá para restaurar) · <strong>Excluir para sempre</strong> = apaga de vez</p>
                     <p class="rodape-lixeira"><button type="button" class="link-suave" id="orc-lixeira-link">🗑 Lixeira</button> <span class="texto-suave" id="orc-contagem"></span></p>
                 </section>
                 <section class="glass-panel" id="orc-lixeira" hidden>
-                    <div class="painel-titulo"><h2>🗑 Lixeira</h2><button type="button" class="btn-icon" id="orc-lixeira-voltar">← Voltar aos orçamentos</button></div>
-                    <p class="texto-suave">Orçamentos excluídos nos últimos 30 dias. Depois disso eles saem desta lista, mas continuam guardados no banco e nos backups.</p>
+                    <div class="painel-titulo"><h2>🗑 Lixeira</h2><div class="painel-acoes"><button type="button" class="btn-icon item-perigo" id="orc-lixeira-esvaziar">Esvaziar lixeira</button><button type="button" class="btn-icon" id="orc-lixeira-voltar">← Voltar aos orçamentos</button></div></div>
+                    <p class="texto-suave">Orçamentos excluídos nos últimos 30 dias. Depois disso eles saem desta lista, mas continuam guardados no banco até alguém esvaziar a lixeira. "Excluir definitivamente" e "Esvaziar lixeira" apagam de vez.</p>
                     <div class="table-container">
                         <table class="tabela-orc">
                             <thead><tr><th>Nº</th><th>Cliente</th><th>Data</th><th class="num">Valor</th><th>Excluído em</th><th></th></tr></thead>
@@ -221,6 +228,7 @@
                         </table>
                     </div>
                 </section>
+                </div>
             </div>
 
             
@@ -613,6 +621,7 @@
                 <div class="form-row">
                     <div class="form-group"><label for="orc-nome">Nome do cliente</label>
                         <input type="text" id="orc-nome" maxlength="120" list="orc-clientes" autocomplete="off" required>
+                        <button type="button" class="link-suave" id="orc-cli-novo">+ cadastrar novo</button>
                         <datalist id="orc-clientes"></datalist></div>
                     <div class="form-group"><label for="orc-tel">WhatsApp (com DDD)</label>
                         <input type="tel" id="orc-tel" maxlength="20" placeholder="(47) 99999-1234" required>
@@ -763,6 +772,7 @@
     <script type="module" src="orcamentos-ui.js"></script>
     <script type="module" src="caixa-ui.js"></script>
     <script type="module" src="clientes.js"></script>
+    <script type="module" src="clientes-ui.js"></script>
     <script type="module" src="receber-ui.js"></script>
     <script type="module" src="impressao-ui.js"></script>
     <script type="module" src="resumo-dia-ui.js"></script>

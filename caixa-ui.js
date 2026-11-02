@@ -168,7 +168,7 @@ function renderAbertura(el) {
     <p class="texto-suave">O que cada cliente já devia no dia da virada. Vai para Caixa › A receber e é abatido nos recebimentos, mas não conta como venda (a venda foi antes do sistema).</p>
     <div class="table-container"><table class="tabela-fin">
       <thead><tr><th>Cliente</th><th class="num">Valor devido</th><th>Desde</th><th>Vencimento</th><th>Observação</th><th></th></tr></thead>
-      <tbody>${fiados.map((l) => `<tr><td>${esc(l.cliente)}</td><td class="num">${moeda(l.value)}</td><td>${l.desde ? dataBR(l.desde) : '<span class="texto-suave">—</span>'}</td><td>${l.contaCorrente || !l.vencimento || window.Clientes?.porId(l.clienteId)?.contaCorrente ? '<span class="tag tag-cc">conta corrente</span>' : dataBR(l.vencimento)}</td>
+      <tbody>${fiados.map((l) => `<tr><td>${esc(l.cliente)}</td><td class="num">${moeda(l.value)}</td><td>${l.desde ? dataBR(l.desde) : '<span class="texto-suave">—</span>'}</td><td>${l.contaCorrente || !l.vencimento || window.Clientes?.porId(l.clienteId)?.contaCorrente ? '<span class="tag tag-cc">sem prazo</span>' : dataBR(l.vencimento)}</td>
         <td>${l.description && l.description !== "Fiado anterior (pasta)" ? esc(l.description) : ""}</td>
         <td><button class="delete-btn" data-ab-remover="${esc(l.id)}">Remover</button></td></tr>`).join("") || '<tr><td colspan="6" class="texto-suave">Nenhum fiado anterior lançado.</td></tr>'}</tbody>
       ${fiados.length ? `<tfoot><tr class="dre-total" id="cx-fa-total"><td>Total do Fiado anterior (${fiados.length} lançamento${fiados.length > 1 ? "s" : ""})</td><td class="num">${moeda(totalFiado)}</td>
@@ -180,8 +180,8 @@ function renderAbertura(el) {
         <div class="form-group"><label for="cx-fa-valor">Valor devido (R$)</label><input type="number" step="0.01" min="0.01" id="cx-fa-valor" required></div>
         <div class="form-group"><label for="cx-fa-desde">Desde (via mais antiga)</label><input type="date" id="cx-fa-desde" max="${data}">
           <small class="texto-suave">Para mostrar há quantos dias está em aberto. Em branco: data da abertura.</small></div>
-        <div class="form-group"><label class="check"><input type="checkbox" id="cx-fa-cc" checked> Conta corrente (sem vencimento)</label>
-          <small class="texto-suave">Marca o cliente como conta corrente no cadastro.</small></div>
+        <div class="form-group"><label class="check"><input type="checkbox" id="cx-fa-cc" checked> Sem prazo (acerta quando juntar)</label>
+          <small class="texto-suave">Marca o cliente como "sem prazo" no cadastro.</small></div>
         <div class="form-group" id="cx-fa-venc-grupo" hidden><label for="cx-fa-venc">Vencimento</label><input type="date" id="cx-fa-venc" value="${somarDias(data, prazo)}"></div>
         <div class="form-group"><label for="cx-fa-obs">Observação (opcional)</label><input type="text" id="cx-fa-obs" maxlength="200" placeholder="Ex: compras de setembro"></div>
       </div>
@@ -255,7 +255,7 @@ async function lancarFiado(e) {
   if (!(valor > 0)) return alert("Informe o valor devido.");
   const contaCorrente = $("cx-fa-cc").checked;
   const venc = contaCorrente ? "" : $("cx-fa-venc").value;
-  if (!contaCorrente && !venc) return alert("Informe o vencimento (ou marque Conta corrente).");
+  if (!contaCorrente && !venc) return alert("Informe o vencimento (ou marque Sem prazo).");
   const obs = $("cx-fa-obs").value.trim();
   const desde = $("cx-fa-desde").value;
   if (desde && desde > data) return alert(`"Desde" é a data da via mais antiga: não pode ser depois da abertura (${dataBR(data)}).`);
@@ -273,7 +273,7 @@ async function lancarFiado(e) {
     try {
       await window.Clientes.salvar({ id: cli.id, nome: cad?.nome || cli.nome, telefone: cad?.telefone || "", obs: cad?.obs || "", contaCorrente: true });
     } catch (err) {
-      return alert(`O cliente não foi marcado como conta corrente: ${err.message}`);
+      return alert(`O cliente não foi marcado como sem prazo: ${err.message}`);
     }
   }
   const item = { id: (pendentes.fiado ||= C().novoId("FA")), v: 2, conta: "fiado_anterior", value: valor, competencia: data, clienteId: cli.id, cliente: cli.nome,
@@ -302,7 +302,7 @@ async function salvarAbertura(e) {
 
 // Janela própria para pedir um valor ou uma data (no celular abre o teclado numérico ou o calendário).
 // Devolve o texto digitado, ou null se a pessoa cancelar.
-function perguntar({ titulo, texto = "", tipo = "valor", inicial = "" }) {
+function perguntar({ titulo, texto = "", tipo = "valor", inicial = "", botao = "Salvar", perigo = false }) {
   let m = $("modal-pergunta");
   if (!m) {
     document.body.insertAdjacentHTML("beforeend", `<div id="modal-pergunta" class="modal-overlay" style="display:none"><form class="modal-content glass-panel" id="perg-form">
@@ -313,9 +313,12 @@ function perguntar({ titulo, texto = "", tipo = "valor", inicial = "" }) {
   $("perg-titulo").textContent = titulo;
   $("perg-texto").textContent = texto;
   const campo = $("perg-campo");
-  campo.type = tipo === "data" ? "date" : "number";
+  campo.type = tipo === "data" ? "date" : tipo === "texto" ? "text" : "number";
   campo.step = "0.01";
-  campo.inputMode = tipo === "data" ? "" : "decimal";
+  campo.inputMode = tipo === "data" || tipo === "texto" ? "" : "decimal";
+  campo.autocomplete = "off";
+  $("perg-ok").textContent = botao;
+  $("perg-ok").className = perigo ? "btn-danger" : "btn-primary";
   campo.value = inicial;
   m.style.display = "flex";
   campo.focus();
@@ -445,7 +448,17 @@ document.addEventListener("click", (e) => {
   }
 });
 
+// Ação que não tem volta: a pessoa digita EXCLUIR. Devolve true só se digitou certo.
+async function confirmarExcluir(titulo, texto) {
+  const r = await perguntar({ titulo, texto: `${texto}\n\nDigite EXCLUIR para confirmar.`, tipo: "texto", botao: "Excluir para sempre", perigo: true });
+  if (r === null) return false;
+  if (r.trim() !== "EXCLUIR") { alert('Não foi excluído: digite EXCLUIR (em maiúsculas) para confirmar.'); return false; }
+  return true;
+}
+
 window.CaixaUI = {
+  perguntar,
+  confirmarExcluir,
   saldos: renderSaldos,
   cheques: renderCheques,
   abertura: renderAbertura,

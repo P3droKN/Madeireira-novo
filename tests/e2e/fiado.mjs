@@ -3,7 +3,7 @@
 import { createRequire } from "node:module";
 const require = createRequire("/opt/node-tools/node_modules/");
 const { chromium } = require("playwright");
-import { fecharVias } from "./janela.mjs";
+import { fecharVias, salvarCadastro, abrirFicha, irClientes } from "./janela.mjs";
 const URL = "http://localhost:4321";
 const H = { "content-type": "application/json", "x-senha": "pinho123" };
 const nb = (s) => (s || "").replace(/ /g, " ");
@@ -43,8 +43,8 @@ await page.click("#btn-registrar-venda");
 await page.waitForTimeout(200);
 ok(dialogos.at(-1).includes("Informe o cliente"), "sem cliente, o fiado não é registrado");
 await page.fill("#calc-pagamentos .pag-fiado-cliente", "Zé da Obra");
-respostas.push(""); // WhatsApp: em branco
 await page.click("#btn-registrar-venda");
+await salvarCadastro(page); // cadastro completo abre com o nome; WhatsApp em branco
 await fecharVias(page, dialogos);
 await page.waitForFunction(() => document.querySelectorAll("#items-body tr.linha-item").length === 0);
 ok(dialogos.some((d) => d.includes('"Zé da Obra" não está no cadastro')), "cliente novo: pergunta se quer cadastrar");
@@ -128,14 +128,12 @@ await page.reload();
 await page.waitForFunction(() => window.Caixa && window.Caixa.migradoV2);
 await irReceber();
 ok(await card("A receber") === "R$ 80,00" && await card("Atrasado") === "R$ 80,00", "compra nova depois de quitar: só ela fica em aberto (a paga não reabre)");
-await page.locator('label:has(input[name="rc-visao"][value="clientes"])').click();
-await page.locator("#fin-receber tr", { hasText: "Zé da Obra" }).locator("[data-rc-editar]").click();
-await page.fill("#rc-cli-tel", "(47) 98888-7777");
-await page.click("#rc-cliente-form button[type=submit]");
-await page.waitForTimeout(500);
+await abrirFicha(page, "Zé da Obra");
+await page.click("#cli-editar");
+await salvarCadastro(page, { tel: "(47) 98888-7777" });
 const cli = JSON.parse((await (await fetch(URL + "/__db")).json()).madeireira_clientes.C1);
-ok(cli.telefone === "(47) 98888-7777" && cli.id === "C1", "editar cliente: ganhou WhatsApp e manteve o código C1");
-await page.locator('label:has(input[name="rc-visao"][value="dividas"])').click();
+ok(cli.telefone === "(47) 98888-7777" && cli.id === "C1", "editar cliente pela ficha: ganhou WhatsApp e manteve o código C1");
+await irReceber();
 await ctx.route("https://wa.me/**", (r) => r.fulfill({ contentType: "text/html", body: "<p>WhatsApp (simulado)</p>" })); // sem internet no ensaio
 const [aba] = await Promise.all([ctx.waitForEvent("page"), linhaZe().locator('[data-rc="cobrar"]').click()]);
 await aba.waitForLoadState("domcontentloaded").catch(() => {});
@@ -144,11 +142,11 @@ ok(url.startsWith("https://wa.me/5547988887777") && url.includes("Consta em aber
 await aba.close();
 
 // 9. Novo cliente pelo cadastro (com WhatsApp)
-await page.locator('label:has(input[name="rc-visao"][value="clientes"])').click();
-await page.fill("#rc-cli-nome", "Ana Lima"); await page.fill("#rc-cli-tel", "47999990000");
-await page.click("#rc-cliente-form button[type=submit]");
-await page.waitForTimeout(400);
-ok(nb(await page.textContent("#rc-conteudo")).includes("Ana Lima"), "cadastrar cliente novo pela tela de clientes");
+await irClientes(page);
+await page.click("#cli-novo");
+await salvarCadastro(page, { nome: "Ana Lima", tel: "47999990000" });
+await page.waitForSelector(".ficha-cliente");
+ok(nb(await page.textContent(".ficha-cliente")).includes("Ana Lima"), "cadastrar cliente novo pela aba Clientes (abre a ficha)");
 
 // 10. Relatórios › A receber, DRE e Lançamentos
 await page.click("#btn-tab-relatorios"); await sub("relatorios", "receber");

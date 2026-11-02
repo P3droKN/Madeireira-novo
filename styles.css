@@ -1184,3 +1184,28 @@ body.modo-balcao .sigilo { display: none !important; }
 .rc-cli-via { margin: 0.4rem 0 0.8rem; }
 .rc-cli-via summary { cursor: pointer; color: var(--text-muted); font-size: 0.92rem; margin-bottom: 0.5rem; }
 .rc-cli-uf { max-width: 6rem; }
+#perg-texto { white-space: pre-line; }
+
+/* Clientes e Orçamentos › Clientes */
+#co-subtabs { margin-bottom: 1rem; }
+.tabela-clientes tr.linha-clicavel { cursor: pointer; }
+.tabela-clientes tr.linha-clicavel:hover td { background: rgba(59, 130, 246, 0.08); }
+.tabela-clientes tr.inativo td { opacity: 0.6; }
+.ficha-cliente h3 { margin: 1.2rem 0 0.5rem; }
+.ficha-acoes { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0 1rem; }
+.ficha-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 1rem; }
+.ficha-bloco { border: 1px solid var(--input-border); border-radius: 10px; padding: 0.8rem 1rem; }
+.ficha-bloco h3 { margin: 0 0 0.5rem; }
+.ficha-dados { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1rem; margin: 0; }
+.ficha-dados dt { color: var(--text-muted); font-size: 0.88rem; }
+.ficha-dados dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.linha-recebimento td { color: var(--text-muted); }
+.modal-cliente { max-width: 760px; width: 96vw; max-height: 94vh; overflow: auto; }
+.cli-bloco { border: 1px solid var(--input-border); border-radius: 10px; padding: 0.6rem 1rem 0.8rem; margin: 0 0 0.9rem; min-width: 0; }
+.cli-bloco legend { font-weight: 700; padding: 0 0.4rem; }
+.cli-prazo { display: flex; flex-wrap: wrap; gap: 0.5rem 1.2rem; margin-top: 0.3rem; }
+.cli-prazo input.cli-dias { width: 5.5rem; min-width: 0; display: inline-block; padding: 0.35rem 0.5rem; }
+.cli-prazo label { align-items: center; }
+.cli-uf { max-width: 6rem; }
+.calc-cliente { margin: 0.6rem 0; padding: 0.5rem 0.8rem; border: 1px solid var(--input-border); border-radius: 8px; }
+.rotulo { display: block; font-size: 0.9rem; color: var(--text-muted); }

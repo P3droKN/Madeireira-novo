@@ -1,5 +1,6 @@
 // Cadastro de clientes compartilhado (fiado, recebimentos, orçamentos): carrega a lista,
-// preenche o <datalist id="clientes-lista"> e acha ou cadastra um cliente pelo nome.
+// preenche o <datalist id="clientes-lista"> (só os ativos) e acha ou cadastra um cliente pelo nome.
+import { prazoDoCliente } from "./lib/receber.js";
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const chave = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase().replace(/\s+/g, " ");
 
@@ -19,7 +20,7 @@ async function carregar() {
 
 function preencherDatalist() {
   const dl = document.getElementById("clientes-lista");
-  if (dl) dl.innerHTML = estado.lista.map((c) => `<option value="${esc(c.nome)}">${esc(c.telefone || "sem WhatsApp")}</option>`).join("");
+  if (dl) dl.innerHTML = estado.lista.filter((c) => !c.inativo).map((c) => `<option value="${esc(c.nome)}">${esc(c.telefone || "sem WhatsApp")}</option>`).join("");
 }
 
 async function salvar(cliente) {
@@ -45,18 +46,12 @@ async function garantir(nome) {
     return c ? { id: c.id, nome: c.nome } : null;
   }
   if (!confirm(`"${n}" não está no cadastro de clientes. Cadastrar agora?`)) return null;
-  const tel = prompt(`WhatsApp de ${n} com DDD (opcional; deixe em branco se não tiver):`, "");
-  if (tel === null) return null;
-  try {
-    const c = await salvar({ nome: n, telefone: tel.trim() });
-    return { id: c.id, nome: c.nome };
-  } catch (e) {
-    alert(`O cliente não foi cadastrado: ${e.message}`);
-    return null;
-  }
+  // Abre o cadastro completo (Clientes e Orçamentos › Clientes) já com o nome
+  const c = await window.ClientesUI?.novo({ nome: n });
+  return c ? { id: c.id, nome: c.nome } : null;
 }
 
-// Cliente de conta corrente (pelo nome digitado): fiado sem vencimento
+// Cliente "sem prazo" (pelo nome digitado): fiado sem vencimento, acerta quando juntar
 function ehContaCorrente(nome) {
   const n = chave(nome);
   if (!n) return false;
@@ -64,11 +59,20 @@ function ehContaCorrente(nome) {
   return iguais.length > 0 && iguais.every((c) => c.contaCorrente === true);
 }
 
+// Prazo do fiado do cliente digitado: { semPrazo, dias } (null se não achar um só cliente com o nome)
+function prazoDe(nome) {
+  const n = chave(nome);
+  const iguais = n ? estado.lista.filter((c) => chave(c.nome) === n) : [];
+  if (iguais.length !== 1) return null;
+  return prazoDoCliente(iguais[0], window.Caixa?.configFinanceiro);
+}
+
 window.Clientes = {
   carregar,
   salvar,
   garantir,
   ehContaCorrente,
+  prazoDe,
   get lista() { return estado.lista; },
   porId: (id) => estado.lista.find((c) => String(c.id) === String(id)) || null,
 };
