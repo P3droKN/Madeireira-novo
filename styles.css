@@ -1210,3 +1210,5 @@ body.modo-balcao .sigilo { display: none !important; }
 .cli-uf { max-width: 6rem; }
 .calc-cliente { margin: 0.6rem 0; padding: 0.5rem 0.8rem; border: 1px solid var(--input-border); border-radius: 8px; }
 .rotulo { display: block; font-size: 0.9rem; color: var(--text-muted); }
+.imp-cliente-form { border: 1px solid var(--input-border); border-radius: 10px; padding: 0.8rem 1rem; margin: 0.6rem 0; }
+#imp-cliente-btn { margin: 0.4rem 0; }

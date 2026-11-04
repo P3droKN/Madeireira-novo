@@ -172,7 +172,12 @@
                                 <input type="text" id="calc-nfe" maxlength="20" inputmode="numeric" placeholder="Ex: 1234">
                             </div>
                         </div>
-                        <div class="calc-cliente" id="calc-cliente" hidden></div>
+                        <div class="calc-cliente form-row" id="calc-cliente">
+                            <div class="form-group"><label for="calc-cliente-nome">Cliente (opcional)</label>
+                                <input type="text" id="calc-cliente-nome" maxlength="120" list="clientes-lista" autocomplete="off" placeholder="comece a digitar o nome">
+                                <small class="texto-suave" id="calc-cliente-info">Cadastrado: a venda fica na ficha dele. Não cadastrado: o nome sai na via (endereço e entrega: na janela das vias, "✎ Cliente e entrega").</small></div>
+                            <div class="form-group calc-cliente-acoes"><button type="button" class="btn-icon" id="calc-cliente-novo">+ cadastrar novo</button></div>
+                        </div>
                         <div class="botoes-finalizar">
                             <button class="btn-icon btn-orcamento" id="btn-salvar-orcamento" onclick="Orcamentos.abrirSalvar()">💾 Salvar como orçamento</button>
                             <button class="btn-icon" id="btn-registrar-venda" onclick="registerDirectSale()" title="Grava a venda (V-000X). As vias podem ser impressas depois.">Registrar venda</button>
@@ -718,6 +723,27 @@
                 <label><input type="radio" name="imp-modo" value="loja"><span>1 via: só da loja</span></label>
                 <label><input type="radio" name="imp-modo" value="cliente"><span>1 via: só do cliente</span></label>
             </div>
+            <button type="button" class="btn-icon" id="imp-cliente-btn" hidden>✎ Cliente e entrega</button>
+            <form id="imp-cliente-form" class="fin-form imp-cliente-form" hidden autocomplete="off">
+                <p class="texto-suave">Os dados ficam salvos na venda e saem na via (dá para editar e imprimir de novo). Escolha um cliente cadastrado para vincular a venda a ele, ou preencha só para esta via.</p>
+                <div class="form-row">
+                    <div class="form-group"><label for="imp-cli-nome">Cliente</label><input type="text" id="imp-cli-nome" maxlength="120" list="clientes-lista" placeholder="nome (cadastrado ou não)"><small class="texto-suave" id="imp-cli-vinculo"></small></div>
+                    <div class="form-group"><label for="imp-cli-telefone">Telefone</label><input type="tel" id="imp-cli-telefone" maxlength="30"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label for="imp-cli-endereco">Endereço</label><input type="text" id="imp-cli-endereco" maxlength="160"></div>
+                    <div class="form-group"><label for="imp-cli-bairro">Bairro</label><input type="text" id="imp-cli-bairro" maxlength="80"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label for="imp-cli-cidade">Cidade</label><input type="text" id="imp-cli-cidade" maxlength="80"></div>
+                    <div class="form-group cli-uf"><label for="imp-cli-uf">UF</label><input type="text" id="imp-cli-uf" maxlength="2" placeholder="PR"></div>
+                    <div class="form-group"><label for="imp-cli-documento">CPF/CNPJ</label><input type="text" id="imp-cli-documento" maxlength="20"></div>
+                    <div class="form-group"><label for="imp-cli-ie">Inscr. estadual</label><input type="text" id="imp-cli-ie" maxlength="20"></div>
+                </div>
+                <div class="form-group"><label for="imp-cli-obs">Observação da entrega (sai na via)</label><input type="text" id="imp-cli-obs" maxlength="300" placeholder="Ex: entregar sábado de manhã, portão azul"></div>
+                <label class="check" id="imp-cli-cadastrar-rotulo"><input type="checkbox" id="imp-cli-cadastrar"> Cadastrar como cliente (fica na aba Clientes, com estes dados)</label>
+                <div class="export-actions"><button type="button" class="btn-icon" id="imp-cli-cancelar">Cancelar</button><button type="submit" class="btn-primary" id="imp-cli-salvar">Salvar na via</button></div>
+            </form>
             <div id="imp-incompleto" class="aviso aviso-alerta" hidden></div>
             <div id="imp-aviso" class="aviso aviso-alerta" hidden>Pedido grande: não cabe em meia folha, então cada via vai numa página inteira.</div>
             <div class="imp-previa" aria-label="Prévia da impressão"><div id="imp-previa-folha"></div></div>

@@ -65,7 +65,7 @@ ok(ficha.includes("15 dias") && ficha.includes("Rua das Flores, 10, Centro, Curi
 // 2. Nova venda pela ficha: fiado com o prazo do cliente (10/10 + 15 = 25/10); o cliente vai na venda e na via
 await page.click("#cli-nova-venda");
 await page.waitForSelector("#tab-vender.active");
-ok(nb(await page.textContent("#calc-cliente")).includes("Cliente: Dona Lu"), "Vender: o cliente da ficha já vem escolhido");
+ok(await page.inputValue("#calc-cliente-nome") === "Dona Lu" && nb(await page.textContent("#calc-cliente-info")).includes("cadastrado"), "Vender: o cliente da ficha já vem escolhido");
 await pedir(4);
 await page.locator("#calc-pagamentos .pag-forma").first().selectOption("fiado");
 ok(await page.inputValue("#calc-pagamentos .pag-fiado-cliente") === "Dona Lu" && await page.inputValue("#calc-pagamentos .pag-fiado-venc") === "2026-10-25" && nb(await page.textContent("#calc-pagamentos")).includes("prazo do cliente: 15 dias"),

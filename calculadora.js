@@ -481,14 +481,32 @@ function pedirOutro(atual) {
 
 // ---------- Orçamentos ----------
 
-function renderClientePedido() {
-  const el = $("calc-cliente");
-  if (!el) return;
-  const c = estado.clientePedido;
-  el.hidden = !c;
-  el.innerHTML = c ? `Cliente: <strong>${esc(c.nome)}</strong> <button type="button" class="btn-icon mini" id="calc-cliente-tirar">✕ tirar</button>` : "";
-  $("calc-cliente-tirar")?.addEventListener("click", () => window.Calculadora.definirClientePedido(null));
+// Cliente do pedido (opcional): cadastrado (vincula a venda à ficha) ou só o nome (sai na via)
+const chaveNomeCli = (n) => String(n || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase().replace(/\s+/g, " ");
+function cadastradoPeloNome(nome) {
+  const iguais = (window.Clientes?.lista || []).filter((c) => !c.inativo && chaveNomeCli(c.nome) === chaveNomeCli(nome));
+  return iguais.length === 1 ? iguais[0] : null;
 }
+function renderClientePedido() {
+  const c = estado.clientePedido;
+  const inp = $("calc-cliente-nome");
+  if (!inp) return;
+  if (document.activeElement !== inp) inp.value = c?.nome || "";
+  $("calc-cliente-info").textContent = !c ? "Cadastrado: a venda fica na ficha dele. Não cadastrado: o nome sai na via (endereço e entrega: na janela das vias, \"✎ Cliente e entrega\")."
+    : c.id ? `✓ ${c.nome} (cadastrado): a venda fica na ficha dele.` : `${c.nome} não está cadastrado: o nome sai na via. Para guardar, use "+ cadastrar novo".`;
+}
+function clienteDigitado() {
+  const nome = $("calc-cliente-nome").value.trim();
+  const cad = cadastradoPeloNome(nome);
+  estado.clientePedido = cad ? { id: cad.id, nome: cad.nome, telefone: cad.telefone || "" } : nome ? { id: null, nome } : null;
+  editorPagamentos.definirCliente(estado.clientePedido?.nome || "");
+  renderClientePedido();
+}
+$("calc-cliente-nome").addEventListener("change", clienteDigitado);
+$("calc-cliente-novo").addEventListener("click", async () => {
+  const c = await window.ClientesUI?.novo({ nome: $("calc-cliente-nome").value.trim() });
+  if (c) window.Calculadora.definirClientePedido(c);
+});
 
 function renderVinculo() {
   const el = $("orc-vinculo");
@@ -717,6 +735,8 @@ window.Calculadora = {
     estado.clientePedido = null;
     editorPagamentos.reiniciar(0);
     $("calc-nfe").value = "";
+    $("calc-cliente-nome").value = "";
+    renderClientePedido();
     renderPedido();
   },
 

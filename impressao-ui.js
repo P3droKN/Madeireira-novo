@@ -78,9 +78,81 @@ function abrir({ venda = null, orcamento = null, titulo = "", mensagem = "", exe
     ? `A via está saindo incompleta: falta ${esc(falta.join(", "))}. <a href="#" id="imp-ir-ajustes">Preencher em Ajustes › Impressão</a>`
     : "";
   $("imp-ir-ajustes")?.addEventListener("click", (e) => { e.preventDefault(); fechar(); window.Financeiro?.irPara("ajustes", "impressao"); });
+  // Venda registrada: dá para preencher/editar o cliente e a entrega da via
+  $("imp-cliente-btn").hidden = !estado.vendaId;
+  $("imp-cliente-form").hidden = true;
   $("modal-impressao").style.display = "flex";
   if (imprimirJa && !falta.length) setTimeout(imprimir, 60);
 }
+
+// Recalcula a folha depois de mudar o cliente da venda
+function refazerDoc() {
+  const l = window.Caixa?.itens?.find((x) => String(x.id) === String(estado.vendaId));
+  if (!l) return;
+  estado.doc = documentoDaVenda(l, { cadastro: l.clienteId ? window.Clientes?.porId(l.clienteId) : null });
+  estado.paginaInteira = !cabeEmMeiaFolha(estado.doc);
+  renderPrevia();
+}
+
+// ---------- Cliente e entrega (dados da via salvos na venda) ----------
+const CAMPOS_CLI = ["nome", "telefone", "endereco", "bairro", "cidade", "uf", "documento", "ie", "obs"];
+const chaveNome = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase().replace(/\s+/g, " ");
+const cadastradoPeloNome = (nome) => {
+  const iguais = (window.Clientes?.lista || []).filter((c) => !c.inativo && chaveNome(c.nome) === chaveNome(nome));
+  return iguais.length === 1 ? iguais[0] : null;
+};
+function mostrarVinculo() {
+  const cad = cadastradoPeloNome($("imp-cli-nome").value);
+  $("imp-cli-vinculo").textContent = cad ? "✓ cliente cadastrado: a venda fica vinculada a ele" : $("imp-cli-nome").value.trim() ? "sem cadastro: os dados ficam só nesta venda" : "";
+  $("imp-cli-cadastrar-rotulo").hidden = Boolean(cad);
+  return cad;
+}
+function abrirCliente() {
+  const l = window.Caixa?.itens?.find((x) => String(x.id) === String(estado.vendaId));
+  if (!l) return;
+  const cad = l.clienteId ? window.Clientes?.porId(l.clienteId) : null;
+  const via = l.clienteVia || {};
+  const base = cad ? { nome: cad.nome, telefone: cad.telefone || cad.fixo, endereco: cad.endereco, bairro: cad.bairro, cidade: cad.cidade, uf: cad.uf, documento: cad.documento, ie: cad.ie } : { ...via, nome: via.nome || l.cliente || "" };
+  for (const c of CAMPOS_CLI) $(`imp-cli-${c}`).value = (c === "obs" ? via.obs : base[c]) || "";
+  $("imp-cli-cadastrar").checked = false;
+  mostrarVinculo();
+  $("imp-cliente-form").hidden = false;
+  $("imp-cli-nome").focus();
+}
+// Escolheu um cadastrado na lista: preenche com os dados do cadastro
+$("imp-cli-nome").addEventListener("change", () => {
+  const cad = mostrarVinculo();
+  if (!cad) return;
+  const dados = { telefone: cad.telefone || cad.fixo, endereco: cad.endereco, bairro: cad.bairro, cidade: cad.cidade, uf: cad.uf, documento: cad.documento, ie: cad.ie };
+  for (const [c, v] of Object.entries(dados)) if (v) $(`imp-cli-${c}`).value = v;
+});
+$("imp-cli-nome").addEventListener("input", mostrarVinculo);
+$("imp-cliente-btn").addEventListener("click", () => ($("imp-cliente-form").hidden ? abrirCliente() : ($("imp-cliente-form").hidden = true)));
+$("imp-cli-cancelar").addEventListener("click", () => { $("imp-cliente-form").hidden = true; });
+$("imp-cliente-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const botao = $("imp-cli-salvar");
+  if (botao.disabled) return;
+  const v = Object.fromEntries(CAMPOS_CLI.map((c) => [c, $(`imp-cli-${c}`).value.trim()]));
+  botao.disabled = true;
+  try {
+    let cad = cadastradoPeloNome(v.nome);
+    if (!cad && $("imp-cli-cadastrar").checked) {
+      if (!v.nome) throw new Error("Informe o nome do cliente para cadastrar.");
+      const tel = v.telefone.replace(/\D/g, "");
+      cad = await window.Clientes.salvar({ nome: v.nome, telefone: tel.length >= 10 && tel.length <= 13 ? v.telefone : "", fixo: tel.length >= 10 ? "" : v.telefone,
+        endereco: v.endereco, bairro: v.bairro, cidade: v.cidade, uf: v.uf, documento: v.documento, ie: v.ie });
+    }
+    await window.api("/api/lancamento", { method: "PATCH", body: { acao: "cliente", id: estado.vendaId, clienteId: cad?.id || null, clienteVia: v } });
+    await window.Caixa.recarregar();
+    $("imp-cliente-form").hidden = true;
+    refazerDoc();
+  } catch (err) {
+    alert(`Não foi salvo: ${err.message}`);
+  } finally {
+    botao.disabled = false;
+  }
+});
 
 function fechar() { $("modal-impressao").style.display = "none"; }
 

@@ -280,6 +280,7 @@ export async function comTrava(kv, k, ids, fn) {
 export const salvarLancamentos = (kv, k, itens) =>
   comTrava(kv, k, Array.isArray(itens) && itens.length <= 50 ? itens.map((i) => i?.id) : [], () => salvarLancamentosSemTrava(kv, k, itens));
 export const marcarImpresso = (kv, k, id) => comTrava(kv, k, [id], () => marcarImpressoSemTrava(kv, k, id));
+export const clienteDaVenda = (kv, k, p) => comTrava(kv, k, [p?.id], () => clienteDaVendaSemTrava(kv, k, p));
 export const excluirLancamento = (kv, k, id) => comTrava(kv, k, [id], () => excluirLancamentoSemTrava(kv, k, id));
 export const atualizarCheque = (kv, k, p) => comTrava(kv, k, [p?.id], () => atualizarChequeSemTrava(kv, k, p));
 
@@ -334,6 +335,7 @@ async function salvarLancamentosSemTrava(kv, k, itens) {
       else numeros[i.id] = i.numero;
       if (antes) {
         if (antes.impressoEm) i.impressoEm = antes.impressoEm;
+        if (!i.clienteVia && antes.clienteVia) i.clienteVia = antes.clienteVia; // corrigir mantém os dados da via
         const mudou = centavosDe(antes.value) !== centavosDe(i.value) || JSON.stringify(antes.itens || null) !== JSON.stringify(i.itens || null)
           || JSON.stringify((antes.pagamentos || []).map((p) => [p.forma, p.valor])) !== JSON.stringify((i.pagamentos || []).map((p) => [p.forma, p.valor]));
         i.historico = [...(antes.historico || []), ...(mudou ? [{ em: agora, valorAntes: antes.value }] : [])].slice(-20);
@@ -357,6 +359,40 @@ async function salvarLancamentosSemTrava(kv, k, itens) {
 export const numeroVenda = (n) => `V-${String(n).padStart(4, "0")}`;
 
 // Primeira impressão das vias: a partir daí, a via reimpressa sai marcada "2ª impressão em DD/MM"
+// Cliente de uma venda já registrada: vincular a um cliente cadastrado e/ou guardar os dados da via
+// (nome, telefone, endereço, documentos e observação de entrega) para quem não tem cadastro.
+// Só muda o cliente; valor, itens e formas continuam (para isso, Corrigir).
+async function clienteDaVendaSemTrava(kv, k, p) {
+  const l = desembrulhar(await kv.hget(k.lancamentos, String(p?.id || "")));
+  if (!l || l.excluido) throw erro(404, "Venda não encontrada.");
+  if (!RECEITA_CLIENTE.includes(l.conta)) throw erro(400, "Só vendas têm cliente na via.");
+  let cad = null;
+  if (p.clienteId) {
+    cad = desembrulhar(await kv.hget(k.clientes, String(p.clienteId)));
+    if (!cad) throw erro(404, "Cliente não encontrado no cadastro.");
+  }
+  const temFiado = (l.pagamentos || []).some((x) => x.forma === "fiado");
+  if (temFiado && String(cad?.id || "") !== String(l.clienteId || "")) throw erro(409, "Venda no fiado: para trocar o cliente (quem deve), use Corrigir no Caixa › Lançamentos.");
+  const via = p.clienteVia && typeof p.clienteVia === "object" ? limparClienteVia(p.clienteVia) : null;
+  const novo = { ...l, atualizadoEm: new Date().toISOString(), versao: Number(l.versao || 0) + 1 };
+  if (cad) { novo.clienteId = cad.id; novo.cliente = cad.nome; } else { delete novo.clienteId; }
+  if (via && Object.values(via).some(Boolean)) {
+    novo.clienteVia = via;
+    if (!cad) novo.cliente = via.nome || l.cliente || "";
+  } else delete novo.clienteVia;
+  if (!cad && !novo.clienteVia) novo.cliente = "";
+  await kv.hset(k.lancamentos, { [novo.id]: novo });
+  return novo;
+}
+const RECEITA_CLIENTE = ["venda_produtos", "servicos", "frete_cobrado"];
+const CAMPOS_CLIENTE_VIA = { nome: 120, telefone: 30, endereco: 160, bairro: 80, cidade: 80, uf: 2, documento: 20, ie: 20, obs: 300 };
+function limparClienteVia(v) {
+  const r = Object.fromEntries(Object.entries(CAMPOS_CLIENTE_VIA).map(([c, max]) => [c, texto(v[c], c === "uf" ? 20 : max).trim()]));
+  r.uf = r.uf.toUpperCase();
+  if (r.uf && !/^[A-Z]{2}$/.test(r.uf)) throw erro(400, "Estado (UF) inválido: use as duas letras, ex. PR.");
+  return r;
+}
+
 async function marcarImpressoSemTrava(kv, k, id) {
   const atual = desembrulhar(await kv.hget(k.lancamentos, String(id)));
   if (!atual) throw erro(404, "Venda não encontrada.");
@@ -721,6 +757,11 @@ export function validarLancamentoV2(item, cfgSalva) {
     const cli = clienteDoLancamento(item, { exigeId: temFiado });
     if (cli.nome) limpo.cliente = cli.nome;
     if (cli.id) limpo.clienteId = cli.id;
+    // Dados do cliente para a via (quem não tem cadastro): nome, telefone, endereço, documentos, entrega
+    if (item.clienteVia && typeof item.clienteVia === "object") {
+      const via = limparClienteVia(item.clienteVia);
+      if (Object.values(via).some(Boolean)) limpo.clienteVia = via;
+    }
     for (const p of limpo.pagamentos) {
       if (p.forma === "fiado" && !p.fiado.vencimento && !p.fiado.contaCorrente) p.fiado.vencimento = somarDias(competencia, cfg.fiado.prazoDias);
     }

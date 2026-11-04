@@ -991,3 +991,20 @@ test("orçamento: excluir para sempre (não o convertido) e esvaziar lixeira; o 
   assert.ok(await kv.hget(K.orcamentos, c.id));
   assert.equal((await salvarOrcamento(kv, K, novoOrc(), {})).id, "ORC-0004", "o número não é reaproveitado");
 });
+
+test("cliente de uma venda já registrada: vincular, dados da via, e fiado só por Corrigir", async () => {
+  const { clienteDaVenda } = await import("../api/_dados.js");
+  const kv = kvFalso({ [K.finance]: [] });
+  await migrar(kv, K);
+  const c = await salvarCliente(kv, K, { nome: "Carlos Souza", telefone: "(47) 99999-1234" });
+  await salvarLancamentos(kv, K, [{ id: "V1", v: 2, conta: "venda_produtos", value: 100, competencia: "2026-11-04", pagamentos: [{ forma: "dinheiro", valor: 100 }], cliente: "Seu Joaquim", clienteVia: { nome: "Seu Joaquim", endereco: "Rua A, 1" } }]);
+  assert.equal((await kv.hget(K.lancamentos, "V1")).clienteVia.endereco, "Rua A, 1", "a venda nova guarda os dados da via");
+  const r = await clienteDaVenda(kv, K, { id: "V1", clienteVia: { nome: "Seu Joaquim", endereco: "Rua A, 2", uf: "pr", obs: "sábado" } });
+  assert.deepEqual([r.cliente, r.clienteVia.endereco, r.clienteVia.uf, r.clienteVia.obs, r.clienteId], ["Seu Joaquim", "Rua A, 2", "PR", "sábado", undefined]);
+  const v = await clienteDaVenda(kv, K, { id: "V1", clienteId: c.id, clienteVia: { obs: "sábado" } });
+  assert.deepEqual([v.clienteId, v.cliente], [c.id, "Carlos Souza"]);
+  await assert.rejects(clienteDaVenda(kv, K, { id: "V1", clienteVia: { uf: "Paraná" } }), /UF/);
+  await salvarLancamentos(kv, K, [{ id: "F1", v: 2, conta: "venda_produtos", value: 50, competencia: "2026-11-04", clienteId: c.id, cliente: c.nome, pagamentos: [{ forma: "fiado", valor: 50, fiado: { vencimento: "2026-12-04" } }] }]);
+  await assert.rejects(clienteDaVenda(kv, K, { id: "F1", clienteId: null, clienteVia: { nome: "Outro" } }), /use Corrigir/);
+  assert.equal((await clienteDaVenda(kv, K, { id: "F1", clienteId: c.id, clienteVia: { obs: "entregar" } })).clienteVia.obs, "entregar", "fiado: muda só a entrega");
+});

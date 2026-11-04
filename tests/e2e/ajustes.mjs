@@ -98,4 +98,49 @@ await page.waitForSelector("#dia-panorama");
 const cab = nb(await page.textContent("#dia-panorama thead"));
 ok(!cab.includes("Início") && !cab.includes("Fim") && cab.includes("Movimento") && cab.includes("Cartão a cair"), "Dia: movimento por conta, sem início/fim (não depende da abertura)");
 ok(nb(await page.textContent('#dia-numeros [data-numero="sobrou"]')).includes("R$ 1.090,00"), "Vendeu − Saiu: 770 + 80 + 240 = 1.090 (nada saiu)");
+
+// 6. Cliente na venda: cadastrado (vincula) ou só o nome; dados de entrega na via, salvos e editáveis
+await fetch(URL + "/api/clientes", { method: "POST", headers: H, body: JSON.stringify({ cliente: { nome: "Construtora Silva", telefone: "(41) 99999-0000", endereco: "Rua A, 10", cidade: "Curitiba", uf: "PR" } }) });
+await page.evaluate(() => window.Clientes.carregar());
+const vender = async (cliente) => {
+  await page.click("#btn-tab-vender");
+  await page.selectOption("#material", "PORTA_INTERNA"); await page.selectOption("#dimension", "PORTA_INTERNA|70cm");
+  await page.fill("#quantity-pieces", "1"); await page.click("#btn-adicionar");
+  await page.fill("#calc-cliente-nome", cliente); await page.press("#calc-cliente-nome", "Tab");
+  await page.click("#btn-registrar-venda");
+  await page.waitForSelector("#modal-impressao", { state: "visible" });
+};
+await vender("construtora silva");
+ok(nb(await page.textContent("#imp-previa-folha")).includes("CLIENTE:Construtora Silva") && nb(await page.textContent("#imp-previa-folha")).includes("ENDEREÇO:Rua A, 10"), "Vender › Cliente cadastrado: a via sai com os dados do cadastro");
+await page.click("#imp-fechar");
+const vCad = (await lanc()).find((l) => l.cliente === "Construtora Silva");
+ok(vCad?.clienteId, "venda vinculada ao cliente cadastrado (aparece na ficha dele)");
+// cliente sem cadastro: o nome vai na via; os dados de entrega são preenchidos na janela das vias
+await vender("Seu Joaquim");
+ok(nb(await page.textContent("#imp-previa-folha")).includes("CLIENTE:Seu Joaquim"), "cliente sem cadastro: o nome sai na via");
+await page.click("#imp-cliente-btn");
+await page.fill("#imp-cli-telefone", "(41) 98888-7777"); await page.fill("#imp-cli-endereco", "Rua das Palmeiras, 55"); await page.fill("#imp-cli-bairro", "Pilarzinho");
+await page.fill("#imp-cli-obs", "entregar sábado de manhã");
+await page.click("#imp-cli-salvar");
+await page.waitForSelector("#imp-cliente-form", { state: "hidden" });
+let via = nb(await page.textContent("#imp-previa-folha"));
+ok(via.includes("ENDEREÇO:Rua das Palmeiras, 55") && via.includes("BAIRRO:Pilarzinho") && via.includes("FONE:(41) 98888-7777") && via.includes("entregar sábado de manhã"), "Cliente e entrega: endereço, telefone e observação na via, na hora");
+await page.click("#imp-fechar");
+const vJ = (await lanc()).find((l) => l.cliente === "Seu Joaquim");
+ok(vJ && !vJ.clienteId && vJ.clienteVia?.endereco === "Rua das Palmeiras, 55" && vJ.clienteVia.obs === "entregar sábado de manhã", "os dados ficam salvos na venda (sem cadastro)");
+// reabre pela lista e edita; depois cadastra o cliente com esses dados
+await page.click("#btn-tab-caixa"); await sub("caixa", "lista");
+await page.locator(`#fin-lista-body [data-vias="${vJ.id}"]`).click();
+await page.waitForSelector("#modal-impressao", { state: "visible" });
+ok(nb(await page.textContent("#imp-previa-folha")).includes("Rua das Palmeiras, 55"), "reimprimir depois: a via já vem pronta com os dados");
+await page.click("#imp-cliente-btn");
+ok(await page.inputValue("#imp-cli-endereco") === "Rua das Palmeiras, 55", "editar: os dados salvos vêm preenchidos");
+await page.fill("#imp-cli-endereco", "Rua das Palmeiras, 57");
+await page.check("#imp-cli-cadastrar");
+await page.click("#imp-cli-salvar");
+await page.waitForSelector("#imp-cliente-form", { state: "hidden" });
+await page.click("#imp-fechar");
+const joaquim = Object.values((await db()).madeireira_clientes || {}).map((x) => JSON.parse(x)).find((c) => c.nome === "Seu Joaquim");
+const vJ2 = (await lanc()).find((l) => l.id === vJ.id);
+ok(joaquim?.endereco === "Rua das Palmeiras, 57" && joaquim.telefone === "(41) 98888-7777" && vJ2.clienteId === joaquim.id, "\"Cadastrar como cliente\": cria o cadastro com os dados e vincula a venda");
 await browser.close();

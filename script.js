@@ -391,10 +391,11 @@ async function registrarVendaAgora(opcoes = {}) {
         vendaItem.cliente = vinculo.cliente.nome;
         if (vinculo.cliente.id) vendaItem.clienteId = vinculo.cliente.id;
     } else if (window.Calculadora.clientePedido()) {
-        // Cliente escolhido na ficha (Clientes › Nova venda): a venda fica no histórico dele e sai na via
+        // Cliente do pedido: cadastrado (a venda fica na ficha dele) ou só o nome (sai na via)
         const cp = window.Calculadora.clientePedido();
         vendaItem.cliente = cp.nome;
-        vendaItem.clienteId = cp.id;
+        if (cp.id) vendaItem.clienteId = cp.id;
+        else vendaItem.clienteVia = { nome: cp.nome };
     }
     if (!(await gravarLancamentos([vendaItem]))) return;
     vendaPendenteId = null;

@@ -82,6 +82,7 @@ await page.click("#fin-lote-aplicar");
 await page.waitForTimeout(400);
 ok((await porId("1760000000003")).conta === "energia", "despesa reclassificada para Energia");
 await page.fill("#fin-f-busca", "");
+await page.waitForTimeout(400); // a busca espera a pessoa parar de digitar e depois limpa a seleção
 await page.selectOption("#fin-f-tipo", "entradas");
 await page.fill("#fin-f-mes", ""); await page.dispatchEvent("#fin-f-mes", "change");
 await page.locator("#fin-lista-body tr", { hasText: "Venda Direta: CAMBARÁ" }).locator(".fin-sel").check();
