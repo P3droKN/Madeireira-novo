@@ -73,7 +73,6 @@ function render(el, modo = estado.modo) {
       <button class="btn-primary" id="dia-imprimir">🖨 Imprimir ${ehMes() ? "relatório do mês" : "fechamento"}</button>
     </div>
   </section>
-  ${ab ? "" : '<div class="aviso aviso-alerta">Sem abertura de saldos: os saldos por conta começam do zero (Ajustes › Saldos).</div>'}
   ${ehMes() ? equilibrioHtml() : ""}
 
   <section class="dia-resposta" id="dia-numeros" aria-label="Resumo ${esc(quando())}">
@@ -82,20 +81,22 @@ function render(el, modo = estado.modo) {
       <div data-numero="vendeu"><span>Vendeu</span><strong>${moeda(q.vendido)}</strong><small>${q.pedidos} pedido${q.pedidos === 1 ? "" : "s"}${q.pedidos ? ` · média ${moeda(q.ticketMedio)}` : ""}</small></div>
       <div data-numero="entrou"><span>Entrou no caixa <button type="button" class="info" id="dia-info" aria-expanded="false" title="Por que é diferente de Vendeu?">ⓘ</button></span><strong class="ent">${moeda(q.entrou)}</strong><small>gaveta, Bradesco e PicPay</small></div>
       <div data-numero="saiu"><span>Saiu</span><strong class="${q.saiu ? "sai" : ""}">${moeda(q.saiu)}</strong><small>pago ${esc(quando())}</small></div>
+      <div data-numero="sobrou"><span>Vendeu − Saiu</span><strong class="${q.sobrou < 0 ? "sai" : "ent"}">${moeda(q.sobrou)}</strong><small>${q.cartaoACair ? `${moeda(q.cartaoACair)} do cartão ainda vai cair` : "o que sobrou " + esc(quando())}</small></div>
     </div>
-    <p class="dia-explica" id="dia-explica" hidden>“Vendeu” é tudo o que foi vendido, em qualquer forma. “Entrou no caixa” é o dinheiro que entrou de verdade: fiado e crédito não entram na hora, o débito entra no dia seguinte e o recebimento de fiado entra, mas não é venda ${esc(quando())}.</p>
-    <p class="dia-linha" id="dia-linha-fiado">Fiado vendido ${moeda(q.fiadoVendido)} · Recebido de fiado ${moeda(q.recebidoFiado)}${q.recebidoAnterior ? ` (${moeda(q.recebidoAnterior)} da pasta, anterior à virada)` : ""}</p>
+    <p class="dia-explica" id="dia-explica" hidden>“Vendeu” é tudo o que foi vendido, em qualquer forma. “Entrou no caixa” é o dinheiro que entrou de verdade: fiado e crédito não entram na hora, o débito entra no dia seguinte e o recebimento de fiado entra, mas não é venda ${esc(quando())}. Por isso “Entrou” pode ser menor que “Saiu” num dia bom: o cartão cai depois.</p>
+    <p class="dia-linha" id="dia-linha-fiado">Fiado vendido ${moeda(q.fiadoVendido)} · Recebido de fiado ${moeda(q.recebidoFiado)}${q.recebidoAnterior ? ` (${moeda(q.recebidoAnterior)} da pasta, anterior à virada)` : ""}${q.cartaoACair ? ` · Cartão a cair nos próximos dias ${moeda(q.cartaoACair)}` : ""}</p>
   </section>
 
   <section class="glass-panel" id="dia-panorama">
-    <div class="painel-titulo"><h2>Caixa por conta</h2>${r.contas.inicioNaAbertura ? `<span class="texto-suave">início = abertura de ${dataBR(r.contas.abertura)}</span>` : ""}</div>
+    <div class="painel-titulo"><h2>Movimento por conta</h2><span class="texto-suave">o que entrou e saiu ${esc(quando())} (o saldo de cada conta fica em Caixa › Saldos)</span></div>
     <div class="table-container"><table class="tabela-fin tabela-panorama">
-      <thead><tr><th>Conta</th><th class="num">Início</th><th class="num">+ Entradas</th><th class="num">− Saídas</th><th class="num">± Transf.</th><th class="num">= Fim</th></tr></thead>
+      <thead><tr><th>Conta</th><th class="num">+ Entradas</th><th class="num">− Saídas</th><th class="num">± Transf.</th><th class="num">= Movimento</th><th class="num">Cartão a cair</th></tr></thead>
       <tbody>${r.contas.porConta.map((c) => `<tr data-conta="${c.conta}"><td><strong>${esc(c.nome)}</strong>${c.recebiveisCartao ? `<small>${moeda(c.recebiveisCartao)} de cartão de vendas anteriores</small>` : ""}
         ${c.conta === "gaveta" && !ehPeriodo() ? gavetaHtml(r.contas.gaveta) : ""}</td>
-        <td class="num">${moeda(c.inicio)}</td><td class="num ent">${c.entradas ? moeda(c.entradas) : "—"}</td><td class="num sai">${c.saidas ? moeda(c.saidas) : "—"}</td>
-        <td class="num">${c.transferencias ? moeda(c.transferencias) : "—"}</td><td class="num"><strong>${moeda(c.fim)}</strong></td></tr>`).join("")}</tbody>
-      <tfoot><tr class="dre-total" id="dia-total-contas"><td>Total</td><td class="num">${moeda(r.contas.total.inicio)}</td><td class="num">${moeda(r.contas.total.entradas)}</td><td class="num">${moeda(r.contas.total.saidas)}</td><td class="num">${moeda(r.contas.total.transferencias)}</td><td class="num">${moeda(r.contas.total.fim)}</td></tr></tfoot>
+        <td class="num ent">${c.entradas ? moeda(c.entradas) : "—"}</td><td class="num sai">${c.saidas ? moeda(c.saidas) : "—"}</td>
+        <td class="num">${c.transferencias ? moeda(c.transferencias) : "—"}</td><td class="num"><strong>${moeda(c.movimento)}</strong></td>
+        <td class="num">${c.cartaoACair ? moeda(c.cartaoACair) : "—"}</td></tr>`).join("")}</tbody>
+      <tfoot><tr class="dre-total" id="dia-total-contas"><td>Total</td><td class="num">${moeda(r.contas.total.entradas)}</td><td class="num">${moeda(r.contas.total.saidas)}</td><td class="num">${moeda(r.contas.total.transferencias)}</td><td class="num">${moeda(r.contas.total.movimento)}</td><td class="num">${moeda(r.contas.total.cartaoACair)}</td></tr></tfoot>
     </table></div>
   </section>
 
@@ -281,12 +282,13 @@ function imprimirFechamento() {
         <div><span>Vendeu</span><strong>${moeda(q.vendido)}</strong><small>${q.pedidos} pedido(s)</small></div>
         <div><span>Entrou no caixa</span><strong>${moeda(q.entrou)}</strong></div>
         <div><span>Saiu</span><strong>${moeda(q.saiu)}</strong></div>
+        <div><span>Vendeu − Saiu</span><strong>${moeda(q.sobrou)}</strong>${q.cartaoACair ? `<small>${moeda(q.cartaoACair)} de cartão a cair</small>` : ""}</div>
       </div>
       <p class="fech-linha">Fiado vendido ${moeda(q.fiadoVendido)} · Recebido de fiado ${moeda(q.recebidoFiado)}${q.recebidoAnterior ? ` (${moeda(q.recebidoAnterior)} da pasta)` : ""}</p>
-      <h3>Caixa por conta</h3>
-      <table><thead><tr><th>Conta</th><th class="num">Início</th><th class="num">+ Entradas</th><th class="num">− Saídas</th><th class="num">± Transf.</th><th class="num">= Fim</th></tr></thead>
-        <tbody>${r.contas.porConta.map((c) => `<tr><td>${esc(c.nome)}</td><td class="num">${moeda(c.inicio)}</td><td class="num">${moeda(c.entradas)}</td><td class="num">${moeda(c.saidas)}</td><td class="num">${moeda(c.transferencias)}</td><td class="num"><b>${moeda(c.fim)}</b></td></tr>`).join("")}</tbody>
-        <tfoot><tr><td>Total</td><td class="num">${moeda(r.contas.total.inicio)}</td><td class="num">${moeda(r.contas.total.entradas)}</td><td class="num">${moeda(r.contas.total.saidas)}</td><td class="num">${moeda(r.contas.total.transferencias)}</td><td class="num"><b>${moeda(r.contas.total.fim)}</b></td></tr></tfoot></table>
+      <h3>Movimento por conta</h3>
+      <table><thead><tr><th>Conta</th><th class="num">+ Entradas</th><th class="num">− Saídas</th><th class="num">± Transf.</th><th class="num">= Movimento</th><th class="num">Cartão a cair</th></tr></thead>
+        <tbody>${r.contas.porConta.map((c) => `<tr><td>${esc(c.nome)}</td><td class="num">${moeda(c.entradas)}</td><td class="num">${moeda(c.saidas)}</td><td class="num">${moeda(c.transferencias)}</td><td class="num"><b>${moeda(c.movimento)}</b></td><td class="num">${moeda(c.cartaoACair)}</td></tr>`).join("")}</tbody>
+        <tfoot><tr><td>Total</td><td class="num">${moeda(r.contas.total.entradas)}</td><td class="num">${moeda(r.contas.total.saidas)}</td><td class="num">${moeda(r.contas.total.transferencias)}</td><td class="num"><b>${moeda(r.contas.total.movimento)}</b></td><td class="num">${moeda(r.contas.total.cartaoACair)}</td></tr></tfoot></table>
       <p class="fech-gaveta">Gaveta: ${g ? `esperado ${moeda(g.esperado)} × contado ${moeda(g.contado)} → ${g.bateu ? "bateu" : `${g.diferenca < 0 ? "faltou" : "sobrou"} ${moeda(Math.abs(g.diferenca))}`}` : "contagem não feita · contado: ______________"}</p>
       <div class="fech-colunas">
         <div><h3>Entradas por forma</h3><table><tbody>

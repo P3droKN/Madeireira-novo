@@ -141,6 +141,8 @@ function aoEscolherMedida() {
   $("quantidade-group").hidden = livre;
   $("valor-livre-group").hidden = !livre;
   $("descricao-group").hidden = !livre;
+  $("custo-livre-group").hidden = !it?.pedeCusto; // "Outros": custo digitado na hora
+  $("descricao-livre").placeholder = it?.pedeCusto ? "Ex: porta de correr (obrigatório)" : "Ex: sobras de cambará";
   $("length-group").hidden = !u?.pedeComprimento;
 
   const q = $("quantity-pieces");
@@ -165,6 +167,7 @@ function lerFormulario() {
     comprimento: lerNumero($("quantity-length").value),
     totalManual: it.unidade === "valor_livre" ? lerNumero($("valor-livre").value) : null,
     descricao: it.unidade === "valor_livre" ? $("descricao-livre").value.trim() : "",
+    custoManual: it.pedeCusto ? lerNumero($("custo-livre").value) : null,
     precoManual: null,
     variacaoPct: null,
     motivo: "",
@@ -226,10 +229,14 @@ function atualizarPrevia() {
   }
 }
 
+// Item de valor livre: "Retalho - sobra de obra"; "Outros" sai só com o que foi descrito
+const descricaoLivre = (item, l) => (item.pedeCusto ? l.descricao || "Outros" : `${item.material}${l.descricao ? " - " + l.descricao : ""}`);
+
 function adicionar(e) {
   e.preventDefault();
   const l = lerFormulario();
   if (!l) return;
+  if (estado.catalogo.itens.get(l.itemId)?.pedeCusto && !l.descricao) { alert("Descreva o item (o que é)."); return $("descricao-livre").focus(); }
   try {
     calcularLinha(l);
   } catch (err) {
@@ -240,7 +247,7 @@ function adicionar(e) {
   // Mantém o material para lançar várias medidas seguidas
   const m = material($("material").value);
   $("dimension").value = m.itens.length === 1 ? m.itens[0].id : "";
-  for (const id of ["quantity-pieces", "quantity-length", "valor-livre", "descricao-livre"]) $(id).value = "";
+  for (const id of ["quantity-pieces", "quantity-length", "valor-livre", "descricao-livre", "custo-livre"]) $(id).value = "";
   aoEscolherMedida();
   $("material").focus();
   renderPedido();
@@ -253,7 +260,7 @@ function adicionar(e) {
 const visivel = (el) => el && !el.disabled && !el.closest("[hidden]") && el.offsetParent !== null;
 function camposDoItem() {
   const acab = $("acabamento-group").hidden ? null : $("acabamento").querySelector("input:checked") || $("acabamento").querySelector("input");
-  return [$("material"), $("dimension"), acab, $("quantity-pieces"), $("quantity-length"), $("valor-livre"), $("descricao-livre")].filter(visivel);
+  return [$("material"), $("dimension"), acab, $("quantity-pieces"), $("quantity-length"), $("valor-livre"), $("descricao-livre"), $("custo-livre")].filter(visivel);
 }
 function marcarTeclaEnter() {
   const campos = camposDoItem();
@@ -512,7 +519,7 @@ function fotografiaPedido() {
     const acab = l.acabamento !== "UNICO" ? ` (${ACABAMENTOS[l.acabamento].toLowerCase()})` : "";
     return {
       itemId: l.itemId, acabamento: l.acabamento, quantidade: l.quantidade, comprimento: l.comprimento,
-      descricao: livre ? `${item.material}${l.descricao ? " - " + l.descricao : ""}` : `${item.material} ${item.rotuloDimensao}${acab}`,
+      descricao: livre ? descricaoLivre(item, l) : `${item.material} ${item.rotuloDimensao}${acab}`,
       descricaoLivre: l.descricao || "",
       quantidadeTexto: livre ? "" : descreverQtd(l, r).replace(/<small>/, " = ").replace(/<[^>]+>/g, ""),
       unidade: livre ? "un" : r.unidadeCobranca,
@@ -670,7 +677,7 @@ window.Calculadora = {
       const livre = item.unidade === "valor_livre";
       const acab = l.acabamento !== "UNICO" ? ` (${ACABAMENTOS[l.acabamento].toLowerCase()})` : "";
       return {
-        descricao: livre ? `${item.material}${l.descricao ? " - " + l.descricao : ""}` : `${item.material} ${item.rotuloDimensao}${acab}`,
+        descricao: livre ? descricaoLivre(item, l) : `${item.material} ${item.rotuloDimensao}${acab}`,
         quantidade: livre ? "" : descreverQtd(l, r).replace(/<small>/, " = ").replace(/<[^>]+>/g, ""),
         precoUnitario: r.precoUnitario == null ? null : arred(r.precoUnitario),
         unidade: livre ? "un" : r.unidadeCobranca,
@@ -755,6 +762,7 @@ window.Calculadora = {
         descricao: i.descricaoLivre || "", precoManual: null, variacaoPct: null, totalManual: null, motivo: i.motivo || "",
       };
       if (livre || precos === "orcamento") linha.totalManual = i.vendaTotal;
+      if (item.pedeCusto) linha.custoManual = i.custoTotal ?? 0;
       else if (tabelaHoje != null) linha.variacaoPct = i.variacaoPct ? arred(i.variacaoPct) : null;
       else linha.precoManual = i.precoUnitario;
       return linha;
@@ -789,6 +797,7 @@ window.Calculadora = {
       if (i.custoTotal != null && Number(i.quantidadeCobrada) > 0) linha.custoUnitarioGravado = Number(i.custoTotal) / Number(i.quantidadeCobrada);
       // o preço que foi vendido (não o da tabela de hoje)
       if (livre) linha.totalManual = i.vendaTotal;
+      if (item.pedeCusto) linha.custoManual = i.custoTotal ?? 0;
       else if (Number(i.quantidadeCobrada) > 0 && i.vendaTotal != null) linha.precoManual = Number(i.vendaTotal) / Number(i.quantidadeCobrada);
       return linha;
     });
@@ -833,7 +842,7 @@ function itensDaVenda(linhas) {
     const r = resultados[i];
     return {
       itemId: l.itemId,
-      descricao: item.unidade === "valor_livre" ? `${item.material}${l.descricao ? " - " + l.descricao : ""}` : `${item.material} ${item.rotuloDimensao}`,
+      descricao: item.unidade === "valor_livre" ? descricaoLivre(item, l) : `${item.material} ${item.rotuloDimensao}`,
       acabamento: l.acabamento,
       // como foi pedido: para a via ("6 pç × 2,50 m") e para corrigir a venda depois
       quantidade: l.quantidade ?? null, comprimento: l.comprimento ?? null, descricaoLivre: l.descricao || "",

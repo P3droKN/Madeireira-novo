@@ -26,7 +26,7 @@ function dia20() {
 
 test("dia com à vista, fiado, crédito, débito, recebimento de fiado, saída e transferência: quadros e totais", () => {
   const r = resumoDoDia({ lancamentos: dia20(), config: {}, saldos, de: "2026-10-20", clientes });
-  assert.deepEqual(r.quadros, { vendido: 1200, pedidos: 4, ticketMedio: 300, entrou: 450, saiu: 500, saldo: -50, fiadoVendido: 300, recebidoFiado: 250, recebidoAnterior: 250 });
+  assert.deepEqual(r.quadros, { vendido: 1200, pedidos: 4, ticketMedio: 300, entrou: 450, saiu: 500, saldo: -50, sobrou: 700, cartaoACair: 700, fiadoVendido: 300, recebidoFiado: 250, recebidoAnterior: 250 });
   // entradas por forma: o total bate com vendido + recebimentos
   assert.deepEqual(r.entradas.formas.map((f) => [f.nome, f.quantidade, f.valor]), [["Dinheiro", 1, 200], ["Débito", 1, 100], ["Crédito parcelado 3x", 1, 600], ["Fiado", 1, 300]]);
   assert.ok(r.entradas.formas.find((f) => f.forma === "fiado").naoEntraNoCaixa);

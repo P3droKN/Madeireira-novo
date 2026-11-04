@@ -175,7 +175,7 @@ await dia();
 await page.fill("#dia-data", "2026-10-21"); await page.dispatchEvent("#dia-data", "change");
 await page.waitForTimeout(300);
 const pic21 = await page.$$eval('#dia-panorama tr[data-conta="picpay"] td.num', (t) => t.map((x) => x.textContent.replace(/ /g, " ")));
-ok(pic21[1] === "R$ 98,00", `Dia 21: débito de 100 do dia 20 entra no PicPay líquido (R$ 98,00): ${pic21[1]}`);
+ok(pic21[0] === "R$ 98,00", `Dia 21: débito de 100 do dia 20 entra no PicPay líquido (R$ 98,00): ${pic21[0]}`);
 
 // 9. Modo balcão: o resultado some no Dia; estimativas desligadas no rodapé do DRE
 await page.click("#btn-tab-vender"); await page.click("#btn-balcao"); await dia(); await abrir("dia-detalhes");

@@ -42,6 +42,8 @@ export function criarItensCaixa(el, aoMudar) {
         <div class="form-group" id="ic-qtd-grupo"><label for="ic-qtd" id="ic-qtd-rotulo">Quantidade</label><input type="number" id="ic-qtd" min="0" step="1" inputmode="decimal"></div>
         <div class="form-group" id="ic-comp-grupo" hidden><label for="ic-comp">Comprimento (m)</label><input type="number" id="ic-comp" min="0" step="0.01" inputmode="decimal"></div>
         <div class="form-group" id="ic-livre-grupo" hidden><label for="ic-livre">Valor (R$)</label><input type="number" id="ic-livre" min="0" step="0.01" inputmode="decimal"></div>
+        <div class="form-group" id="ic-desc-grupo" hidden><label for="ic-desc">Descrição</label><input type="text" id="ic-desc" maxlength="120" placeholder="o que é"></div>
+        <div class="form-group sigilo" id="ic-custo-grupo" hidden><label for="ic-custo-livre">Custo (R$)</label><input type="number" id="ic-custo-livre" min="0" step="0.01" inputmode="decimal" placeholder="quanto custou"></div>
         <div class="form-group"><label for="ic-preco">Preço unitário (R$)</label><input type="number" id="ic-preco" min="0" step="0.01" inputmode="decimal" placeholder="da tabela"></div>
         <div class="form-group"><button type="button" class="btn-icon" id="ic-adicionar" disabled>+ Adicionar item</button></div>
       </div>
@@ -76,7 +78,8 @@ export function criarItensCaixa(el, aoMudar) {
       uid: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
       itemId: it.id, acabamento: el.querySelector("#ic-acab").value || material(el.querySelector("#ic-material").value).acabamentos[0],
       quantidade: livre ? null : num(el.querySelector("#ic-qtd").value), comprimento: num(el.querySelector("#ic-comp").value),
-      totalManual: livre ? num(el.querySelector("#ic-livre").value) : null, descricao: "",
+      totalManual: livre ? num(el.querySelector("#ic-livre").value) : null, descricao: livre ? el.querySelector("#ic-desc").value.trim() : "",
+      custoManual: it.pedeCusto ? num(el.querySelector("#ic-custo-livre").value) : null,
       precoManual: livre ? null : precoDigitado(it), variacaoPct: null, motivo: "",
     };
   }
@@ -87,6 +90,8 @@ export function criarItensCaixa(el, aoMudar) {
     const livre = it?.unidade === "valor_livre";
     el.querySelector("#ic-qtd-grupo").hidden = livre;
     el.querySelector("#ic-livre-grupo").hidden = !livre;
+    el.querySelector("#ic-desc-grupo").hidden = !livre;
+    el.querySelector("#ic-custo-grupo").hidden = !it?.pedeCusto; // "Outros": custo digitado na hora
     el.querySelector("#ic-comp-grupo").hidden = !u?.pedeComprimento;
     if (u) {
       el.querySelector("#ic-qtd-rotulo").textContent = u.rotuloQtd;
@@ -116,6 +121,7 @@ export function criarItensCaixa(el, aoMudar) {
     el.querySelector("#ic-adicionar").addEventListener("click", () => {
       const l = lerSeletor();
       if (!l) return;
+      if (catalogo().itens.get(l.itemId)?.pedeCusto && !l.descricao) return alert("Descreva o item (o que é).");
       try {
         const r = K().calcularLinha(l);
         if (r.vendaTotal == null) return alert("Item sem preço de tabela: digite o preço unitário.");

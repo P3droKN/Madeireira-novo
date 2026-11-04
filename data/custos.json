@@ -246,6 +246,21 @@
   "retalho": {
     "custo": 0
   },
+  "portas": {
+    "_obs": "por peça; venda = preço de tabela padrão (pode ser mudado em Ajustes › Preços)",
+    "PORTA_INTERNA": {
+      "60cm": { "custo": 120, "venda": 240 },
+      "70cm": { "custo": 120, "venda": 240 },
+      "80cm": { "custo": 120, "venda": 240 },
+      "90cm": { "custo": 150, "venda": 270 }
+    },
+    "PORTA_EXTERNA": {
+      "80cm": { "custo": 800, "venda": 1800 }
+    }
+  },
+  "outros": {
+    "_obs": "material fora do catálogo: descrição, valor de venda e custo digitados na hora"
+  },
   "_alteracoes": [
     "CEDRO 1.5x2: ADICIONADO 5.60",
     "CEDRO 1.5x3: ADICIONADO 8.41",
@@ -323,7 +338,9 @@
     "CAIXILHO_JOGO 18cm: 150.00 -> 200.50",
     "CAIXILHO_JOGO 20cm: 162.00 -> 217.50",
     "VISTAS_JOGO 6.5cm: 45.00 -> 45.50",
-    "VISTAS meio jogo: custo = metade do jogo"
+    "VISTAS meio jogo: custo = metade do jogo",
+    "PORTAS: internas 60/70/80 cm custo 120 venda 240; 90 cm custo 150 venda 270; externa 80 cm custo 800 venda 1800",
+    "OUTROS: material fora do catálogo, com custo digitado"
   ],
   "duvidas": [
     "CEDRO 3x3: na foto está 52,83 (igual ao 3x10, parece erro de cópia; o esperado seria ~15,80). Mantido o custo antigo 16,32.",

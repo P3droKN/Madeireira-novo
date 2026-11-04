@@ -366,3 +366,9 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - Caixa › A receber: sem o cadastro (link "Abrir ficha do cliente"); seções "Sem prazo" e "Fiado com prazo". `ReceberUI.abrirReceber/cobrar` exportados (usados pela ficha). Venda pela ficha (Nova venda) grava o cliente em qualquer forma (`Calculadora.definirClientePedido`).
 - Orçamentos: "Excluir (lixeira)" e "Excluir para sempre" no ⋯; lixeira com "Excluir definitivamente" e "Esvaziar lixeira" (PATCH orcamentos `excluir_sempre` / `esvaziar_lixeira` + "EXCLUIR"). Convertido em venda não sai; o número não volta. Confirmação digitando EXCLUIR: `CaixaUI.confirmarExcluir`.
 - Testes: tests/e2e/clientes.mjs (27) e unidade (prazo, observações, inativar, excluir, esvaziar lixeira, mesmo cliente duas linhas).
+
+**Ajustes urgentes (primeiros dias de uso)**
+- Relatórios › Dia/Mês: 4 números (Vendeu · Entrou no caixa · Saiu · Vendeu − Saiu, com o cartão a cair); "Movimento por conta" sem Início/Fim (não depende da abertura): Entradas, Saídas, Transf., Movimento e Cartão a cair (`cartaoACair`/`movimento` em lib/resumoDia.js: recebíveis de cartão de vendas e recebimentos do período que caem depois do período).
+- Caixa › Saldos funciona sem abertura (aviso suave). Gaveta: `esperadoGaveta` (caixa-ui.js) = última contagem + o dinheiro que entrou e saiu depois dela (pela hora de criação no mesmo dia); sem contagem, ou abertura refeita depois da contagem, vale a abertura.
+- Catálogo: vistas "jogo completo"; portas (`portas` em data/custos.json: PORTA_INTERNA 60/70/80 custo 120 venda 240, 90 custo 150 venda 270; PORTA_EXTERNA 80 custo 800 venda 1800) com `vendaPadrao` (`precosComPadrao` na rota catalogo; Ajustes › Preços vale mais); "Outros (fora do catálogo)" (`OUTROS|LIVRE`, `pedeCusto`): descrição, valor e custo digitados (`custoManual` em calcularItem) no Vender e no Caixa › Lançar.
+- Teste: tests/e2e/ajustes.mjs.

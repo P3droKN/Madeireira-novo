@@ -27,10 +27,18 @@ async function postar(corpo) {
 
 let alvos = { saldos: null, abertura: null, cheques: null };
 
-function semAbertura(el) {
-  el.innerHTML = `<div class="aviso aviso-alerta"><strong>Faça a abertura de saldos.</strong> Os saldos, a projeção e o fluxo de caixa dependem dela: sem a abertura, o sistema não sabe quanto dinheiro já existia em cada conta.
-    <div class="aviso-acoes"><button class="btn-icon" data-ir-abertura>Ir para Ajustes › Saldos</button></div></div>`;
-  el.querySelector("[data-ir-abertura]").addEventListener("click", () => window.Financeiro.irPara("ajustes", "saldos"));
+// Gaveta esperada: a última contagem (Fechar gaveta) + o dinheiro que entrou e saiu depois dela. Sem contagem
+// ainda, parte da abertura (ou do zero). Assim a gaveta não depende da abertura de saldos.
+function esperadoGaveta(movs, ab, data) {
+  const confs = (C().saldos?.conferencias || []).filter((c) => c.conta === "gaveta" && c.data <= data)
+    .sort((a, b) => String(a.data).localeCompare(String(b.data)) || String(a.em || "").localeCompare(String(b.em || "")));
+  const ult = confs[confs.length - 1];
+  // sem contagem, ou abertura feita (ou refeita) depois da última contagem: vale a abertura
+  if (!ult || (ab?.em && ab.em > (ult.em || "")) || (ab?.data && ab.data > ult.data)) return saldos(movs, ab, data).porConta.gaveta;
+  const criado = new Map((C().itens || []).map((l) => [String(l.id), l.criadoEm || ""]));
+  const depois = movs.filter((m) => m.conta === "gaveta" && m.data <= data
+    && (m.data > ult.data || (m.data === ult.data && (criado.get(String(m.origemId)) || "") > (ult.em || ""))));
+  return Math.round((Number(ult.informado) + depois.reduce((t, m) => t + m.valor, 0)) * 100) / 100;
 }
 
 // Caixa › Saldos: saldo hoje por conta (conferir / fechar gaveta) e projeção de 30 dias
@@ -39,8 +47,8 @@ function renderSaldos(el) {
   if (!C()) return;
   const { movs, ab } = dados();
   const h = hoje();
-  if (!ab) return semAbertura(el);
   const s = saldos(movs, ab, h);
+  s.porConta.gaveta = esperadoGaveta(movs, ab, h); // a gaveta parte da última contagem (não precisa de abertura)
   const confs = C().saldos?.conferencias || [];
   const ultima = (c) => [...confs].reverse().find((x) => x.conta === c);
   const p = projecao(movs, ab, h, 30);
@@ -48,7 +56,7 @@ function renderSaldos(el) {
   el.innerHTML = `
   <section class="glass-panel">
     <div class="painel-titulo"><h2>Saldos hoje · ${dataBR(h)}</h2>
-      <div class="painel-acoes"><span class="texto-suave">abertura em ${dataBR(ab.data)} (Ajustes › Saldos)</span></div></div>
+      <div class="painel-acoes"><span class="texto-suave">${ab ? `abertura em ${dataBR(ab.data)} (Ajustes › Saldos)` : "sem abertura: Bradesco e PicPay contam do zero (a abertura em Ajustes › Saldos é opcional)"}</span></div></div>
     <div class="saldos-grid">
       ${CONTAS_CAIXA.map((c) => {
         const u = ultima(c);
@@ -333,7 +341,7 @@ async function conferir(conta) {
   await C().recarregar(); // o "esperado" inclui o que outro aparelho lançou até agora
   const { movs, ab } = dados();
   const data = hoje();
-  const calculado = saldos(movs, ab, data).porConta[conta];
+  const calculado = conta === "gaveta" ? esperadoGaveta(movs, ab, data) : saldos(movs, ab, data).porConta[conta];
   const rotulo = conta === "gaveta" ? "Fechar gaveta: quanto tem na gaveta?" : conta === "cheques_carteira" ? "Quanto soma os cheques em carteira?" : `Saldo do extrato do ${NOMES_CONTAS[conta]} hoje`;
   const resp = await perguntar({ titulo: rotulo, texto: `Esperado pelo sistema: ${moeda(calculado)}` });
   if (resp === null) return;

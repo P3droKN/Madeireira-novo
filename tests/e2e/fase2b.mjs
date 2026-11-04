@@ -31,9 +31,9 @@ await page.goto(URL);
 await page.fill("#senha-input", "pinho123"); await page.click("#senha-form button");
 await page.waitForFunction(() => window.Caixa && window.Caixa.migradoV2);
 await abrirCaixa();
-ok(nb(await page.textContent("#fin-saldos")).includes("Faça a abertura de saldos"), "sem abertura: Caixa › Saldos pede a abertura de saldos");
-await page.click("#fin-saldos [data-ir-abertura]");
-ok(await page.isVisible("#aj-abertura #cx-abertura"), "o aviso leva para Ajustes › Saldos (formulário da abertura)");
+ok(nb(await page.textContent("#fin-saldos")).includes("sem abertura") && await page.locator('#fin-saldos [data-conferir="gaveta"]').count() === 1, "sem abertura: Caixa › Saldos funciona (a abertura é opcional) e o Fechar gaveta está lá");
+await page.click("#btn-tab-ajustes"); await page.click('.subtabs[data-grupo="ajustes"] .subtab[data-sub="saldos"]');
+ok(await page.isVisible("#aj-abertura #cx-abertura"), "a abertura continua em Ajustes › Saldos, para quem quiser");
 ok(nb(await page.textContent("#cx-ab-cheques")) === "R$ 400,00", "cheques em carteira: R$ 400 do sistema antigo (recebido antes, compensa depois), calculado da lista");
 await page.fill("#cx-ab-gaveta", "300"); await page.fill("#cx-ab-bradesco", "5000"); await page.fill("#cx-ab-picpay", "200");
 await page.click("#cx-abertura button[type=submit]");
@@ -81,7 +81,7 @@ ok(proj.includes("R$ 6.100,00 → R$ 5.600,00"), "saldo hoje R$ 6.100 → em 30 
 await page.click("#btn-tab-relatorios"); await sub("relatorios", "mes");
 await page.waitForSelector("#dia-panorama");
 const brad = await page.$$eval('#dia-panorama tr[data-conta="bradesco"] td.num', (t) => t.map((x) => x.textContent.replace(/\u00a0/g, " ")));
-ok(brad[0] === "R$ 5.000,00" && brad.at(-1) === "R$ 5.250,00", "Mês de novembro até hoje, Bradesco: 5.000 + 150 + 100 = 5.250 (o que vence depois fica na projeção do Caixa) (" + brad.join(" | ") + ")");
+ok(brad.join(" | ") === "R$ 150,00 | — | R$ 100,00 | R$ 250,00 | —", "Mês de novembro até hoje, Bradesco: movimento + 150 + 100 = 250 (o que vence depois fica na projeção do Caixa) (" + brad.join(" | ") + ")");
 await page.screenshot({ path: "caixa.png", fullPage: true });
 
 // Cheques

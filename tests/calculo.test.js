@@ -237,3 +237,24 @@ test("beiral: cedro 13/19/23/29 cm e pinus 14/19 cm em ordem crescente, custo su
     { "BEIRAL_CEDRO|13cm|UNICO": 20, "BEIRAL_PINUS|19cm|UNICO": 13 });
   assert.ok(!JSON.stringify(custos.duvidas).includes("BEIRAL"));
 });
+
+test("portas (internas 60/70/80 a R$ 240, 90 a R$ 270; externa 80 a R$ 1.800) com preço padrão; vistas: \"jogo completo\"", async () => {
+  const { precosComPadrao } = await import("../lib/catalogo.js");
+  const m = (id) => cat.materiais.find((x) => x.id === id);
+  assert.deepEqual(m("PORTA_INTERNA").itens.map((i) => [i.rotuloDimensao, i.custo, i.vendaPadrao]), [["60 cm", 120, 240], ["70 cm", 120, 240], ["80 cm", 120, 240], ["90 cm", 150, 270]]);
+  assert.deepEqual(m("PORTA_EXTERNA").itens.map((i) => [i.rotuloDimensao, i.custo, i.vendaPadrao]), [["80 cm", 800, 1800]]);
+  const p = precosComPadrao({ "PORTA_INTERNA|60cm|UNICO": 250 }, cat);
+  assert.equal(p["PORTA_INTERNA|60cm|UNICO"], 250, "preço gravado em Ajustes › Preços vale mais que o padrão");
+  assert.equal(p["PORTA_EXTERNA|80cm|UNICO"], 1800);
+  assert.ok(m("VISTAS_TAUARI").itens.filter((i) => i.dimensao.startsWith("jogo:")).every((i) => i.rotuloDimensao.endsWith("— jogo completo")));
+  assert.ok(!m("VISTAS_TAUARI").itens.some((i) => /4 peças/.test(i.rotuloDimensao)));
+});
+
+test("Outros (fora do catálogo): valor e custo digitados; sem custo é recusado", () => {
+  const item = cat.itens.get("OUTROS|LIVRE");
+  assert.equal(item.pedeCusto, true);
+  const r = calcularItem({ item, totalManual: 500, custoManual: 320 });
+  assert.deepEqual([r.vendaTotal, r.custoTotal, r.lucro], [500, 320, 180]);
+  assert.throws(() => calcularItem({ item, totalManual: 500 }), /Informe o custo/);
+  assert.equal(calcularItem({ item, totalManual: 50, custoManual: 0 }).custoTotal, 0);
+});

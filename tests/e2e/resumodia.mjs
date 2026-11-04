@@ -74,10 +74,11 @@ ok(await page.inputValue("#dia-data") === "2026-10-20" && (await txt("#dia-numer
 ok(nb((await page.locator('.subtabs[data-grupo="relatorios"] .subtab').first().textContent())) === "Dia" && nb(await page.locator('.subtabs[data-grupo="relatorios"]').textContent()).includes("Mês"), "\"Dia\" é a primeira sub-aba; \"Mês\" fica ao lado");
 
 // 3. Panorama do caixa por conta
-ok((await linhaConta("gaveta")).join("|") === "R$ 300,00|R$ 200,00|—|-R$ 100,00|R$ 400,00", "Gaveta: início 300 + 200 − 0 − 100 (transferência) = 400");
-ok((await linhaConta("bradesco")).join("|") === "R$ 1.000,00|R$ 250,00|R$ 500,00|R$ 100,00|R$ 850,00", "Bradesco: 1.000 + 250 (PIX do fiado) − 500 (aluguel) + 100 = 850");
-ok((await linhaConta("picpay")).join("|") === "R$ 0,00|R$ 100,00|—|—|R$ 100,00" && (await txt('#dia-panorama tr[data-conta="picpay"]')).includes("de cartão de vendas anteriores"), "PicPay: débito de ontem cai hoje (cartão de vendas anteriores)");
-ok((await txt("#dia-total-contas")).includes("R$ 1.350,00"), "total no fim do dia: R$ 1.350,00");
+ok((await linhaConta("gaveta")).join("|") === "R$ 200,00|—|-R$ 100,00|R$ 100,00|—", "Gaveta: + 200 − 0 − 100 (transferência) = movimento de 100 (sem início e fim: não depende da abertura)");
+ok((await linhaConta("bradesco")).join("|") === "R$ 250,00|R$ 500,00|R$ 100,00|-R$ 150,00|—", "Bradesco: + 250 (PIX do fiado) − 500 (aluguel) + 100 = movimento de −150");
+ok((await linhaConta("picpay")).join("|") === "R$ 100,00|—|—|R$ 100,00|R$ 600,00" && (await txt('#dia-panorama tr[data-conta="picpay"]')).includes("de cartão de vendas anteriores"), "PicPay: débito de ontem cai hoje; o crédito 3x de hoje (R$ 600) fica em \"Cartão a cair\"");
+ok(nb(await txt("#dia-total-contas")) === "TotalR$ 550,00R$ 500,00R$ 0,00R$ 50,00R$ 600,00", "total: entradas 550, saídas 500, movimento 50, cartão a cair 600");
+ok(nb(await page.textContent('#dia-numeros [data-numero="sobrou"]')).includes("R$ 600,00") && nb(await page.textContent('#dia-numeros [data-numero="sobrou"]')).includes("R$ 600,00 do cartão ainda vai cair"), "Vendeu − Saiu: 1.100 − 500 = 600, com o cartão a cair");
 ok((await txt("#dia-gaveta")).includes("contado R$ 395,00 · faltou R$ 5,00 (esperado R$ 400,00)") && (await page.getAttribute("#dia-gaveta", "class")).includes("texto-ruim"), "gaveta: esperado × contado × diferença, em vermelho");
 
 // 4. Quadros, entradas por forma, saídas por conta
@@ -136,7 +137,7 @@ const paginas = (pdf.toString("latin1").match(/\/Type\s*\/Page[^s]/g) || []).len
 let texto = "";
 try { texto = nb(execFileSync("pdftotext", ["fechamento.pdf", "-"], { encoding: "utf8" })); } catch { texto = nb(fech.replace(/<[^>]+>/g, " ")); }
 ok(paginas === 1, `fechamento do dia em 1 página A4 (${paginas})`);
-ok(texto.includes("Conferido por") && texto.includes("faltou R$ 5,00") && texto.includes("Caixa por conta") && /lucro bruto/i.test(texto), "fechamento: quadros, movimento por conta, gaveta, resultado e \"Conferido por\"");
+ok(texto.includes("Conferido por") && texto.includes("faltou R$ 5,00") && texto.includes("Movimento por conta") && /lucro bruto/i.test(texto), "fechamento: quadros, movimento por conta, gaveta, resultado e \"Conferido por\"");
 await page.click("#dia-sem-custo");
 await page.click("#dia-imprimir");
 await page.waitForFunction(() => window.__impressoes.length === 2);
