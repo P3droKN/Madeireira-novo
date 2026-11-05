@@ -14,12 +14,12 @@ const METODOS = ["dinheiro", "pix", "bradesco", "debito", "credito", "cheque"];
 const CAMPOS_ACUMULADO = ["venda", "pix", "credito", "debito", "custo", "despesa", "func", "dinheiroCaixa"];
 const MAX_COPIAS = 30;
 
-function erro(status, message) {
+export function erro(status, message) {
   return Object.assign(new Error(message), { status });
 }
 
 // Versões antigas às vezes gravavam o JSON como texto.
-function desembrulhar(valor) {
+export function desembrulhar(valor) {
   if (typeof valor !== "string") return valor;
   try { return JSON.parse(valor); } catch { return valor; }
 }
@@ -93,6 +93,7 @@ function validarItemPedido(i) {
     vendaTotal: num(i.vendaTotal),
     variacaoPct: num(i.variacaoPct),
     motivo: texto(i.motivo, 200),
+    ...(i.precoDigitado === true ? { precoDigitado: true } : {}),
   };
 }
 
@@ -277,14 +278,16 @@ export async function comTrava(kv, k, ids, fn) {
   }
 }
 
-export const salvarLancamentos = (kv, k, itens) =>
-  comTrava(kv, k, Array.isArray(itens) && itens.length <= 50 ? itens.map((i) => i?.id) : [], () => salvarLancamentosSemTrava(kv, k, itens));
+// quem: { papel: "dono" } ou { papel: "funcionario", id, nome }. extras[id]: marcas dadas pelo servidor na venda do
+// funcionário (precoDigitado, alertaFiado). Venda e recebimento novos guardam quem fez; corrigir mantém o original.
+export const salvarLancamentos = (kv, k, itens, quem = { papel: "dono" }, extras = {}) =>
+  comTrava(kv, k, Array.isArray(itens) && itens.length <= 50 ? itens.map((i) => i?.id) : [], () => salvarLancamentosSemTrava(kv, k, itens, quem, extras));
 export const marcarImpresso = (kv, k, id) => comTrava(kv, k, [id], () => marcarImpressoSemTrava(kv, k, id));
 export const clienteDaVenda = (kv, k, p) => comTrava(kv, k, [p?.id], () => clienteDaVendaSemTrava(kv, k, p));
 export const excluirLancamento = (kv, k, id) => comTrava(kv, k, [id], () => excluirLancamentoSemTrava(kv, k, id));
 export const atualizarCheque = (kv, k, p) => comTrava(kv, k, [p?.id], () => atualizarChequeSemTrava(kv, k, p));
 
-async function salvarLancamentosSemTrava(kv, k, itens) {
+async function salvarLancamentosSemTrava(kv, k, itens, quem = { papel: "dono" }, extras = {}) {
   if (!Array.isArray(itens) || itens.length === 0 || itens.length > 50) {
     throw erro(400, "Envie de 1 a 50 lançamentos.");
   }
@@ -329,6 +332,13 @@ async function salvarLancamentosSemTrava(kv, k, itens) {
       i.criadoEm = antes?.criadoEm || agora;
       i.atualizadoEm = agora;
       i.versao = Number(antes?.versao || 0) + 1; // sobe a cada gravação: a correção manda a versão que tinha na tela
+      if (i.conta === "venda_produtos" || i.conta === "recebimento") {
+        i.vendedor = antes?.vendedor || (quem.papel === "funcionario" ? { tipo: "funcionario", id: quem.id, nome: quem.nome } : { tipo: "dono", nome: "Dono" });
+        for (const m of ["precoDigitado", "alertaFiado"]) {
+          const v = extras[i.id]?.[m] ?? antes?.[m];
+          if (v) i[m] = v;
+        }
+      }
       if (i.conta !== "venda_produtos") continue;
       i.numero = antes ? antes.numero : numeroVenda(Number(await kv.incr(k.vendaSeq)));
       if (!i.numero) delete i.numero;
@@ -933,6 +943,7 @@ export function limparImpressao(i = {}) {
   if (logo && !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(logo)) throw erro(400, "Logo inválido: envie uma imagem PNG ou JPG.");
   if (logo.length > 300000) throw erro(400, "Logo grande demais: use uma imagem menor (até uns 200 KB).");
   r.logo = logo;
+  r.mostrarVendedor = i?.mostrarVendedor === true; // primeiro nome do vendedor em letra pequena na via (padrão: não)
   return r;
 }
 
@@ -972,6 +983,10 @@ export async function salvarConfigFinanceiro(kv, k, config) {
   limpa.estimativasContabeis = c.estimativasContabeis === true;
   // Cabeçalho das vias (Ajustes › Impressão)
   limpa.impressao = limparImpressao(c.impressao);
+  // Funcionários: desconto máximo por item (padrão 5%, até 100%)
+  const desc = Number(c.funcionarios?.descontoMaxPct ?? 5);
+  if (!Number.isFinite(desc) || desc < 0 || desc > 100) throw erro(400, "Desconto máximo do funcionário inválido (0 a 100%).");
+  limpa.funcionarios = { descontoMaxPct: Math.round(desc * 100) / 100 };
   limpa.estoque = {
     inicial: Number(c.estoque.inicial) || 0,
     dataInicial: dataOk(c.estoque.dataInicial) ? c.estoque.dataInicial : null,
@@ -1044,16 +1059,6 @@ function valoresOrcamento(d) {
 
 const dataDe = (d) => (dataOk(d) ? d : hojeSP());
 
-async function salvarClienteDoOrcamento(kv, k, nome, telefone) {
-  const t = normalizarTelefone(telefone);
-  const atual = desembrulhar(await kv.hget(k.clientes, t.digitos));
-  const agora = new Date().toISOString();
-  // Mantém o que o cadastro já tinha (obs, conta corrente, alertas); o orçamento só atualiza nome e telefone
-  const cliente = { ...(atual || {}), id: t.digitos, nome, telefone: t.formatado, obs: atual?.obs || "", criadoEm: atual?.criadoEm || agora, atualizadoEm: agora };
-  await kv.hset(k.clientes, { [t.digitos]: cliente });
-  return cliente;
-}
-
 export async function listarOrcamentos(kv, k) {
   const orcamentos = Object.values((await kv.hgetall(k.orcamentos)) || {}).map(desembrulhar).filter(Boolean);
   const clientes = Object.values((await kv.hgetall(k.clientes)) || {}).map(desembrulhar).filter(Boolean);
@@ -1061,7 +1066,18 @@ export async function listarOrcamentos(kv, k) {
 }
 
 // Cria (número novo) ou edita (mesmo número) um orçamento
-export async function salvarOrcamento(kv, k, d, cfgSalva) {
+// Quem criou e quem editou por último ficam no orçamento. Duas pessoas editando o mesmo: a segunda a gravar
+// recebe o aviso (versaoBase = a versão que ela abriu) em vez de apagar o que a primeira fez.
+const autor = (quem) => (quem?.papel === "funcionario" ? { tipo: "funcionario", id: quem.id, nome: quem.nome } : { tipo: "dono", nome: "Dono" });
+function conferirVersaoOrcamento(atual, versaoBase) {
+  if (versaoBase === undefined || versaoBase === null) return;
+  if (Number(versaoBase) === Number(atual.versao || 0)) return;
+  const quem = atual.editadoPor?.nome || atual.criadoPor?.nome || "outra pessoa";
+  const hora = new Date(atual.editadoEm || atual.atualizadoEm || Date.now()).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+  throw erro(409, `Este orçamento foi alterado por ${quem} às ${hora}. Recarregue para ver.`);
+}
+
+export async function salvarOrcamento(kv, k, d, cfgSalva, quem = { papel: "dono" }) {
   if (!d || typeof d !== "object") throw erro(400, "Orçamento inválido.");
   const cfg = mesclarConfigFinanceiro(cfgSalva);
   const nome = texto(d.cliente?.nome, 120).trim();
@@ -1080,6 +1096,7 @@ export async function salvarOrcamento(kv, k, d, cfgSalva) {
     if (!atual) throw erro(404, "Orçamento não encontrado.");
     if (atual.status === "fechado") throw erro(409, "Orçamento fechado (virou venda) não pode ser editado. Use Duplicar.");
     if (atual.excluidoEm) throw erro(409, "Orçamento está na lixeira. Restaure antes de editar.");
+    conferirVersaoOrcamento(atual, d.versaoBase);
   }
   // Cliente do orçamento: vinculado (id), ou o cadastrado com esse WhatsApp, ou um cadastro novo só se pediu
   // "Salvar como cliente"; senão os dados ficam só no orçamento (como na venda avulsa)
@@ -1096,8 +1113,8 @@ export async function salvarOrcamento(kv, k, d, cfgSalva) {
       cliente: clienteOrc,
       ...(viaOrc ? { clienteVia: viaOrc } : {}),
       origem: d.origem, obs: texto(d.obs, 500), validadeDias, validoAte: somarDias(hoje, validadeDias),
-      editadoEm: agora,
-      historico: [...(atual.historico || []), { em: agora, evento: "editado", total: valores.total }].slice(-50),
+      editadoEm: agora, editadoPor: autor(quem), versao: Number(atual.versao || 0) + 1,
+      historico: [...(atual.historico || []), { em: agora, evento: "editado", total: valores.total, por: autor(quem).nome }].slice(-50),
     };
     await kv.hset(k.orcamentos, { [editado.id]: editado });
     return editado;
@@ -1109,7 +1126,8 @@ export async function salvarOrcamento(kv, k, d, cfgSalva) {
     cliente: clienteOrc,
     ...(viaOrc ? { clienteVia: viaOrc } : {}),
     origem: d.origem, obs: texto(d.obs, 500), validadeDias, validoAte: somarDias(hoje, validadeDias),
-    status: "aberto", contatos: [], historico: [{ em: agora, evento: "criado", total: valores.total }],
+    status: "aberto", contatos: [], historico: [{ em: agora, evento: "criado", total: valores.total, por: autor(quem).nome }],
+    criadoPor: autor(quem), versao: 1,
   };
   if (d.duplicadoDe) orc.duplicadoDe = texto(d.duplicadoDe, 20);
   await kv.hset(k.orcamentos, { [orc.id]: orc });
@@ -1136,7 +1154,7 @@ export async function excluirOrcamentosParaSempre(kv, k, p) {
   return { apagados: alvo.map((o) => o.id) };
 }
 
-export async function atualizarOrcamento(kv, k, p) {
+export async function atualizarOrcamento(kv, k, p, quem = { papel: "dono" }) {
   if (p?.acao === "excluir_sempre" || p?.acao === "esvaziar_lixeira") return { ...(await excluirOrcamentosParaSempre(kv, k, p)), id: p.id || null };
   const orc = desembrulhar(await kv.hget(k.orcamentos, String(p?.id || "")));
   if (!orc) throw erro(404, "Orçamento não encontrado.");
@@ -1195,9 +1213,11 @@ export async function atualizarOrcamento(kv, k, p) {
       break;
     case "precos": {
       if (orc.status === "fechado") throw erro(409, "Orçamento já virou venda.");
+      conferirVersaoOrcamento(orc, p.versaoBase);
       const valores = valoresOrcamento({ ...p, frete: p.frete ?? orc.frete }); // o frete continua o mesmo
       const hoje = dataDe(p.hoje);
-      Object.assign(novo, valores, { validoAte: somarDias(hoje, orc.validadeDias), precosAtualizadosEm: agora });
+      Object.assign(novo, valores, { validoAte: somarDias(hoje, orc.validadeDias), precosAtualizadosEm: agora,
+        editadoEm: agora, editadoPor: autor(quem), versao: Number(orc.versao || 0) + 1 });
       hist("preços atualizados", { de: orc.total, para: valores.total });
       break;
     }

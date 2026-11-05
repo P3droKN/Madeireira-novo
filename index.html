@@ -10,7 +10,7 @@
 <body>
     <div class="app-container">
         <header>
-            <div class="topo-app"><h1>Sistema Madeireira</h1><button type="button" class="btn-icon mini" id="btn-sair" title="Sair deste aparelho: apaga a senha e a cópia dos dados guardadas aqui">Sair</button></div>
+            <div class="topo-app"><h1>Sistema Madeireira</h1><span class="func-nome" id="func-nome" hidden></span><button type="button" class="btn-icon mini" id="btn-sair" title="Sair deste aparelho: apaga a senha e a cópia dos dados guardadas aqui">Sair</button></div>
             <nav class="tabs">
                 <button class="tab-btn active" id="btn-tab-vender" onclick="switchTab('vender')">Vender</button>
                 <button class="tab-btn" id="btn-tab-orcamentos" onclick="switchTab('orcamentos')">Clientes e Orçamentos <span class="contador" id="orc-contador" hidden></span></button>
@@ -184,7 +184,7 @@
                             <div id="calc-pagamentos"></div>
                         </div>
                         <div class="form-row" style="margin-top: 1rem;">
-                            <div class="form-group">
+                            <div class="form-group so-dono">
                                 <label for="direct-sale-date">Data</label>
                                 <input type="date" id="direct-sale-date" required>
                             </div>
@@ -198,8 +198,14 @@
                             <button class="btn-icon" id="btn-registrar-venda" onclick="registerDirectSale()" title="Grava a venda (V-000X). As vias podem ser impressas depois.">Registrar venda</button>
                             <button class="btn-success" id="btn-registrar-imprimir" onclick="registerDirectSale({ imprimir: true })" title="Grava a venda e já manda as vias para a impressora">✅ Registrar e imprimir vias</button>
                         </div>
-                        <p class="texto-suave nota">A venda grava, por item e no total: preço de tabela, preço final, variação e motivo. O custo dos itens fica guardado junto (CMV), sem lançar uma saída separada.</p>
+                        <p class="texto-suave nota so-dono">A venda grava, por item e no total: preço de tabela, preço final, variação e motivo. O custo dos itens fica guardado junto (CMV), sem lançar uma saída separada.</p>
                     </div>
+                </section>
+
+                <!-- Vendas registradas hoje (todos os vendedores): reimprimir vias. Atualiza a cada 30 s. -->
+                <section class="glass-panel" id="pedidos-hoje-painel">
+                    <div class="painel-titulo"><h2>Pedidos de hoje</h2><small class="texto-suave" id="pedidos-hoje-resumo"></small></div>
+                    <div id="pedidos-hoje"></div>
                 </section>
             </div>
 
@@ -227,6 +233,7 @@
                         <div class="fin-filtros orc-filtros">
                             <div class="form-group"><label for="orc-f-de">De</label><input type="date" id="orc-f-de"></div>
                             <div class="form-group"><label for="orc-f-ate">Até</label><input type="date" id="orc-f-ate"></div>
+                            <div class="form-group"><label for="orc-f-vendedor">Feito por</label><select id="orc-f-vendedor"><option value="">Todos</option></select></div>
                             <div class="form-group"><label for="orc-f-ordem">Ordenar</label>
                                 <select id="orc-f-ordem"><option value="padrao">Mais antigos em aberto primeiro</option><option value="valor">Maior valor</option></select>
                             </div>
@@ -243,7 +250,7 @@
                     <p class="rodape-lixeira"><button type="button" class="link-suave" id="orc-lixeira-link">🗑 Lixeira</button> <span class="texto-suave" id="orc-contagem"></span></p>
                 </section>
                 <section class="glass-panel" id="orc-lixeira" hidden>
-                    <div class="painel-titulo"><h2>🗑 Lixeira</h2><div class="painel-acoes"><button type="button" class="btn-icon item-perigo" id="orc-lixeira-esvaziar">Esvaziar lixeira</button><button type="button" class="btn-icon" id="orc-lixeira-voltar">← Voltar aos orçamentos</button></div></div>
+                    <div class="painel-titulo"><h2>🗑 Lixeira</h2><div class="painel-acoes"><button type="button" class="btn-icon item-perigo so-dono" id="orc-lixeira-esvaziar">Esvaziar lixeira</button><button type="button" class="btn-icon" id="orc-lixeira-voltar">← Voltar aos orçamentos</button></div></div>
                     <p class="texto-suave">Orçamentos excluídos nos últimos 30 dias. Depois disso eles saem desta lista, mas continuam guardados no banco até alguém esvaziar a lixeira. "Excluir definitivamente" e "Esvaziar lixeira" apagam de vez.</p>
                     <div class="table-container">
                         <table class="tabela-orc">
@@ -298,6 +305,7 @@
                             </select>
                         </div>
                         <div class="form-group"><label for="fin-f-conta">Conta</label><select id="fin-f-conta"></select></div>
+                        <div class="form-group"><label for="fin-f-vendedor">Vendedor</label><select id="fin-f-vendedor"><option value="">Todos</option></select></div>
                         <div class="form-group"><label for="fin-f-busca">Buscar</label><input type="search" id="fin-f-busca" placeholder="descrição, fornecedor, NF-e"></div>
                     </div>
                     <div class="fin-lote" id="fin-lote" hidden>
@@ -314,7 +322,7 @@
                         <table class="tabela-fin">
                             <thead><tr>
                                 <th><input type="checkbox" id="fin-sel-todos" aria-label="Selecionar todos"></th>
-                                <th>Data</th><th>Nº</th><th>Descrição</th><th>Conta</th><th>Forma / pago com</th><th class="num">Valor</th><th></th>
+                                <th>Data</th><th>Nº</th><th>Descrição</th><th>Conta</th><th>Forma / pago com</th><th>Vendedor</th><th class="num">Valor</th><th></th>
                             </tr></thead>
                             <tbody id="fin-lista-body"></tbody>
                         </table>
@@ -377,6 +385,7 @@
                     <button class="subtab" data-sub="financeiro">Financeiro</button>
                     <button class="subtab" data-sub="orcamentos">Orçamentos</button>
                     <button class="subtab" data-sub="impressao">Impressão</button>
+                    <button class="subtab" data-sub="funcionarios">Funcionários</button>
                     <button class="subtab" data-sub="saldos">Saldos</button>
                     <button class="subtab" data-sub="dados">Dados</button>
                 </nav>
@@ -489,7 +498,33 @@
                                 <div id="imp-cfg-logo-atual" class="logo-atual" hidden><img id="imp-cfg-logo-img" alt="Logo atual"><button type="button" class="btn-icon mini" id="imp-cfg-logo-tirar">Tirar o logo</button></div>
                             </div>
                         </div>
+                        <div class="form-row">
+                            <label class="check-linha"><input type="checkbox" id="imp-cfg-vendedor"> Mostrar o primeiro nome de quem vendeu na via (letra pequena, ao lado do número)</label>
+                        </div>
                         <div class="export-actions"><button type="button" class="btn-icon" id="imp-cfg-ver">Ver exemplo</button><button type="submit" class="btn-primary">Salvar</button></div>
+                    </form>
+                </section>
+
+                <section class="glass-panel fin-sub" id="aj-funcionarios" data-sub-de="ajustes" hidden>
+                    <div class="painel-titulo"><h2>Funcionários</h2></div>
+                    <p class="texto-suave">Cada funcionário entra em <strong id="aj-func-endereco">/funcionarios</strong> com o nome e um PIN de 4 a 6 números. Lá ele vende, faz orçamentos, cadastra clientes e recebe fiado; não vê custo, margem, caixa, relatórios nem ajustes, e não corrige nem estorna vendas. A sessão vale até a meia-noite (ou até ele tocar em Sair).</p>
+                    <div id="aj-func-lista"></div>
+                    <form id="aj-func-form" class="fin-form">
+                        <h3 id="aj-func-form-titulo">Cadastrar funcionário</h3>
+                        <input type="hidden" id="aj-func-id">
+                        <div class="form-row">
+                            <div class="form-group"><label for="aj-func-nome">Nome</label><input type="text" id="aj-func-nome" maxlength="60" autocomplete="off"></div>
+                            <div class="form-group"><label for="aj-func-pin">PIN (4 a 6 números)</label><input type="password" id="aj-func-pin" inputmode="numeric" maxlength="6" autocomplete="new-password" placeholder="••••"><small class="texto-suave" id="aj-func-pin-nota" hidden>Em branco: o PIN continua o mesmo.</small></div>
+                        </div>
+                        <div class="export-actions"><button type="button" class="btn-icon" id="aj-func-cancelar" hidden>Cancelar</button><button type="submit" class="btn-primary" id="aj-func-salvar">Cadastrar</button></div>
+                    </form>
+                    <form id="aj-func-desconto-form" class="fin-form">
+                        <h3>Desconto máximo do funcionário</h3>
+                        <div class="form-row">
+                            <div class="form-group"><label for="aj-func-desconto">Até quantos % abaixo da tabela, por item (o frete fica fora)</label><input type="number" id="aj-func-desconto" min="0" max="100" step="0.5"></div>
+                        </div>
+                        <p class="texto-suave">Acima disso, ou abaixo do custo, a venda é recusada com "chame o responsável". Item sem preço na tabela: o funcionário digita o preço e a venda fica marcada "preço digitado".</p>
+                        <div class="export-actions"><button type="submit" class="btn-primary">Salvar desconto</button></div>
                     </form>
                 </section>
 
@@ -803,6 +838,19 @@
         </div>
     </div>
 
+    <!-- MODAL PIN (só em /funcionarios) -->
+    <div id="modal-pin" class="modal-overlay" style="display: none;">
+        <div class="modal-content glass-panel">
+            <h2>Entrar</h2>
+            <p id="pin-msg">Escolha o seu nome e digite o seu PIN.</p>
+            <form id="pin-form">
+                <div class="form-group"><label for="pin-nome">Nome</label><select id="pin-nome" required></select></div>
+                <div class="form-group"><label for="pin-input">PIN</label><input type="password" id="pin-input" inputmode="numeric" maxlength="6" autocomplete="off" required></div>
+                <button type="submit" class="btn-primary" style="margin-top: 1rem;">Entrar</button>
+            </form>
+        </div>
+    </div>
+
     <script src="script.js"></script>
     <script type="module" src="calculadora.js"></script>
     <script type="module" src="conferencia.js"></script>
@@ -815,5 +863,7 @@
     <script type="module" src="receber-ui.js"></script>
     <script type="module" src="impressao-ui.js"></script>
     <script type="module" src="resumo-dia-ui.js"></script>
+    <script type="module" src="pedidos-hoje.js"></script>
+    <script type="module" src="funcionarios-ui.js"></script>
 </body>
 </html>

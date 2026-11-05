@@ -30,7 +30,7 @@ const estado = { aba: null, sub: { caixa: "lancar", relatorios: "dia", ajustes: 
 const TELAS = {
   caixa: { lancar: "fin-lancar", saldos: "fin-saldos", cheques: "fin-cheques", receber: "fin-receber", lista: "fin-lista" },
   relatorios: { dia: "rel-dia-sec", mes: "rel-dia-sec", dre: "fin-dre", formas: "rel-formas", receber: "rel-receber", orcamentos: "rel-orcamentos" },
-  ajustes: { precos: "aj-precos", financeiro: "aj-financeiro", orcamentos: "aj-orcamentos", impressao: "aj-impressao", saldos: "aj-saldos", dados: "aj-dados" },
+  ajustes: { precos: "aj-precos", financeiro: "aj-financeiro", orcamentos: "aj-orcamentos", impressao: "aj-impressao", funcionarios: "aj-funcionarios", saldos: "aj-saldos", dados: "aj-dados" },
 };
 
 function opcoesContas(filtro, selecionada) {
@@ -86,9 +86,11 @@ function renderSub() {
     if (sub === "impressao") {
       const i = mesclarConfigFinanceiro(C()?.configFinanceiro).impressao;
       for (const k of CAMPOS_IMPRESSAO) $(`imp-cfg-${k}`).value = i[k] || "";
+      $("imp-cfg-vendedor").checked = i.mostrarVendedor === true;
       estado.logo = i.logo || "";
       mostrarLogo();
     }
+    if (sub === "funcionarios") window.FuncionariosUI?.abrir();
     if (sub === "saldos") window.CaixaUI?.abertura($("aj-abertura"));
   }
 }
@@ -360,6 +362,18 @@ function descreverForma(l) {
   return l.abertura ? "abertura" : "—";
 }
 
+// Quem vendeu / recebeu (vendas e recebimentos desde o acesso dos funcionários; os de antes ficam sem)
+const chaveVendedor = (l) => (l.vendedor?.tipo === "funcionario" ? `f:${l.vendedor.id}` : l.vendedor ? "dono" : "");
+const nomeVendedor = (l) => (l.vendedor?.tipo === "funcionario" ? l.vendedor.nome : l.vendedor ? "Dono" : "");
+function opcoesVendedor() {
+  const sel = $("fin-f-vendedor");
+  const atual = sel.value;
+  const nomes = new Map();
+  for (const l of C()?.itens || []) if (chaveVendedor(l)) nomes.set(chaveVendedor(l), nomeVendedor(l));
+  sel.innerHTML = `<option value="">Todos</option>${[...nomes].sort((a, b) => a[1].localeCompare(b[1])).map(([k, n]) => `<option value="${esc(k)}">${esc(n)}</option>`).join("")}`;
+  sel.value = nomes.has(atual) ? atual : "";
+}
+
 function filtrarLista() {
   const cfg = C().configFinanceiro;
   const lista = normalizar(C().itens, cfg);
@@ -367,7 +381,9 @@ function filtrarLista() {
   const tipo = $("fin-f-tipo").value;
   const conta = $("fin-f-conta").value;
   const busca = $("fin-f-busca").value.trim().toLowerCase();
+  const vendedor = $("fin-f-vendedor").value;
   return lista.filter((l) => {
+    if (vendedor && chaveVendedor(l) !== vendedor) return false;
     if (mes && mesDe(l) !== mes) return false;
     if (conta && l.conta !== conta) return false;
     if (tipo === "classificar" && !l.classificar && !custoPendente(l)) return false;
@@ -424,6 +440,7 @@ function renderLista() {
     $("fin-lote-forma").innerHTML = `<option value="" disabled selected>Nova forma (vendas)…</option>${FORMAS_PADRAO.filter((f) => !f.soMigracao && !f.fiado).map((f) => `<option value="${f.id}">${esc(f.nome)}</option>`).join("")}`;
   }
   if (!C()) return;
+  opcoesVendedor();
   const lista = filtrarLista();
   estado.visivel = lista;
   // Mostra de 300 em 300 ("Mostrar mais"); filtros e busca voltam para os primeiros 300
@@ -434,7 +451,7 @@ function renderLista() {
     const entrada = naturezaDaConta(l.conta) === "entrada";
     const s = sugestaoDe(l);
     const sug = s ? `<small class="sugestao">sugestão: ${esc(contaPorId[s.conta]?.nome || s.conta)} (${esc(s.motivo)})</small>` : "";
-    const tags = [l.classificar ? '<span class="tag tag-menos">a classificar</span>' : "", custoPendente(l) ? '<span class="tag tag-menos sigilo">custo não informado</span>' : "", l.abertura ? '<span class="tag">abertura</span>' : "", l.migrado && !l.abertura ? '<span class="tag">migrado</span>' : ""].join(" ");
+    const tags = [l.classificar ? '<span class="tag tag-menos">a classificar</span>' : "", custoPendente(l) ? '<span class="tag tag-menos sigilo">custo não informado</span>' : "", l.abertura ? '<span class="tag">abertura</span>' : "", l.precoDigitado ? '<span class="tag" title="Funcionário vendeu item sem preço na tabela (preço digitado)">preço digitado</span>' : "", l.alertaFiado ? `<span class="tag tag-alerta" title="${esc(l.alertaFiado)}">⚠ fiado acima do combinado</span>` : "", l.migrado && !l.abertura ? '<span class="tag">migrado</span>' : ""].join(" ");
     return `<tr class="${estado.selecionados.has(String(l.id)) ? "selecionado" : ""}">
       <td><input type="checkbox" class="fin-sel" value="${esc(l.id)}" ${estado.selecionados.has(String(l.id)) ? "checked" : ""} aria-label="Selecionar"></td>
       <td>${dataBR(l.competencia)}</td>
@@ -442,11 +459,12 @@ function renderLista() {
       <td>${esc(l.description || "")}${l.cliente ? `<small>cliente: ${esc(l.cliente)}</small>` : ""}${l.fornecedor ? `<small>${esc(l.fornecedor)}</small>` : ""}${l.nfe ? `<small>NF-e ${esc(l.nfe)}</small>` : ""}${l.frete ? `<small>inclui frete ${moeda(l.frete)}</small>` : ""}</td>
       <td>${esc(c?.nome || NOMES_ESPECIAIS[l.conta] || l.conta)}${l.conta === "salarios" && estimativasLigadas() ? ` <small class="texto-suave">(${esc(VINCULOS.find((v) => v.id === (l.vinculo || "clt"))?.nome || "CLT")})</small>` : ""} ${tags}${sug}</td>
       <td>${esc(descreverForma(l))}</td>
+      <td>${esc(nomeVendedor(l) || "—")}</td>
       <td class="num ${foraDoSaldo(l) ? "" : entrada ? "type-income" : "type-expense"}">${moeda(l.value)}</td>
       <td class="lanc-acoes">${l.conta === "venda_produtos" ? `<button class="btn-icon mini" data-vias="${esc(l.id)}" title="Imprimir as vias desta venda">🖨 Vias</button><button class="btn-icon mini" data-corrigir="${esc(l.id)}" title="Abrir a venda de volta para corrigir (mantém o número)">Corrigir</button>` : ""}
         <button class="delete-btn" data-excluir="${esc(l.id)}" title="${l.conta === "venda_produtos" ? "Estornar: desfaz a venda inteira (o número fica marcado como estornado)" : "Excluir (estornar) este lançamento"}">${l.conta === "venda_produtos" ? "Estornar" : "Excluir"}</button></td>
     </tr>`;
-  }).join("") || '<tr><td colspan="8" class="texto-suave">Nenhum lançamento com esse filtro.</td></tr>';
+  }).join("") || '<tr><td colspan="9" class="texto-suave">Nenhum lançamento com esse filtro.</td></tr>';
   const total = lista.reduce((s, l) => s + (foraDoSaldo(l) ? 0 : (naturezaDaConta(l.conta) === "entrada" ? 1 : -1) * Math.round(l.value * 100)), 0) / 100;
   $("fin-lista-contagem").textContent = `${lista.length} lançamentos${lista.length > LIMITE ? ` (mostrando ${LIMITE})` : ""} · saldo do filtro ${moeda(total)}`;
   $("fin-lista-mais").hidden = lista.length <= LIMITE;
@@ -745,7 +763,7 @@ $("fin-form").addEventListener("submit", enviarFormulario);
 $("fin-config-form").addEventListener("submit", salvarConfig);
 // Ajustes › Impressão: cabeçalho, rodapé e logo; o resto da configuração vai junto, como está
 const CAMPOS_IMPRESSAO = ["nome", "endereco", "cidade", "telefone", "whatsapp", "email", "instagram", "pix", "avisos"];
-const impressaoDoForm = () => ({ ...Object.fromEntries(CAMPOS_IMPRESSAO.map((k) => [k, $(`imp-cfg-${k}`).value.trim()])), logo: estado.logo || "" });
+const impressaoDoForm = () => ({ ...Object.fromEntries(CAMPOS_IMPRESSAO.map((k) => [k, $(`imp-cfg-${k}`).value.trim()])), logo: estado.logo || "", mostrarVendedor: $("imp-cfg-vendedor").checked });
 function mostrarLogo() {
   $("imp-cfg-logo-atual").hidden = !estado.logo;
   if (estado.logo) $("imp-cfg-logo-img").src = estado.logo;
@@ -782,7 +800,7 @@ $("aj-impressao-form").addEventListener("submit", async (e) => {
   }
 });
 $("orc-config-form").addEventListener("submit", salvarConfig);
-for (const id of ["fin-f-mes", "fin-f-tipo", "fin-f-conta"]) $(id).addEventListener("change", () => { estado.selecionados.clear(); estado.limiteLista = 300; renderLista(); });
+for (const id of ["fin-f-mes", "fin-f-tipo", "fin-f-conta", "fin-f-vendedor"]) $(id).addEventListener("change", () => { estado.selecionados.clear(); estado.limiteLista = 300; renderLista(); });
 // Busca: espera a pessoa parar de digitar (com milhares de lançamentos, não recalcula a cada letra)
 let buscaTimer = null;
 $("fin-f-busca").addEventListener("input", () => {

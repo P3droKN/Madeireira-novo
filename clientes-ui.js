@@ -136,7 +136,7 @@ function renderFicha(el) {
       ${s?.aberto > 0 && tel.ok ? '<button type="button" class="btn-icon" id="cli-cobrar">Cobrar no WhatsApp 💬</button>' : ""}
       <button type="button" class="btn-icon" id="cli-editar">Editar</button>
       <button type="button" class="btn-icon" id="cli-inativar">${c.inativo ? "Reativar" : "Inativar"}</button>
-      <button type="button" class="btn-icon item-perigo" id="cli-excluir">Excluir para sempre</button>
+      <button type="button" class="btn-icon item-perigo so-dono" id="cli-excluir">Excluir para sempre</button>
     </div>
     <div class="ficha-grade">
       <div class="ficha-bloco"><h3>Dados</h3>

@@ -1221,3 +1221,13 @@ body.modo-balcao .sigilo { display: none !important; }
 .cp-status { margin: 0.5rem 0; padding: 0.45rem 0.7rem; border-radius: 8px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.35); }
 .cp-rodape { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-top: 0.4rem; }
 .imp-acoes-cliente { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin: 0.4rem 0; }
+
+/* Acesso dos funcionários (/funcionarios): só Vender e Clientes e Orçamentos; nada de custo, margem nem ações do dono */
+body.modo-funcionario .so-dono,
+body.modo-funcionario #btn-tab-caixa,
+body.modo-funcionario #btn-tab-relatorios,
+body.modo-funcionario #btn-tab-ajustes,
+body.modo-funcionario #btn-balcao,
+body.modo-funcionario #custo-livre-group { display: none !important; }
+.func-nome { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50vw; }
+#pedidos-hoje-painel { margin-top: 1.25rem; }

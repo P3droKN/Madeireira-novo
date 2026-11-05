@@ -85,6 +85,7 @@ function acabamentoEscolhido() {
 
 const BALCAO_KEY = "madeireira_modo_balcao";
 function lerBalcao() {
+  if (window.MODO_FUNC) return true; // funcionário: sempre sem custo e margem
   try { return localStorage.getItem(BALCAO_KEY) === "1"; } catch { return false; }
 }
 function aplicarBalcao(ligado) {
@@ -103,6 +104,7 @@ function aplicarBalcao(ligado) {
   }
 }
 function alternarBalcao() {
+  if (window.MODO_FUNC) return;
   const ligado = !document.body.classList.contains("modo-balcao");
   try { localStorage.setItem(BALCAO_KEY, ligado ? "1" : "0"); } catch { /* aparelho sem armazenamento: vale só agora */ }
   aplicarBalcao(ligado);
@@ -726,7 +728,7 @@ window.Calculadora = {
     estado.frete = orc.frete > 0 ? orc.frete : null;
     // Os dados do cliente do orçamento vêm para o bloco Cliente do pedido (vinculado, se ele for cadastrado)
     window.ClientePedido?.carregar({ clienteId: orc.cliente?.id, cliente: orc.cliente?.nome, clienteVia: { ...(orc.clienteVia || {}), telefone: orc.cliente?.telefone || orc.clienteVia?.telefone || "" } });
-    estado.vinculo = { id: orc.id, modo, cliente: orc.cliente, origem: orc.origem, obs: orc.obs, validadeDias: orc.validadeDias };
+    estado.vinculo = { id: orc.id, modo, versaoBase: Number(orc.versao || 0), cliente: orc.cliente, origem: orc.origem, obs: orc.obs, validadeDias: orc.validadeDias };
     editorPagamentos.reiniciar(0);
     renderPedido();
     return true;

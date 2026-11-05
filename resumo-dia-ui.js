@@ -119,7 +119,8 @@ function render(el, modo = estado.modo) {
   ${ehMes() ? `<details class="glass-panel dia-recolhido" id="dia-dia-a-dia"><summary>Dia a dia do mês</summary><div id="dia-dia-a-dia-conteudo"><p class="texto-suave">Calculando…</p></div></details>` : ""}
 
   <details class="glass-panel dia-recolhido" id="dia-detalhes">
-    <summary>Mais detalhes <span class="texto-suave">cheques · orçamentos · despesas "Outros" · resultado</span></summary>
+    <summary>Mais detalhes <span class="texto-suave">vendas por vendedor · cheques · orçamentos · despesas "Outros" · resultado</span></summary>
+    ${vendedoresHtml()}
     <div class="dia-colunas">
       <div><h3>Cheques</h3>${chequesHtml(r)}</div>
       <div><h3>Orçamentos</h3>${orcamentosHtml(r)}</div>
@@ -135,6 +136,26 @@ function render(el, modo = estado.modo) {
     </div>
   </details>`;
   ligar(el);
+}
+
+// Vendas por vendedor (dono e cada funcionário): nº de vendas, total e lucro bruto (o lucro some no modo balcão)
+function vendedoresHtml() {
+  const de = estado.de, ate = ehMes() || estado.periodo ? estado.ate : estado.de;
+  const grupos = new Map();
+  for (const l of C().itens || []) {
+    if (l.conta !== "venda_produtos" || !l.competencia || l.competencia < de || l.competencia > ate) continue;
+    const nome = l.vendedor?.tipo === "funcionario" ? l.vendedor.nome : l.vendedor ? "Dono" : "Sem registro (antes do acesso dos funcionários)";
+    const g = grupos.get(nome) || { nome, n: 0, total: 0, lucro: 0 };
+    g.n += 1;
+    g.total += Math.round(Number(l.value || 0) * 100);
+    g.lucro += Math.round((Number(l.value || 0) - Number(l.frete || 0) - Number(l.cmv || 0)) * 100);
+    grupos.set(nome, g);
+  }
+  if (!grupos.size) return "";
+  const linhas = [...grupos.values()].sort((a, b) => b.total - a.total);
+  return `<div id="dia-vendedores"><h3>Vendas por vendedor</h3>
+    <div class="table-container"><table class="tabela-fin"><thead><tr><th>Vendedor</th><th class="num">Vendas</th><th class="num">Total</th><th class="num sigilo">Lucro bruto</th></tr></thead>
+    <tbody>${linhas.map((g) => `<tr><td>${esc(g.nome)}</td><td class="num">${g.n}</td><td class="num">${moeda(g.total / 100)}</td><td class="num sigilo">${moeda(g.lucro / 100)}</td></tr>`).join("")}</tbody></table></div></div>`;
 }
 
 // Mês: quanto vender para empatar (média dos 3 meses completos anteriores), no topo

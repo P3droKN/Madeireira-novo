@@ -13,6 +13,70 @@ const novoId = (sufixo = '') => Date.now().toString() + Math.random().toString(3
 const SENHA_KEY = 'madeireira_senha';
 let pedidoDeSenha = null;
 
+// --- MODO FUNCIONÁRIO (/funcionarios) ---
+// O funcionário entra com o nome e o PIN; o servidor devolve uma sessão que vale até a meia-noite.
+// O PIN não fica guardado no aparelho (só a sessão). A senha do dono não vale aqui, e o PIN não vale na entrada do dono.
+const MODO_FUNC = /^\/funcionarios\/?$/.test(location.pathname);
+window.MODO_FUNC = MODO_FUNC;
+const SESSAO_KEY = 'madeireira_sessao_func';
+const COPIA_KEY = MODO_FUNC ? 'madeireira_finance_func' : 'madeireira_finance';
+if (MODO_FUNC) {
+    document.body.classList.add('modo-funcionario', 'modo-balcao');
+    document.title = 'Madeireira · Funcionários';
+}
+let pedidoDePin = null;
+
+function sessaoGuardada() {
+    try {
+        const s = JSON.parse(localStorage.getItem(SESSAO_KEY));
+        return s && s.token && new Date(s.expira) > new Date() ? s : null;
+    } catch { return null; }
+}
+function mostrarNomeFuncionario() {
+    const el = document.getElementById('func-nome');
+    const s = MODO_FUNC ? sessaoGuardada() : null;
+    if (el) { el.hidden = !s; el.textContent = s ? `👤 ${s.nome}` : ''; }
+}
+
+function pedirPin(mensagem) {
+    if (pedidoDePin) return pedidoDePin;
+    pedidoDePin = new Promise(resolve => {
+        const modal = document.getElementById('modal-pin');
+        const sel = document.getElementById('pin-nome');
+        const input = document.getElementById('pin-input');
+        const msg = document.getElementById('pin-msg');
+        msg.textContent = mensagem || 'Escolha o seu nome e digite o seu PIN.';
+        input.value = '';
+        modal.style.display = 'flex';
+        fetch('/api/sessao').then(r => r.json()).then(d => {
+            const lista = d.funcionarios || [];
+            sel.innerHTML = '<option value="">Escolha…</option>' + lista.map(f => `<option value="${esc(f.id)}">${esc(f.nome)}</option>`).join('');
+            if (!lista.length) msg.textContent = 'Nenhum funcionário cadastrado. O dono cadastra em Ajustes › Funcionários.';
+            sel.focus();
+        }).catch(e => { msg.textContent = `Sem conexão com o servidor (${e.message}). Tente de novo.`; });
+        document.getElementById('pin-form').onsubmit = async (e) => {
+            e.preventDefault();
+            if (!sel.value || !input.value) return;
+            try {
+                const r = await fetch('/api/sessao', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sel.value, pin: input.value }) });
+                const d = await r.json().catch(() => null);
+                input.value = '';
+                if (!r.ok) { msg.textContent = d?.error || `erro ${r.status}`; input.focus(); return; }
+                try { localStorage.setItem(SESSAO_KEY, JSON.stringify({ token: d.token, nome: d.nome, id: d.id, expira: d.expira })); } catch { /* sem armazenamento */ }
+                sessaoAtual = d;
+                modal.style.display = 'none';
+                pedidoDePin = null;
+                mostrarNomeFuncionario();
+                resolve(d.token);
+            } catch (err) { msg.textContent = `Sem conexão com o servidor (${err.message}).`; }
+        };
+    });
+    return pedidoDePin;
+}
+// Sem armazenamento no aparelho, a sessão fica só na memória desta tela
+let sessaoAtual = null;
+const tokenFuncionario = () => sessaoGuardada()?.token || (sessaoAtual && new Date(sessaoAtual.expira) > new Date() ? sessaoAtual.token : null);
+
 function pedirSenha(mensagem) {
     if (pedidoDeSenha) return pedidoDeSenha;
     pedidoDeSenha = new Promise(resolve => {
@@ -35,7 +99,17 @@ function pedirSenha(mensagem) {
 }
 
 // Sair deste aparelho (ex.: computador do balcão): apaga a senha e a cópia local dos dados
-function sairDoAparelho() {
+async function sairDoAparelho() {
+    if (MODO_FUNC) {
+        const token = tokenFuncionario();
+        if (token) await fetch('/api/sessao', { method: 'DELETE', headers: { 'x-sessao': token } }).catch(() => null);
+        for (const k of [SESSAO_KEY, COPIA_KEY]) {
+            try { localStorage.removeItem(k); } catch { /* sem armazenamento */ }
+        }
+        sessaoAtual = null;
+        location.reload();
+        return;
+    }
     if (!confirm('Sair deste aparelho? A senha e a cópia dos dados guardadas aqui serão apagadas. Para entrar de novo, é preciso digitar a senha.')) return;
     for (const k of [SENHA_KEY, 'madeireira_finance', 'madeireira_acumulado', 'madeireira_pedido']) {
         try { localStorage.removeItem(k); } catch { /* sem armazenamento */ }
@@ -45,14 +119,14 @@ function sairDoAparelho() {
 document.getElementById('btn-sair')?.addEventListener('click', sairDoAparelho);
 
 async function api(caminho, { method = 'GET', body, timeoutMs = 60000 } = {}) {
-    const senha = localStorage.getItem(SENHA_KEY) || await pedirSenha();
+    const senha = MODO_FUNC ? (tokenFuncionario() || await pedirPin()) : (localStorage.getItem(SENHA_KEY) || await pedirSenha());
     const controle = new AbortController();
     const relogio = setTimeout(() => controle.abort(), timeoutMs);
     let res;
     try {
         res = await fetch(caminho, {
             method,
-            headers: { 'Content-Type': 'application/json', 'x-senha': senha },
+            headers: { 'Content-Type': 'application/json', [MODO_FUNC ? 'x-sessao' : 'x-senha']: senha },
             body: body === undefined ? undefined : JSON.stringify(body),
             signal: controle.signal,
         });
@@ -65,8 +139,16 @@ async function api(caminho, { method = 'GET', body, timeoutMs = 60000 } = {}) {
     }
     if (res.status === 429) {
         const d = await res.json().catch(() => null);
-        localStorage.removeItem(SENHA_KEY);
+        if (!MODO_FUNC) localStorage.removeItem(SENHA_KEY);
         throw new Error(d?.error || 'Muitas tentativas de senha erradas. Espere alguns minutos.');
+    }
+    if (res.status === 401 && MODO_FUNC) {
+        const d = await res.json().catch(() => null);
+        try { localStorage.removeItem(SESSAO_KEY); } catch { /* sem armazenamento */ }
+        sessaoAtual = null;
+        mostrarNomeFuncionario();
+        await pedirPin(d?.error || 'Sessão encerrada. Entre de novo com o seu PIN.');
+        return api(caminho, { method, body, timeoutMs });
     }
     if (res.status === 401) {
         localStorage.removeItem(SENHA_KEY);
@@ -85,7 +167,7 @@ async function api(caminho, { method = 'GET', body, timeoutMs = 60000 } = {}) {
 // Vender · Orçamentos · Caixa · Relatórios · Ajustes. O sistema abre em Vender; o Caixa abre em Lançar.
 const ABAS = ['vender', 'orcamentos', 'caixa', 'relatorios', 'ajustes'];
 function switchTab(tabId) {
-    if (!ABAS.includes(tabId)) tabId = 'vender';
+    if (!ABAS.includes(tabId) || (MODO_FUNC && !['vender', 'orcamentos'].includes(tabId))) tabId = 'vender';
     document.querySelectorAll('.tab-content').forEach(el => { el.classList.remove('active'); el.style.display = 'none'; });
     document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
     document.getElementById(`tab-${tabId}`).style.display = 'block';
@@ -134,18 +216,18 @@ async function carregarDados() {
         // Cópia local só para leitura quando estiver sem conexão. Se a memória do aparelho encher,
         // o sistema continua normal (só fica sem a cópia)
         try {
-            localStorage.setItem('madeireira_finance', JSON.stringify(financeItems));
-            localStorage.setItem('madeireira_acumulado', JSON.stringify(acumulado));
+            localStorage.setItem(COPIA_KEY, JSON.stringify(financeItems));
+            if (!MODO_FUNC) localStorage.setItem('madeireira_acumulado', JSON.stringify(acumulado));
         } catch (e) {
             console.warn('Cópia local não coube na memória do aparelho:', e.message);
-            try { localStorage.removeItem('madeireira_finance'); } catch { /* sem armazenamento */ }
+            try { localStorage.removeItem(COPIA_KEY); } catch { /* sem armazenamento */ }
         }
     } catch (e) {
         console.warn('Sem conexão com a nuvem. Mostrando a última cópia local, sem gravar.', e);
         somenteLeitura = true;
         erroConexao = e.message || String(e);
         try {
-            financeItems = JSON.parse(localStorage.getItem('madeireira_finance')) || [];
+            financeItems = JSON.parse(localStorage.getItem(COPIA_KEY)) || [];
             acumulado = JSON.parse(localStorage.getItem('madeireira_acumulado')) || { ...ACUMULADO_VAZIO };
         } catch { financeItems = []; acumulado = { ...ACUMULADO_VAZIO }; }
     }
@@ -153,7 +235,26 @@ async function carregarDados() {
     atualizarStatusBanco();
     if (window.Financeiro) window.Financeiro.atualizar();
     if (window.ClientesUI) window.ClientesUI.atualizar();
+    if (window.PedidosHoje) window.PedidosHoje.atualizar();
 }
+
+// Pedidos de hoje, orçamentos e clientes se atualizam sozinhos a cada 30 s (e ao voltar para a tela), para quem
+// vende ao mesmo tempo em outro aparelho. Só no Vender e em Clientes e Orçamentos, e nunca com uma janela aberta
+// ou com alguém digitando ali (não pode perder o que está sendo preenchido).
+async function atualizarSozinho() {
+    if (document.hidden || pedidoDeSenha || pedidoDePin) return;
+    const aba = document.querySelector('.tab-content.active')?.id;
+    if (!['tab-vender', 'tab-orcamentos'].includes(aba)) return;
+    if ([...document.querySelectorAll('.modal-overlay')].some(m => m.offsetParent !== null || getComputedStyle(m).display !== 'none')) return;
+    const foco = document.activeElement;
+    if (foco && foco.closest?.('#tab-orcamentos') && /^(INPUT|TEXTAREA|SELECT)$/.test(foco.tagName)) return;
+    await carregarDados();
+    window.Orcamentos?.recarregar();
+    window.Clientes?.carregar();
+}
+setInterval(atualizarSozinho, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) atualizarSozinho(); });
+mostrarNomeFuncionario();
 
 // Acesso das abas Caixa, Relatórios e Ajustes (módulos) aos dados carregados aqui
 window.Caixa = {

@@ -103,7 +103,8 @@ http.createServer(async (req, res) => {
     res.json = (o) => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify(o)); return res; };
     try { return await handler(req, res); } catch (e) { res.statusCode = 500; return res.end(JSON.stringify({ error: e.message })); }
   }
-  const f = path.join(RAIZ, url.pathname === "/" ? "index.html" : url.pathname);
+  // /funcionarios: a mesma página, no modo do funcionário (na Vercel, pelo rewrite do vercel.json)
+  const f = path.join(RAIZ, url.pathname === "/" || url.pathname === "/funcionarios" ? "index.html" : url.pathname);
   if (!fs.existsSync(f)) { res.statusCode = 404; return res.end(); }
   res.setHeader("content-type", tipos[path.extname(f)] || "application/octet-stream");
   fs.createReadStream(f).pipe(res);

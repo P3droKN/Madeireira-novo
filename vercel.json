@@ -11,5 +11,11 @@
       "destination": "/",
       "permanent": false
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/funcionarios",
+      "destination": "/index.html"
+    }
   ]
 }

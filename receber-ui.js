@@ -136,7 +136,7 @@ function detalheCliente(c) {
     ${linkFicha(c)}
     <table class="tabela-fin">
       <thead><tr><th>Data</th><th>O quê</th><th>Vencimento</th><th class="num">Valor</th><th class="num">Pago</th><th class="num">Em aberto</th><th>Situação</th></tr></thead>
-      <tbody>${c.dividas.map((d) => `<tr><td>${dataBR(d.data)}</td><td>${vendaDa(d)?.numero ? `<strong>${esc(vendaDa(d).numero)}</strong> · ` : ""}${esc(d.descricao)}${vendaDa(d) ? ` <button class="btn-icon mini" data-rc-via="${esc(d.origemId)}" title="Imprimir as vias desta venda">🖨 Vias</button> <button class="btn-icon mini" data-rc-corrigir="${esc(d.origemId)}" title="Abrir a venda de volta para corrigir (mantém o número)">Corrigir</button>` : ""}</td><td>${c.contaCorrente ? "sem prazo" : dataBR(d.vencimento)}</td>
+      <tbody>${c.dividas.map((d) => `<tr><td>${dataBR(d.data)}</td><td>${vendaDa(d)?.numero ? `<strong>${esc(vendaDa(d).numero)}</strong> · ` : ""}${esc(d.descricao)}${vendaDa(d) ? ` <button class="btn-icon mini" data-rc-via="${esc(d.origemId)}" title="Imprimir as vias desta venda">🖨 Vias</button> <button class="btn-icon mini so-dono" data-rc-corrigir="${esc(d.origemId)}" title="Abrir a venda de volta para corrigir (mantém o número)">Corrigir</button>` : ""}</td><td>${c.contaCorrente ? "sem prazo" : dataBR(d.vencimento)}</td>
         <td class="num">${moeda(d.valor)}</td><td class="num">${d.pago ? moeda(d.pago) : "—"}</td><td class="num"><strong>${moeda(d.aberto)}</strong></td><td>${situacaoTag(d)}</td></tr>`).join("")
         || '<tr><td colspan="7" class="texto-suave">Sem compras no fiado.</td></tr>'}</tbody>
     </table>
@@ -144,7 +144,7 @@ function detalheCliente(c) {
     <table class="tabela-fin">
       <thead><tr><th>Data</th><th>Forma</th><th class="num">Valor</th><th></th></tr></thead>
       <tbody>${c.recebimentos.map((r) => `<tr><td>${dataBR(r.data)}</td><td>${esc(r.formas.map(nomeForma).join(" + "))}${r.descricao ? `<small>${esc(r.descricao)}</small>` : ""}</td>
-        <td class="num">${moeda(r.valor)}</td><td><button class="delete-btn" data-rc-estornar="${esc(r.id)}" title="Desfazer este recebimento (a dívida volta)">Estornar</button></td></tr>`).join("")
+        <td class="num">${moeda(r.valor)}</td><td><button class="delete-btn so-dono" data-rc-estornar="${esc(r.id)}" title="Desfazer este recebimento (a dívida volta)">Estornar</button></td></tr>`).join("")
         || '<tr><td colspan="4" class="texto-suave">Nenhum recebimento ainda.</td></tr>'}</tbody>
     </table>
   </div>`;

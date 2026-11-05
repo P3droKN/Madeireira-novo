@@ -78,6 +78,8 @@ export function chaves(ambiente = process.env.VERCEL_ENV, prefixoFixo = process.
     vendaSeq: p + "madeireira_venda_seq",    // contador do número curto das vendas (V-0001…)
     saldos: p + "madeireira_saldos",         // abertura de saldos (e conferências antigas)
     conferencias: p + "madeireira_conferencias", // hash: id -> conferência (fechar gaveta, extrato)
+    funcionarios: p + "madeireira_funcionarios", // hash: id -> funcionário (nome, PIN guardado só como resumo, ativo)
+    sessao: (resumo) => `${p}madeireira_sessao:${resumo}`, // sessão do funcionário (vale até a meia-noite)
   };
 }
 
@@ -98,19 +100,40 @@ export function senhaConfere(recebida, esperada) {
 // Devolve true se pode seguir; senão já respondeu o erro.
 // Limite de tentativas de senha: depois de 10 senhas erradas do mesmo endereço em 15 minutos, espera
 const LIMITE_ERROS = 10, JANELA_MS = 15 * 60 * 1000;
-const chaveErros = (request) => `${chaves().prefixo}madeireira_senha_erros:${String(request.headers["x-forwarded-for"] || request.socket?.remoteAddress || "?").split(",")[0].trim()}`;
-async function errosDeSenha(request) {
+const chaveErros = (request, tipo = "senha") => `${chaves().prefixo}madeireira_${tipo}_erros:${String(request.headers["x-forwarded-for"] || request.socket?.remoteAddress || "?").split(",")[0].trim()}`;
+export async function errosDeSenha(request, tipo = "senha") {
   try {
-    const r = await kv().get(chaveErros(request));
+    const r = await kv().get(chaveErros(request, tipo));
     const e = typeof r === "string" ? JSON.parse(r) : r;
     return e && Date.now() - e.desde < JANELA_MS ? e : null;
   } catch { return null; } // sem banco: não bloqueia por isso
 }
-async function anotarErroDeSenha(request, atual) {
-  try { await kv().set(chaveErros(request), JSON.stringify({ n: (atual?.n || 0) + 1, desde: atual?.desde || Date.now() })); } catch { /* sem banco */ }
+export async function anotarErroDeSenha(request, atual, tipo = "senha") {
+  try { await kv().set(chaveErros(request, tipo), JSON.stringify({ n: (atual?.n || 0) + 1, desde: atual?.desde || Date.now() })); } catch { /* sem banco */ }
+}
+export const LIMITE_TENTATIVAS = { n: LIMITE_ERROS, janelaMs: JANELA_MS };
+
+// Sessão do funcionário (cabeçalho x-sessao): o código aleatório da entrada por PIN. No banco fica só o resumo
+// dele, com o funcionário e a validade (meia-noite). Funcionário desativado perde a sessão na hora.
+export const resumoSessao = (token) => createHash("sha256").update(String(token)).digest("hex");
+async function sessaoDoFuncionario(token) {
+  if (typeof token !== "string" || token.length < 20) return null;
+  const k = chaves();
+  const bruto = await kv().get(k.sessao(resumoSessao(token)));
+  const s = typeof bruto === "string" ? JSON.parse(bruto) : bruto;
+  if (!s || !(Date.parse(s.expira) > Date.now())) return null;
+  const fBruto = await kv().hget(k.funcionarios, String(s.funcionarioId));
+  const f = typeof fBruto === "string" ? JSON.parse(fBruto) : fBruto;
+  if (!f || !f.ativo) return null;
+  return { papel: "funcionario", id: f.id, nome: f.nome };
 }
 
-export async function autorizar(request, response) {
+/**
+ * Confere quem chama e devolve { papel: "dono" } ou { papel: "funcionario", id, nome }; se não puder, já respondeu
+ * o erro e devolve false. O dono entra com a senha (x-senha); o funcionário com a sessão do PIN (x-sessao).
+ * permiteFuncionario: a rota aceita funcionário (as outras respondem 403 para ele).
+ */
+export async function autorizar(request, response, { permiteFuncionario = false } = {}) {
   try {
     configBanco();
   } catch (e) {
@@ -121,6 +144,17 @@ export async function autorizar(request, response) {
   if (!esperada) {
     response.status(500).json({ error: "SENHA_APP não configurada na Vercel." });
     return false;
+  }
+  // Funcionário: só a sessão do PIN; a senha do dono não é aceita junto
+  if (request.headers["x-sessao"] && !request.headers["x-senha"]) {
+    const quem = await sessaoDoFuncionario(request.headers["x-sessao"]);
+    if (!quem) { response.status(401).json({ error: "Sessão encerrada. Entre de novo com o seu PIN.", sessao: true }); return false; }
+    if (!permiteFuncionario) { response.status(403).json({ error: "Só o dono pode fazer isso." }); return false; }
+    if (request.method !== "GET" && gravacaoBloqueada()) {
+      response.status(423).json({ error: `Gravação bloqueada: este site está ligado ao banco de PRODUÇÃO (${bancoHost()}).` });
+      return false;
+    }
+    return quem;
   }
   const erros = await errosDeSenha(request);
   if (erros && erros.n >= LIMITE_ERROS) {
@@ -137,7 +171,7 @@ export async function autorizar(request, response) {
     response.status(423).json({ error: `Gravação bloqueada: este site está ligado ao banco de PRODUÇÃO (${bancoHost()}). Confira as variáveis do banco neste projeto.` });
     return false;
   }
-  return true;
+  return { papel: "dono" };
 }
 
 export function responderErro(response, error) {

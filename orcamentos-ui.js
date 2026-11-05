@@ -47,14 +47,26 @@ const porId = (id) => estado.orcamentos.find((o) => o.id === id);
 const abaAtual = () => document.querySelector('input[name="orc-aba"]:checked').value;
 const ativos = () => estado.orcamentos.filter((o) => !naLixeira(o));
 
+// Quem fez o orçamento (desde o acesso dos funcionários; os de antes ficam "sem registro")
+const autorDe = (o) => (o.criadoPor?.tipo === "funcionario" ? o.criadoPor.nome : o.criadoPor ? "Dono" : "Sem registro");
+function opcoesAutor() {
+  const sel = $("orc-f-vendedor");
+  const atual = sel.value;
+  const nomes = [...new Set(ativos().map(autorDe))].sort();
+  sel.innerHTML = `<option value="">Todos</option>${nomes.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("")}`;
+  sel.value = nomes.includes(atual) ? atual : "";
+}
+
 function filtrar() {
   const aba = abaAtual();
+  const autor = $("orc-f-vendedor").value;
   const de = $("orc-f-de").value, ate = $("orc-f-ate").value;
   const busca = $("orc-f-busca").value.trim().toLowerCase();
   const buscaDig = busca.replace(/\D/g, "");
   const h = hoje(), cfg = cfgOrc();
   const lista = ativos().filter((o) => {
     if (grupoDaLista(o) !== aba) return false;
+    if (autor && autorDe(o) !== autor) return false;
     if (estado.soSino && !situacao(o, h, cfg).cobrarHoje) return false;
     if (de && o.data < de) return false;
     if (ate && o.data > ate) return false;
@@ -117,7 +129,7 @@ function renderLista() {
       podeReabrir(o) ? `<button data-acao="reabrir" data-id="${esc(o.id)}">Reabrir</button>` : "",
       o.status === "fechado"
         ? '<small class="menu-nota">Excluir: não dá, virou venda. Para desfazer, estorne a venda no Caixa.</small>'
-        : `<button data-acao="excluir" data-id="${esc(o.id)}" class="item-perigo">Excluir (lixeira)</button><button data-acao="excluir_sempre" data-id="${esc(o.id)}" class="item-perigo">Excluir para sempre</button>`,
+        : `<button data-acao="excluir" data-id="${esc(o.id)}" class="item-perigo">Excluir (lixeira)</button><button data-acao="excluir_sempre" data-id="${esc(o.id)}" class="item-perigo so-dono">Excluir para sempre</button>`,
     ].filter(Boolean).join("");
     acoes.push(`<details class="menu-mais"><summary class="btn-icon mini" aria-label="Mais ações">⋯</summary><div class="menu-itens">${mais}</div></details>`);
     const selo = o.status === "perdido"
@@ -148,7 +160,7 @@ function renderLixeira() {
   $("orc-lixeira-body").innerHTML = lista.map((o) => `<tr>
       <td><strong>${esc(o.id)}</strong></td><td>${esc(o.cliente?.nome)}<small>${esc(o.cliente?.telefone)}</small></td>
       <td>${dataBR(o.data)}</td><td class="num">${moeda(o.total)}</td><td>${dataHora(o.excluidoEm)}</td>
-      <td class="orc-acoes"><button class="btn-icon mini" data-acao="restaurar" data-id="${esc(o.id)}">Restaurar</button><button class="btn-icon mini item-perigo" data-acao="excluir_sempre" data-id="${esc(o.id)}">Excluir definitivamente</button></td>
+      <td class="orc-acoes"><button class="btn-icon mini" data-acao="restaurar" data-id="${esc(o.id)}">Restaurar</button><button class="btn-icon mini item-perigo so-dono" data-acao="excluir_sempre" data-id="${esc(o.id)}">Excluir definitivamente</button></td>
     </tr>`).join("") || '<tr><td colspan="6" class="texto-suave">A lixeira está vazia.</td></tr>';
 }
 
@@ -161,6 +173,20 @@ function mostrarLixeira(ligar) {
 }
 
 // Relatórios › Orçamentos: indicadores completos do mês
+// Conversão por quem fez o orçamento (orçamentos do mês, fora da lixeira)
+function conversaoPorAutor(mes) {
+  const doMes = ativos().filter((o) => String(o.data || "").startsWith(mes));
+  if (!doMes.length) return "";
+  const g = new Map();
+  for (const o of doMes) {
+    const x = g.get(autorDe(o)) || { n: 0, fechados: 0, valor: 0 };
+    x.n += 1; if (o.status === "fechado") { x.fechados += 1; x.valor += Number(o.total || 0); }
+    g.set(autorDe(o), x);
+  }
+  return `<table class="tabela-fin" id="orc-rel-autor"><thead><tr><th>Feito por (orçamentos do mês)</th><th class="num">Orçamentos</th><th class="num">Viraram venda</th><th class="num">Conversão</th><th class="num">Vendido</th></tr></thead>
+    <tbody>${[...g].sort((a, b) => b[1].n - a[1].n).map(([nome, x]) => `<tr><td>${esc(nome)}</td><td class="num">${x.n}</td><td class="num">${x.fechados}</td><td class="num">${Math.round((x.fechados / x.n) * 100)}%</td><td class="num">${moeda(x.valor)}</td></tr>`).join("")}</tbody></table>`;
+}
+
 function renderRelatorio(el, mes) {
   const desenhar = () => {
     const ind = indicadores(estado.orcamentos, mes);
@@ -178,6 +204,7 @@ function renderRelatorio(el, mes) {
         <table class="tabela-fin"><thead><tr><th>Motivos de perda (todos)</th><th class="num">Qtd.</th></tr></thead>
           <tbody>${motivos.map(([m, n]) => `<tr><td>${esc(m)}</td><td class="num">${n}</td></tr>`).join("") || '<tr><td colspan="2" class="texto-suave">Nenhum perdido.</td></tr>'}</tbody></table>
       </div>
+      ${conversaoPorAutor(mes)}
       <p class="texto-suave">Excluídos (lixeira) não contam: foram erro ou teste.</p>`;
   };
   if (estado.carregado) desenhar();
@@ -185,6 +212,7 @@ function renderRelatorio(el, mes) {
 }
 
 function renderTudo() {
+  opcoesAutor();
   renderIndicadores();
   renderLista();
   if (estado.lixeira) renderLixeira();
@@ -280,7 +308,7 @@ function abrirPrecos(o) {
 async function aplicarPrecos() {
   const { orc, novo } = estado.atual;
   try {
-    await patch({ id: orc.id, acao: "precos", hoje: hoje(), itens: novo.itens, total: novo.totalNovo, frete: novo.frete, custo: novo.custo, margem: novo.margem,
+    await patch({ id: orc.id, acao: "precos", versaoBase: Number(orc.versao || 0), hoje: hoje(), itens: novo.itens, total: novo.totalNovo, frete: novo.frete, custo: novo.custo, margem: novo.margem,
       tabelaTotal: novo.itens.reduce((s, i) => s + (i.tabelaTotal || 0), 0), variacao: null, motivoGeral: orc.motivoGeral });
     fecharModais();
   } catch (e) {
@@ -379,7 +407,7 @@ async function salvar(e) {
     validadeDias: Number($("orc-validade").value) || cfgOrc().validadeDias,
     hoje: hoje(),
   };
-  if (v?.modo === "editar") corpo.id = v.id;
+  if (v?.modo === "editar") { corpo.id = v.id; corpo.versaoBase = v.versaoBase ?? 0; } // outro editou depois: aviso, não sobrescreve
   if (v?.modo === "duplicar") corpo.duplicadoDe = v.id;
   const cp = window.Calculadora?.clientePedido?.();
   if (cp?.id && cp.nome === corpo.cliente.nome) corpo.cliente.id = cp.id;
@@ -402,7 +430,7 @@ async function salvar(e) {
 
 // ---------- Eventos ----------
 
-for (const id of ["orc-f-de", "orc-f-ate", "orc-f-ordem"]) $(id).addEventListener("change", renderLista);
+for (const id of ["orc-f-de", "orc-f-ate", "orc-f-ordem", "orc-f-vendedor"]) $(id).addEventListener("change", renderLista);
 $("orc-abas").addEventListener("change", () => { estado.soSino = false; renderTudo(); });
 $("orc-sino-limpar").addEventListener("click", () => verCobrar(false));
 $("orc-lixeira-link").addEventListener("click", () => mostrarLixeira(true));
