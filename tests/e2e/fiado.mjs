@@ -77,6 +77,7 @@ ok(await linhaZe().locator('[data-rc="cobrar"]').count() === 1, "com WhatsApp (o
 
 // 4. Recebimento parcial em cheque
 await linhaZe().locator('[data-rc="receber"]').click();
+await page.waitForSelector("#modal-receber", { state: "visible" }); // o saldo é lido do servidor antes de abrir
 ok(await page.inputValue("#rc-valor") === "350.00", "Receber já vem com o total em aberto");
 await page.fill("#rc-valor", "150"); await page.dispatchEvent("#rc-valor", "input");
 ok(!(await page.locator("#rc-pagamentos .pag-forma option[value=fiado]").count()), "recebimento não oferece Fiado como forma");

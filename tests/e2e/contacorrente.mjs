@@ -169,6 +169,7 @@ ok(!tA2.includes("passou do limite") && tA2.includes("51 dias sem pagar (alerta:
 
 // 6. Recebimento da Dona Cida (fiado anterior): entra no caixa, aparece como informação no DRE e no fluxo
 await page.locator("#rc-tabela-cc tr[data-chave]", { hasText: "Dona Cida" }).locator('[data-rc="receber"]').click();
+await page.waitForSelector("#modal-receber", { state: "visible" });
 ok(nb(await page.textContent("#rc-receber-info")).includes("sem prazo, em aberto há 9 dia(s)"), "Receber: mostra há quantos dias está em aberto");
 await page.fill("#rc-valor", "300"); await page.dispatchEvent("#rc-valor", "input");
 await page.click("#rc-receber-form button[type=submit]");

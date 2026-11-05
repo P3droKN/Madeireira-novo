@@ -89,6 +89,12 @@ function render() {
   </section>`;
   $("cli-filtro").addEventListener("change", (e) => { estado.filtro = e.target.value; render(); });
   $("cli-busca").addEventListener("input", (e) => { estado.busca = e.target.value; renderMantendoFoco(); });
+  // ao buscar, a lista vem do servidor (cliente cadastrado agora em outro aparelho aparece)
+  $("cli-busca").addEventListener("focus", () => {
+    if (Date.now() - (estado.lidoEm || 0) < 3000) return;
+    estado.lidoEm = Date.now();
+    window.Clientes?.carregar().then(renderMantendoFoco);
+  });
   $("cli-novo").addEventListener("click", () => novo().then((c) => { if (c) abrirFicha(c.id); }));
   $("cli-body").addEventListener("click", (e) => {
     const tr = e.target.closest("tr[data-cli]");
@@ -301,7 +307,8 @@ function abrirForm(c = {}, titulo = "Novo cliente") {
   estado.mostrarAlertas();
   $("modal-cliente").style.display = "flex";
   $("cli-nome").focus();
-  return new Promise((resolve) => { estado.form = { id: c.id || null, resolve }; });
+  // versão que esta tela abriu: se outro aparelho salvar antes, o servidor avisa em vez de sobrescrever
+  return new Promise((resolve) => { estado.form = { id: c.id || null, versaoBase: c.id ? Number(c.versao || 0) : undefined, resolve }; });
 }
 
 function fecharForm(resultado) {
@@ -330,6 +337,7 @@ async function salvarForm(e) {
     contaCorrente: sem, prazoDias: prazo === "outro" ? Number(dias) : "",
     alertaLimite: sem ? $("cli-limite").value.trim() : "", alertaDias: sem ? $("cli-dias").value.trim() : "",
     obsFiado: $("cli-obs-fiado").value.trim(),
+    ...(estado.form?.id ? { versaoBase: estado.form.versaoBase } : {}),
   };
   botao.disabled = true;
   try {

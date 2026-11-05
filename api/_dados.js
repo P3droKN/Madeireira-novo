@@ -307,8 +307,13 @@ export async function comTrava(kv, k, ids, fn) {
 
 // quem: { papel: "dono" } ou { papel: "funcionario", id, nome }. extras[id]: marcas dadas pelo servidor na venda do
 // funcionário (precoDigitado, alertaFiado). Venda e recebimento novos guardam quem fez; corrigir mantém o original.
+// Trava também o cliente do recebimento (dois aparelhos recebendo do mesmo cliente passam um de cada vez) e o
+// orçamento que vira venda (dois aparelhos convertendo o mesmo: só um consegue)
+const travasDe = (itens) => (Array.isArray(itens) && itens.length <= 50
+  ? itens.flatMap((i) => [i?.id, i?.conta === "recebimento" && i.clienteId ? `cli-${i.clienteId}` : null, i?.orcamento ? `orc-${i.orcamento}` : null])
+  : []);
 export const salvarLancamentos = (kv, k, itens, quem = { papel: "dono" }, extras = {}) =>
-  comTrava(kv, k, Array.isArray(itens) && itens.length <= 50 ? itens.map((i) => i?.id) : [], () => salvarLancamentosSemTrava(kv, k, itens, quem, extras));
+  comTrava(kv, k, travasDe(itens), () => salvarLancamentosSemTrava(kv, k, itens, quem, extras));
 export const marcarImpresso = (kv, k, id) => comTrava(kv, k, [id], () => marcarImpressoSemTrava(kv, k, id));
 export const clienteDaVenda = (kv, k, p, quem = { papel: "dono" }) => comTrava(kv, k, [p?.id], () => clienteDaVendaSemTrava(kv, k, p, quem));
 export const excluirLancamento = (kv, k, id) => comTrava(kv, k, [id], () => excluirLancamentoSemTrava(kv, k, id));
@@ -352,6 +357,25 @@ async function salvarLancamentosSemTrava(kv, k, itens, quem = { papel: "dono" },
         throw erro(409, "Esse lançamento foi alterado em outro aparelho depois que você abriu a correção. Recarregue e corrija de novo.");
       }
       if (antes.conta === "venda_produtos" && i.conta !== "venda_produtos") throw erro(400, "Para trocar o tipo de receita de uma venda, estorne e lance de novo.");
+    }
+    // Recebimento de fiado: outro aparelho recebeu do mesmo cliente depois que esta tela leu o saldo? Pergunta antes
+    // (nunca abate em dobro sem confirmar). O aparelho manda o último recebimento que conhecia (ultimoRecebimentoVisto).
+    for (const i of v2) {
+      const b = brutos[i.id] || {};
+      if (i.conta !== "recebimento" || desembrulhar(atuais[i.id]) || b.ultimoRecebimentoVisto === undefined || b.confirmarOutro === true) continue;
+      const todos = Object.values((await kv.hgetall(k.lancamentos)) || {}).map(desembrulhar).filter((l) => l && !l.excluido);
+      const novos = todos.filter((l) => l.conta === "recebimento" && String(l.clienteId || "") === String(i.clienteId || "") && l.id !== i.id
+        && String(l.criadoEm || "") > String(b.ultimoRecebimentoVisto || "")).sort((a, c) => String(a.criadoEm).localeCompare(String(c.criadoEm)));
+      if (!novos.length) continue;
+      const u = novos.at(-1);
+      const cli = i.clienteId ? desembrulhar(await kv.hget(k.clientes, String(i.clienteId))) : null;
+      const r = contasAReceber(todos, cfg, hojeSP(), cli ? [cli] : []);
+      const aberto = r.porCliente.find((c) => String(c.clienteId) === String(i.clienteId))?.aberto ?? 0;
+      const hora = new Date(u.criadoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+      const valor = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(u.value).replace(/\u00a0/g, " ");
+      const e = erro(409, `Este cliente recebeu ${valor} às ${hora} por ${u.vendedor?.nome || "outro aparelho"}. Confirma outro recebimento?`);
+      e.dados = { recebidoRecente: { id: u.id, valor: u.value, em: u.criadoEm, por: u.vendedor?.nome || "" }, aberto, ultimoRecebimento: u.criadoEm };
+      throw e;
     }
     for (const i of v2) {
       if (i.conta === "venda_produtos" && i.orcamento && !desembrulhar(atuais[i.id])) {
@@ -1072,7 +1096,7 @@ export async function salvarOrcamento(kv, k, d, cfgSalva, quem = { papel: "dono"
   let cliente = null;
   if (d.cliente?.id) cliente = desembrulhar(await kv.hget(k.clientes, String(d.cliente.id)));
   if (!cliente) cliente = (await clienteRepetido(kv, k, { telefone: tel.digitos }))?.cliente || null;
-  if (!cliente && d.salvarCliente) cliente = await salvarCliente(kv, k, { ...(d.clienteVia || {}), nome, telefone: tel.formatado });
+  if (!cliente && d.salvarCliente) cliente = await salvarCliente(kv, k, { ...(d.clienteVia || {}), nome, telefone: tel.formatado }, quem);
   const clienteOrc = cliente ? { id: cliente.id, nome: cliente.nome, telefone: cliente.telefone || tel.formatado } : { nome, telefone: tel.formatado };
   const viaOrc = d.clienteVia && typeof d.clienteVia === "object" ? limparClienteVia({ ...d.clienteVia, nome, telefone: tel.formatado }) : null;
 
@@ -1231,7 +1255,21 @@ export async function clienteRepetido(kv, k, { telefone, documento }, exceto = n
   return null;
 }
 
-export async function salvarCliente(kv, k, c) {
+// Dois aparelhos cadastrando o mesmo WhatsApp/CPF ou editando o mesmo cliente: um de cada vez (trava curta)
+export const salvarCliente = (kv, k, c, quem = { papel: "dono" }) => {
+  const dig = (v) => String(v || "").replace(/\D/g, "");
+  return comTrava(kv, k, [c?.id ? `cliid-${c.id}` : null, dig(c?.telefone).length >= 10 ? `clitel-${dig(c.telefone).slice(-11)}` : null,
+    dig(c?.documento).length >= 11 ? `clidoc-${dig(c.documento)}` : null], () => salvarClienteSemTrava(kv, k, c, quem));
+};
+const autorCliente = (quem) => (quem?.papel === "funcionario" ? quem.nome : "Dono");
+function conferirVersaoCliente(atual, versaoBase) {
+  if (versaoBase === undefined || versaoBase === null || !atual) return;
+  if (Number(versaoBase) === Number(atual.versao || 0)) return;
+  const hora = new Date(atual.atualizadoEm || Date.now()).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+  throw erro(409, `Este cliente foi alterado por ${atual.editadoPor || "outra pessoa"} às ${hora}. Recarregue para ver.`);
+}
+
+async function salvarClienteSemTrava(kv, k, c, quem) {
   const nome = texto(c?.nome, 120).trim();
   if (!nome) throw erro(400, "Informe o nome do cliente.");
   const telTexto = String(c?.telefone || "").trim();
@@ -1255,6 +1293,7 @@ export async function salvarCliente(kv, k, c) {
     id = `C${Number(await kv.incr(k.cliSeq))}`;
   }
   const atual = desembrulhar(await kv.hget(k.clientes, id));
+  if (c?.id) conferirVersaoCliente(atual, c.versaoBase);
   // Conta corrente: fiado sem vencimento (nunca "atrasado"); alertas opcionais por limite em R$ e/ou dias sem pagar
   const opcional = (v, min, max, nome, inteiro) => {
     if (v === undefined) return undefined;
@@ -1280,7 +1319,10 @@ export async function salvarCliente(kv, k, c) {
     ...dadosDaVia(c, atual),
     inativo: Boolean(atual?.inativo),
     criadoEm: atual?.criadoEm || agora, atualizadoEm: agora,
+    versao: Number(atual?.versao || 0) + 1, editadoPor: autorCliente(quem),
+    ...(atual ? {} : { criadoPor: autorCliente(quem) }),
   };
+  if (atual?.criadoPor) cliente.criadoPor = atual.criadoPor;
   if (cliente.contaCorrente) cliente.prazoDias = null;
   await kv.hset(k.clientes, { [id]: cliente });
   return cliente;
@@ -1297,10 +1339,10 @@ export async function listarClientes(kv, k) {
 }
 
 // Inativar / reativar: some das buscas do Vender e dos orçamentos; o histórico fica
-export async function situacaoCliente(kv, k, id, inativo) {
+export async function situacaoCliente(kv, k, id, inativo, quem = { papel: "dono" }) {
   const atual = desembrulhar(await kv.hget(k.clientes, String(id || "")));
   if (!atual) throw erro(404, "Cliente não encontrado.");
-  const novo = { ...normalizarCliente(atual), inativo: Boolean(inativo), atualizadoEm: new Date().toISOString() };
+  const novo = { ...normalizarCliente(atual), inativo: Boolean(inativo), atualizadoEm: new Date().toISOString(), versao: Number(atual.versao || 0) + 1, editadoPor: autorCliente(quem) };
   await kv.hset(k.clientes, { [novo.id]: novo });
   return novo;
 }

@@ -347,12 +347,20 @@ async function conferir(conta) {
   if (resp === null) return;
   const informado = num(resp);
   if (informado == null || !Number.isFinite(informado)) return alert("Valor inválido.");
+  // Enquanto contava, outro aparelho pode ter vendido ou lançado: recarrega e usa o esperado de agora
+  await C().recarregar();
+  const d2 = dados();
+  const calc2 = conta === "gaveta" ? esperadoGaveta(d2.movs, d2.ab, data) : saldos(d2.movs, d2.ab, data).porConta[conta];
+  if (Math.abs(calc2 - calculado) >= 0.005) {
+    alert(`Enquanto você contava, entrou ou saiu ${moeda(calc2 - calculado)} em ${NOMES_CONTAS[conta]} (lançado em outro aparelho). Esperado agora: ${moeda(calc2)}.`);
+  }
+  const calculadoFinal = calc2;
   try {
-    const r = await postar({ conferencia: { data, conta, informado, calculado } });
+    const r = await postar({ conferencia: { data, conta, informado, calculado: calculadoFinal } });
     const dif = r.conferencia.diferenca;
     alert(Math.abs(dif) < 0.01
       ? `${NOMES_CONTAS[conta]}: bateu! ${moeda(informado)}.`
-      : `${NOMES_CONTAS[conta]}: diferença de ${moeda(dif)} (real ${moeda(informado)} × calculado ${moeda(calculado)}).\n\n${dif > 0 ? "Tem mais dinheiro do que o lançado: falta lançar alguma entrada?" : "Tem menos dinheiro do que o lançado: falta lançar alguma saída?"}`);
+      : `${NOMES_CONTAS[conta]}: diferença de ${moeda(dif)} (real ${moeda(informado)} × calculado ${moeda(calculadoFinal)}).\n\n${dif > 0 ? "Tem mais dinheiro do que o lançado: falta lançar alguma entrada?" : "Tem menos dinheiro do que o lançado: falta lançar alguma saída?"}`);
   } catch (err) {
     return alert(`A conferência não foi salva: ${err.message}`);
   }

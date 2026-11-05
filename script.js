@@ -158,7 +158,8 @@ async function api(caminho, { method = 'GET', body, timeoutMs = 60000 } = {}) {
     const dados = await res.json().catch(() => null);
     if (!res.ok) {
         const explicacao = { 504: 'o servidor demorou demais e foi interrompido', 413: 'pedido grande demais', 500: 'erro no servidor' }[res.status];
-        throw new Error(dados?.error || `erro ${res.status}${explicacao ? ': ' + explicacao : ''}`);
+        // o que o servidor mandou junto (ex.: recebimento recente, duplicado) segue no erro
+        throw Object.assign(new Error(dados?.error || `erro ${res.status}${explicacao ? ': ' + explicacao : ''}`), { status: res.status, dados });
     }
     return dados || {};
 }

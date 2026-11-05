@@ -176,5 +176,5 @@ export async function autorizar(request, response, { permiteFuncionario = false 
 
 export function responderErro(response, error) {
   const status = error.status || 500;
-  response.status(status).json({ error: error.message, ...(error.duplicado ? { duplicado: error.duplicado } : {}) });
+  response.status(status).json({ error: error.message, ...(error.duplicado ? { duplicado: error.duplicado } : {}), ...(error.dados || {}) });
 }

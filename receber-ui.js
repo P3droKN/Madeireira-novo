@@ -156,8 +156,19 @@ const nomeForma = (f) => NOMES_FORMA[f] || f;
 
 // ---------- Receber ----------
 
-function abrirReceber(c) {
+// O saldo do cliente é lido do servidor na hora de receber (outro aparelho pode ter recebido ou vendido fiado)
+const ultimoRecebimentoDe = (clienteId) => (C().itens || []).filter((l) => l.conta === "recebimento" && String(l.clienteId || "") === String(clienteId || ""))
+  .reduce((m, l) => (String(l.criadoEm || "") > m ? String(l.criadoEm) : m), "");
+function situacaoAtual(c) {
+  const r = contasAReceber(C().itens, C().configFinanceiro, hoje(), window.Clientes?.lista || []);
+  return r.porCliente.find((x) => (c.clienteId ? String(x.clienteId) === String(c.clienteId) : x.cliente === c.cliente)) || { ...c, aberto: 0, atrasado: 0, dividas: [] };
+}
+async function abrirReceber(c0) {
   if (C().somenteLeitura) return alert("Sem conexão com a nuvem. Nada pode ser lançado.");
+  try { await C().recarregar(); } catch { /* sem conexão: o aviso aparece ao gravar */ }
+  if (C().somenteLeitura) return alert("Sem conexão com a nuvem. Nada pode ser lançado.");
+  const c = situacaoAtual(c0);
+  estado.ultimoVisto = ultimoRecebimentoDe(c.clienteId);
   estado.atual = c;
   estado.idReceb = null; // recebimento novo; numa nova tentativa (falha de internet) o mesmo identificador
   const abertas = c.dividas.filter((d) => d.aberto > 0);
@@ -189,7 +200,33 @@ async function salvarRecebimento(e) {
     clienteId: c.clienteId, cliente: c.cliente, pagamentos, description: $("rc-desc").value.trim() || `Recebimento de ${c.cliente}`,
   };
   if ($("rc-abater").value) item.vendaIds = [$("rc-abater").value];
-  if (await C().gravar([item])) {
+  item.ultimoRecebimentoVisto = estado.ultimoVisto || "";
+  let gravou = false;
+  for (let tentativa = 0; tentativa < 3 && !gravou; tentativa++) {
+    try {
+      await window.api("/api/lancamento", { method: "POST", body: { itens: [item] } });
+      gravou = true;
+    } catch (err) {
+      // Outro aparelho recebeu deste cliente depois que esta tela leu o saldo: mostra o saldo novo e pergunta
+      if (err.dados?.recebidoRecente) {
+        await C().recarregar();
+        const agora = situacaoAtual(c);
+        if (!confirm(`${err.message}\n\nEm aberto agora: ${moeda(err.dados.aberto ?? agora.aberto)}.\nReceber mais ${moeda(valor)} de ${c.cliente}?`)) {
+          fecharReceber();
+          window.ClientesUI?.atualizar?.();
+          return;
+        }
+        item.ultimoRecebimentoVisto = estado.ultimoVisto = err.dados.ultimoRecebimento || ultimoRecebimentoDe(c.clienteId);
+        item.confirmarOutro = true;
+        c.aberto = err.dados.aberto ?? agora.aberto;
+        continue;
+      }
+      alert(`Não foi salvo: ${err.message}`);
+      return;
+    }
+  }
+  if (gravou) {
+    await C().recarregar();
     estado.idReceb = null;
     fecharReceber();
     const resta = Math.max(0, Math.round((c.aberto - valor) * 100) / 100);

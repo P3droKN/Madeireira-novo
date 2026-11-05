@@ -166,7 +166,7 @@ export const ROTAS = {
       return response.status(200).json(func ? { ...r, orcamentos: r.orcamentos.map(orcamentoParaFuncionario) } : r);
     }
     if (request.method === "POST") {
-      if (request.body?.cliente && !request.body?.orcamento) return response.status(200).json({ cliente: await salvarCliente(kv(), k, request.body.cliente) });
+      if (request.body?.cliente && !request.body?.orcamento) return response.status(200).json({ cliente: await salvarCliente(kv(), k, request.body.cliente, quem) });
       const cfg = (await kv().get(k.configFinanceiro)) || {};
       const orc = func ? await prepararOrcamentoDoFuncionario(kv(), k, request.body?.orcamento) : request.body?.orcamento;
       return response.status(200).json({ orcamento: saida(await salvarOrcamento(kv(), k, orc, cfg, quem)) });
@@ -198,11 +198,11 @@ export const ROTAS = {
     }
     if (request.method === "PATCH") {
       const b = request.body || {};
-      if (b.acao === "inativar" || b.acao === "reativar") return response.status(200).json({ cliente: await situacaoCliente(kv(), k, b.id, b.acao === "inativar") });
+      if (b.acao === "inativar" || b.acao === "reativar") return response.status(200).json({ cliente: await situacaoCliente(kv(), k, b.id, b.acao === "inativar", quem) });
       if (b.acao === "excluir") return response.status(200).json(await excluirCliente(kv(), k, b));
       return response.status(400).json({ error: "Ação inválida." });
     }
-    response.status(200).json({ cliente: await salvarCliente(kv(), k, request.body?.cliente) });
+    response.status(200).json({ cliente: await salvarCliente(kv(), k, request.body?.cliente, quem) });
   }, { funcionario: true }),
 
   // Entrada do funcionário (/funcionarios). Sem senha: a tela de entrada lista os nomes e confere o PIN.

@@ -127,6 +127,7 @@ async function paraVenda({ fiado = false } = {}) {
   }
   if (!estado.id && !temDados(d)) return {};
   if (!estado.id && (fiado || $("cp-salvar").checked)) {
+    await atualizarLista(true); // confere o duplicado com a lista de agora (outro aparelho pode ter cadastrado)
     const dup = repetido(d);
     if (dup) {
       if (!confirm(`Já existe ${dup.cliente.nome} com esse ${dup.campo}${dup.cliente.inativo ? " (inativo)" : ""}.\n\nVincular a venda a ${dup.cliente.nome}?`)) return null;
@@ -149,6 +150,15 @@ async function paraVenda({ fiado = false } = {}) {
   if (temDados(d)) r.clienteVia = d;
   return r;
 }
+
+// Lista de clientes lida do servidor ao começar a digitar (cliente cadastrado agora em outro aparelho aparece na hora)
+let ultimaLeitura = 0;
+async function atualizarLista(forcar = false) {
+  if (!forcar && Date.now() - ultimaLeitura < 3000) return;
+  ultimaLeitura = Date.now();
+  try { await window.Clientes?.carregar(); } catch { /* sem conexão: fica a lista que já tinha */ }
+}
+for (const id of ["cp-nome", "cp-tel", "cp-doc"]) $(id).addEventListener("focus", () => atualizarLista().then(render));
 
 // ---------- Eventos ----------
 

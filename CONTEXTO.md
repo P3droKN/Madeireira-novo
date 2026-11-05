@@ -403,3 +403,12 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 **Item 5: funcionário e cliente na venda**
 - O funcionário usa o mesmo bloco Cliente do pedido (`cliente-pedido.js`): vincular cadastrado, avulso (dados só na venda/via), "Salvar como cliente", aviso de duplicado e fiado com cliente novo ou cadastrado (`/api/clientes` liberado para ele).
 - Pedidos de hoje › 🖨 Vias › "✎ Cliente e entrega": o funcionário corrige os dados da via das vendas de hoje (o botão some nas de outros dias; o servidor dá 403). Venda no fiado: o nome (quem deve) fica travado na tela e o servidor recusa trocar o cliente (409); só o dono, em Corrigir venda. `clienteDaVenda(..., quem)` grava `alteracoesCliente: [{ em, por, funcionarioId? }]` (últimas 20); o dono vê "cliente/entrega alterados por … em …" em Caixa › Lançamentos.
+
+**Item 6: vários aparelhos ao mesmo tempo (um pedido por aparelho)**
+- Travas curtas (`comTrava`) também no cliente do recebimento (`cli-<id>`), no orçamento convertido (`orc-<id>`) e no cadastro de cliente (por id, WhatsApp e CPF/CNPJ): dois aparelhos passam um de cada vez e o segundo lê o que o primeiro gravou. Números V-/ORC- continuam no contador atômico.
+- Receber fiado: `abrirReceber` recarrega os dados antes de mostrar o saldo; o recebimento vai com `ultimoRecebimentoVisto` (o `criadoEm` do último recebimento do cliente que a tela conhecia). Se houver outro depois (outro aparelho), o servidor recusa com 409 `recebidoRecente`/`aberto` ("Este cliente recebeu R$ X às HH:MM por Fulano. Confirma outro recebimento?"); a tela mostra o saldo novo e só grava com `confirmarOutro: true`. `responderErro` repassa `error.dados`; `api()` põe `status` e `dados` no erro.
+- Cliente: `versao`, `editadoPor`, `criadoPor`; editar com `versaoBase` velha → 409 "Este cliente foi alterado por Fulano às HH:MM. Recarregue para ver." Inativar/reativar também sobe a versão.
+- Cliente novo em outro aparelho: o bloco Cliente relê a lista do servidor ao focar nome/WhatsApp/CPF (no máximo a cada 3 s) e antes de conferir duplicado; a busca de Clientes também.
+- Fechar gaveta: depois de digitar a contagem, recarrega e recalcula o esperado; se mudou (venda em outro aparelho), avisa "Enquanto você contava, entrou ou saiu R$ X" e grava com o esperado de agora.
+- Internet: a venda que falhou mantém o mesmo id na nova tentativa (`vendaPendenteId`), então a resposta perdida não duplica nem gasta número.
+- Teste: tests/e2e/aparelhos.mjs (dono no computador, Ana no celular, Beto no computador; 21 verificações).
