@@ -958,3 +958,56 @@ test("cliente de uma venda já registrada: vincular, dados da via, e fiado só p
   await assert.rejects(clienteDaVenda(kv, K, { id: "F1", clienteId: null, clienteVia: { nome: "Outro" } }), /use Corrigir/);
   assert.equal((await clienteDaVenda(kv, K, { id: "F1", clienteId: c.id, clienteVia: { obs: "entregar" } })).clienteVia.obs, "entregar", "fiado: muda só a entrega");
 });
+
+test("custo da venda do dono vem do catálogo do servidor (não da tela); corrigir mantém o custo dos itens que não mudaram", async () => {
+  const { lerCustos } = await import("../api/_lib.js");
+  const custoPinus = lerCustos().pinus_por_peca.dimensoes["1x2x2.50"];
+  const kv = kvFalso({ [K.finance]: [] });
+  await migrar(kv, K);
+  const item = (q, custoTela) => ({ itemId: "PINUS|1x2x2.50", acabamento: "BRUTO", quantidade: q, quantidadeCobrada: q, vendaTotal: q * 10, custoTotal: custoTela });
+  const venda = (itens, extra = {}) => ({ id: "CV1", v: 2, conta: "venda_produtos", value: itens.reduce((s, i) => s + i.vendaTotal, 0), competencia: "2026-10-01",
+    pagamentos: [{ forma: "dinheiro", valor: itens.reduce((s, i) => s + i.vendaTotal, 0) }], cmv: 0.01, itens, ...extra });
+  await salvarLancamentos(kv, K, [venda([item(10, 1)])]);
+  let v = await kv.hget(K.lancamentos, "CV1");
+  assert.equal(v.itens[0].custoTotal, Math.round(custoPinus * 10 * 100) / 100, "tela velha mandou custo 1: vale o do catálogo");
+  assert.equal(v.cmv, v.itens[0].custoTotal);
+  // custo gravado de outra época: corrigir sem mexer no item mantém; mudar a quantidade recalcula
+  await kv.hset(K.lancamentos, { CV1: { ...v, itens: [{ ...v.itens[0], custoTotal: 5 }], cmv: 5 } });
+  await salvarLancamentos(kv, K, [venda([item(10, 99)], { versaoBase: v.versao })]);
+  v = await kv.hget(K.lancamentos, "CV1");
+  assert.equal(v.itens[0].custoTotal, 5);
+  await salvarLancamentos(kv, K, [venda([item(10, 99), item(2, 99)], { versaoBase: v.versao })]);
+  v = await kv.hget(K.lancamentos, "CV1");
+  assert.deepEqual(v.itens.map((i) => i.custoTotal), [5, Math.round(custoPinus * 2 * 100) / 100]);
+  // "Outros": o custo digitado pelo dono vale; em branco fica não informado
+  await salvarLancamentos(kv, K, [{ ...venda([{ itemId: "OUTROS|LIVRE", quantidade: 1, vendaTotal: 50, custoTotal: 20 }, { itemId: "OUTROS|LIVRE", quantidade: 1, vendaTotal: 30, custoTotal: null }]), id: "CV2" }]);
+  const o = await kv.hget(K.lancamentos, "CV2");
+  assert.deepEqual(o.itens.map((i) => i.custoTotal), [20, null]);
+  assert.equal(o.cmv, 20);
+});
+
+test("backup leva os funcionários (nome, situação e resumo do PIN, nunca o PIN); restaurar devolve; arquivo com PIN aberto é recusado", async () => {
+  const { salvarFuncionario, listarFuncionarios } = await import("../api/_funcionarios.js");
+  const kv = kvFalso({ [K.finance]: [] });
+  await migrar(kv, K);
+  const ana = await salvarFuncionario(kv, K, { nome: "Ana", pin: "4321" });
+  await salvarFuncionario(kv, K, { id: ana.id, ativo: false });
+  const b = await montarBackup(kv, K);
+  const f = b.chaves.madeireira_funcionarios[ana.id];
+  assert.equal(f.nome, "Ana");
+  assert.equal(f.ativo, false);
+  assert.match(f.pin.resumo, /^[0-9a-f]{64}$/);
+  assert.ok(!JSON.stringify(b).includes("4321"));
+  await kv.del(K.funcionarios);
+  const r = await restaurar(kv, K, b);
+  assert.equal(r.funcionarios, 1);
+  assert.deepEqual((await listarFuncionarios(kv, K)).map((x) => [x.nome, x.ativo]), [["Ana", false]]);
+  const ruim = structuredClone(b);
+  ruim.chaves.madeireira_funcionarios[ana.id].pin = "4321";
+  await assert.rejects(restaurar(kv, K, ruim), /resumo do PIN/);
+  // backup antigo (sem a chave) não mexe nos funcionários; zerar não apaga
+  const antigo = structuredClone(b); delete antigo.chaves.madeireira_funcionarios;
+  assert.equal((await restaurar(kv, K, antigo)).funcionarios, null);
+  assert.equal((await listarFuncionarios(kv, K)).length, 1);
+  assert.ok(!CHAVES_ZERAR.includes("funcionarios"));
+});

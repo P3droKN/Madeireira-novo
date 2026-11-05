@@ -5,6 +5,7 @@ import { contaPorId, naturezaDaConta, PAGO_COM, mesclarConfigFinanceiro, juntarC
 import { converterLancamento, lancamentosDeAbertura, categoriaLegada, sugestaoDe } from "../lib/migracaoV2.js";
 import { numeroOrcamento, normalizarTelefone, somarDias, ORIGENS, MOTIVOS_PERDA } from "../lib/orcamentos.js";
 import { dataSP, hojeSP } from "../lib/datas.js";
+import { catalogoDoServidor, custoDosItens } from "./_custos.js";
 import { contasAReceber } from "../lib/receber.js";
 
 const brl = (v) => "R$ " + Number(v || 0).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -149,6 +150,21 @@ export async function lerTudo(kv, k) {
 
 // Cópia exata de todas as chaves do sistema, com nomes sem prefixo
 // (assim uma cópia da produção pode ser restaurada no preview para ensaio).
+// Funcionários no backup e no Restaurar: só os campos conhecidos; recusa PIN aberto ou resumo fora do formato
+const HEX = /^[0-9a-f]{16,128}$/;
+function funcionariosDoBackup(hash) {
+  const r = {};
+  for (const [id, v] of Object.entries(hash || {})) {
+    const f = desembrulhar(v);
+    if (!f || typeof f !== "object") continue;
+    if (!HEX.test(String(f.pin?.sal || "")) || !HEX.test(String(f.pin?.resumo || ""))) throw erro(400, `Funcionário ${texto(f.nome, 60) || id} sem o resumo do PIN no formato certo.`);
+    if (!/^F[0-9a-z]{1,20}$/.test(String(f.id || id))) throw erro(400, "Funcionário com código inválido no arquivo.");
+    r[String(f.id || id)] = { id: String(f.id || id), nome: texto(f.nome, 60).trim() || "Sem nome", ativo: f.ativo === true,
+      pin: { sal: f.pin.sal, resumo: f.pin.resumo }, criadoEm: texto(f.criadoEm, 40) || null, atualizadoEm: texto(f.atualizadoEm, 40) || null };
+  }
+  return r;
+}
+
 export async function montarBackup(kv, k) {
   return {
     app: "madeireira",
@@ -171,6 +187,8 @@ export async function montarBackup(kv, k) {
       madeireira_venda_seq: (await kv.get(k.vendaSeq)) ?? null,
       madeireira_saldos: desembrulhar(await kv.get(k.saldos)) ?? null,
       madeireira_conferencias: (await kv.hgetall(k.conferencias)) ?? null,
+      // nome, situação e o resumo criptográfico do PIN (scrypt + sal); o PIN em si nunca é guardado
+      madeireira_funcionarios: funcionariosDoBackup((await kv.hgetall(k.funcionarios)) || {}),
     },
   };
 }
@@ -315,6 +333,15 @@ async function salvarLancamentosSemTrava(kv, k, itens, quem = { papel: "dono" },
   const orcamentosAFechar = [];
   if (v2.length) {
     const atuais = (await kv.hmget(k.lancamentos, ...v2.map((i) => String(i.id)))) || {};
+    // Custo dos itens pelo catálogo do servidor (dono e funcionário); a correção mantém o dos itens que não mudaram
+    let catalogo = null;
+    for (const i of v2) {
+      if (i.conta !== "venda_produtos" || i.migrado || !Array.isArray(i.itens) || !i.itens.length) continue;
+      catalogo ||= catalogoDoServidor(desembrulhar(await kv.get(k.config)) || {});
+      const r = custoDosItens(i.itens, catalogo, { antesItens: desembrulhar(atuais[i.id])?.itens, custoDigitadoVale: quem.papel !== "funcionario" });
+      i.itens = r.itens;
+      i.cmv = r.cmv;
+    }
     // Conferências antes de gravar qualquer coisa (nada fica gravado pela metade)
     for (const i of v2) {
       const antes = desembrulhar(atuais[i.id]);
@@ -468,6 +495,9 @@ export async function restaurar(kv, k, arquivo) {
   const l = alvo.madeireira_lancamentos;
   if (l != null && (typeof l !== "object" || Array.isArray(l))) throw erro(400, "madeireira_lancamentos inválido.");
 
+  // Funcionários: conferidos antes de mexer em qualquer coisa (backup antigo, sem a chave, não mexe neles)
+  const funcionarios = "madeireira_funcionarios" in alvo ? funcionariosDoBackup(alvo.madeireira_funcionarios) : null;
+
   const copia = await salvarCopia(kv, k, "antes-de-restaurar");
 
   const gravar = async (chave, valor) => (valor == null ? kv.del(chave) : kv.set(chave, valor));
@@ -498,12 +528,17 @@ export async function restaurar(kv, k, arquivo) {
     await kv.del(k.conferencias);
     if (alvo.madeireira_conferencias && Object.keys(alvo.madeireira_conferencias).length) await kv.hset(k.conferencias, alvo.madeireira_conferencias);
   }
+  if (funcionarios) {
+    await kv.del(k.funcionarios);
+    if (Object.keys(funcionarios).length) await kv.hset(k.funcionarios, funcionarios);
+  }
 
   return {
     copia,
     lancamentos: l ? Object.keys(l).length : 0,
     listaAntiga: Array.isArray(f) ? f.length : 0,
     migrado: Boolean(alvo.madeireira_migrado_v1),
+    funcionarios: funcionarios ? Object.keys(funcionarios).length : null,
   };
 }
 

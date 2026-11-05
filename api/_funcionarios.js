@@ -9,6 +9,7 @@ import { mesclarConfigFinanceiro } from "../lib/planoContas.js";
 import { contasAReceber } from "../lib/receber.js";
 import { hojeSP } from "../lib/datas.js";
 import { somarDias } from "../lib/orcamentos.js";
+import { quantidadeCobradaDe } from "./_custos.js";
 
 const texto = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
 const centavos = (v) => Math.round(Number(v || 0) * 100);
@@ -142,8 +143,7 @@ export async function conferirItensDoFuncionario(kv, k, itens, { refTabela = nul
     const item = cat.itens.get(idAtual(String(i?.itemId || "")));
     if (!item) throw erro(400, `Item fora do catálogo: ${texto(i?.descricao, 60) || i?.itemId}`);
     const livre = item.unidade === "valor_livre";
-    const q = Number(i.quantidade), c = Number(i.comprimento);
-    const qc = livre ? 1 : c > 0 ? q * c : q;
+    const qc = quantidadeCobradaDe(item, i);
     if (!(qc > 0)) throw erro(400, "Quantidade inválida num item do pedido.");
     const venda = Number(i.vendaTotal);
     if (!Number.isFinite(venda) || venda < 0) throw erro(400, "Preço inválido num item do pedido.");

@@ -395,3 +395,7 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - Vender › "Pedidos de hoje" (`pedidos-hoje.js`): vendas do dia de todos, com vendedor e 🖨 Vias. Pedidos de hoje, orçamentos e clientes se atualizam a cada 30 s e ao voltar para a tela (só no Vender/Clientes e Orçamentos, sem janela aberta e sem ninguém digitando ali).
 - O cadastro dos funcionários (`madeireira_funcionarios`) não entra no backup nem no Zerar.
 - Teste: tests/e2e/funcionarios.mjs (45 verificações).
+
+**Backup com funcionários e custo pelo servidor (itens 3 e 4)**
+- Backup (Baixar e cópias automáticas) leva `madeireira_funcionarios`: id, nome, ativo e `pin: { sal, resumo }` (scrypt); o PIN nunca. Restaurar confere antes de gravar (resumo/sal em hex, id `F…`; PIN aberto ou fora do formato → 400 sem mexer em nada) e troca a lista; backup antigo, sem a chave, não mexe nos funcionários. Zerar continua sem apagar.
+- `api/_custos.js` (`custoDosItens`, `quantidadeCobradaDe`): em `salvarLancamentos`, toda venda v2 com itens (dono e funcionário) tem o custo de cada item e o CMV recalculados pelo catálogo do servidor; o custo que veio da tela é ignorado. Correção: item igual ao gravado (mesmo item, acabamento, quantidade e comprimento) mantém o custo gravado. "Outros": vale o custo digitado pelo dono (em branco = não informado); do funcionário, sempre não informado. Item fora do catálogo (dado antigo): fica o que veio. Venda sem itens: CMV como lançado.

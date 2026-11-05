@@ -14,7 +14,8 @@ const post = (rota, corpo, metodo = "POST") => fetch(URL + rota, { method: metod
 await post("/api/config", { abertura: { data: "2026-10-01", contas: { gaveta: 300, bradesco: 1000, picpay: 0, cheques_carteira: 0 } } });
 await post("/api/clientes", { cliente: { nome: "Zé da Obra", contaCorrente: true } });
 const v = (id, data, valor, pagamentos, extra = {}) => ({ id, v: 2, conta: "venda_produtos", value: valor, competencia: data, pagamentos, ...extra });
-const itens = (cmv) => ({ cmv, itens: [{ itemId: "PINUS|1x2x2.50", descricao: "Pinus 1x2 × 2,50 m", acabamento: "BRUTO", quantidade: 10, quantidadeCobrada: 10, unidade: "peça", vendaTotal: 1, custoTotal: cmv }] });
+// "Outros" com custo digitado pelo dono: o servidor mantém esse custo (o de itens do catálogo vem do catálogo)
+const itens = (cmv) => ({ cmv, itens: [{ itemId: "OUTROS|LIVRE", descricao: "Pinus 1x2 × 2,50 m", acabamento: "UNICO", quantidade: 1, quantidadeCobrada: 1, unidade: "un", vendaTotal: 1, custoTotal: cmv }] });
 // a ordem do POST é a ordem da hora (criadoEm)
 for (const item of [
   { id: "FA1", v: 2, conta: "fiado_anterior", value: 400, competencia: "2026-10-01", clienteId: "C1", cliente: "Zé da Obra", contaCorrente: true },

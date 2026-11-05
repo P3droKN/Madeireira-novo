@@ -542,7 +542,7 @@ async function restoreBackup(event) {
     if (resposta !== 'RESTAURAR') return;
     try {
         const r = await api('/api/restaurar', { method: 'POST', body: { confirmacao: 'RESTAURAR', arquivo } });
-        alert(`Backup restaurado: ${r.lancamentos} lançamentos.\n\nCópia do estado anterior: ${r.copia}`);
+        alert(`Backup restaurado: ${r.lancamentos} lançamentos${r.funcionarios != null ? `, ${r.funcionarios} funcionário(s)` : ""}.\n\nCópia do estado anterior: ${r.copia}`);
     } catch (e) {
         alert(`Erro ao restaurar: ${e.message}`);
     }
