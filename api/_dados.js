@@ -1006,6 +1006,7 @@ function itemOrcamento(i) {
     acabamento: texto(i.acabamento, 20),
     quantidade: num(i.quantidade),
     comprimento: num(i.comprimento),
+    quantidadeCobrada: num(i.quantidadeCobrada),
     descricao: texto(i.descricao, 200),
     descricaoLivre: texto(i.descricaoLivre, 120),
     quantidadeTexto: texto(i.quantidadeTexto, 80),

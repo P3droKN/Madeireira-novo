@@ -459,7 +459,11 @@ $("orc-nome").addEventListener("change", () => {
 
 window.Orcamentos = {
   // Janela das vias do orçamento › "💬 Enviar no WhatsApp": o mesmo Enviar da lista (registra o contato)
-  enviarWhats(id) { const o = porId(id); if (o) abrirWhats(o, "enviar"); },
+  async enviarWhats(id) {
+    let o = porId(id);
+    if (!o) { await carregar(); o = porId(id); } // recém-salvo: a lista pode ainda não ter chegado
+    if (o) abrirWhats(o, "enviar"); else alert("Orçamento não encontrado. Abra pela aba Orçamentos.");
+  },
   async abrir() {
     if (await carregar()) renderTudo();
   },

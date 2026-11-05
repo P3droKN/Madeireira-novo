@@ -112,3 +112,12 @@ test("venda rápida sem itens: uma linha com a descrição", () => {
   const d = documentoDaVenda({ id: "X", numero: "V-0003", competencia: "2026-10-25", value: 1000, description: "Venda: balcão", pagamentos: [{ forma: "dinheiro", valor: 1000 }] });
   assert.deepEqual(d.linhas, [{ descricao: "balcão", acabamento: "", cep: false, quantidade: "", quant: "", unid: "", unitario: null, total: 1000 }]);
 });
+
+test("orçamento antigo (sem quantidade cobrada): Quant., Unid. e valor unitário saem das peças × comprimento", () => {
+  const o = { id: "ORC-0004", data: "2026-11-04", validoAte: "2026-11-11", cliente: { nome: "Danielle", telefone: "(41) 99899-0019" }, frete: 50, total: 105,
+    itens: [{ descricao: "Cambará 2x4", acabamento: "BRUTO", quantidade: 2, comprimento: 2.5, quantidadeTexto: "2 pç × 2,50 m = 5,00 m", unidade: "m", vendaTotal: 55 },
+      { descricao: "Pinus 2x4 × 3,00 m", acabamento: "BRUTO", quantidade: 3, unidade: "peça", vendaTotal: 75 }] };
+  const [a, b] = documentoDoOrcamento(o).linhas;
+  assert.deepEqual([a.quant, a.unid, a.unitario], ["5", "m", 11]);
+  assert.deepEqual([b.quant, b.unid, b.unitario], ["3", "pç", 25]);
+});

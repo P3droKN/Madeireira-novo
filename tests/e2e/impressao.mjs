@@ -199,6 +199,16 @@ await page.waitForSelector("#modal-impressao", { state: "visible" });
 const po = nb(await page.textContent("#imp-previa-folha"));
 ok(nb(await page.textContent("#imp-titulo")).includes("Orçamento ORC-0001 salvo") && po.includes("ORÇAMENTO Nº") && po.includes("ORC-0001") && po.includes("VÁLIDO ATÉ:") && !po.includes("ASSINATURA") && !po.includes("Pagamento:") && po.includes("FONE:(47) 99999-1234"),
   "orçamento: janela \"Orçamento ORC-0001 salvo\", com Válido até, sem assinatura e sem forma de pagamento");
+// colunas Quant. e Unid. e o valor unitário também na via do orçamento
+const linhaOrc = await page.$$eval("#imp-previa-folha .pv-via:first-child tbody tr:first-child td", (t) => t.map((x) => x.textContent.trim()));
+ok(linhaOrc[1] === "10" && linhaOrc[2] === "pç" && linhaOrc[5] !== "", `via do orçamento: Quant. 10, Unid. pç e valor unitário (${linhaOrc.join(" | ")})`);
+// 💬 Enviar no WhatsApp a partir da janela do orçamento: abre a janela de envio (na frente)
+await page.click("#imp-whats");
+await page.waitForSelector("#modal-orc-whats", { state: "visible" });
+ok(await page.isHidden("#modal-impressao") && nb(await page.textContent("#orc-whats-para")).includes("(47) 99999-1234") && (await page.getAttribute("#orc-whats-abrir", "href")).startsWith("https://wa.me/5547999991234"),
+  "orçamento: \"💬 Enviar no WhatsApp\" abre a janela de envio com o número do cliente");
+await page.click("#modal-orc-whats .btn-icon");
+await page.evaluate(() => window.Impressao.abrir({ orcamento: window.Orcamentos.lista.find((o) => o.id === "ORC-0001") }));
 await page.screenshot({ path: "impressao.png" });
 await page.click("#imp-fechar");
 

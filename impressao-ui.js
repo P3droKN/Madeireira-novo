@@ -122,7 +122,9 @@ function atualizarWhats() {
   info.textContent = `Para ${t.formatado}${pareceFixo(tel) ? " · ⚠ parece telefone fixo: o WhatsApp pode não abrir" : ""}${ultimo}`;
 }
 $("imp-whats").addEventListener("click", async (e) => {
-  if (e.currentTarget.dataset.modo === "orcamento") { e.preventDefault(); window.Orcamentos?.enviarWhats(estado.orcamentoId); return; }
+  // Orçamento: abre a janela "Enviar" do orçamento (modelo de mensagem, número, registra o contato).
+  // A janela das vias fecha antes: senão a do WhatsApp ficava escondida atrás dela.
+  if (e.currentTarget.dataset.modo === "orcamento") { e.preventDefault(); const id = estado.orcamentoId; fechar(); window.Orcamentos?.enviarWhats(id); return; }
   if (!e.currentTarget.href) { e.preventDefault(); return alert('Preencha o WhatsApp do cliente em "✎ Cliente e entrega".'); }
   // o link abre o WhatsApp (o navegador cuida disso); aqui só registramos que abriu
   try {

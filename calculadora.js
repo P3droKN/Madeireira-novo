@@ -511,6 +511,7 @@ function fotografiaPedido() {
     const acab = l.acabamento !== "UNICO" ? ` (${ACABAMENTOS[l.acabamento].toLowerCase()})` : "";
     return {
       itemId: l.itemId, acabamento: l.acabamento, quantidade: l.quantidade, comprimento: l.comprimento,
+      quantidadeCobrada: livre ? null : r.quantidadeCobrada,
       descricao: livre ? descricaoLivre(item, l) : `${item.material} ${item.rotuloDimensao}${acab}`,
       descricaoLivre: l.descricao || "",
       quantidadeTexto: livre ? "" : descreverQtd(l, r).replace(/<small>/, " = ").replace(/<[^>]+>/g, ""),
