@@ -250,11 +250,13 @@ test("portas (internas 60/70/80 a R$ 240, 90 a R$ 270; externa 80 a R$ 1.800) co
   assert.ok(!m("VISTAS_TAUARI").itens.some((i) => /4 peças/.test(i.rotuloDimensao)));
 });
 
-test("Outros (fora do catálogo): valor e custo digitados; sem custo é recusado", () => {
+test("Outros (fora do catálogo): custo digitado, em branco (não informado) ou 0 (zero de verdade)", () => {
   const item = cat.itens.get("OUTROS|LIVRE");
   assert.equal(item.pedeCusto, true);
   const r = calcularItem({ item, totalManual: 500, custoManual: 320 });
   assert.deepEqual([r.vendaTotal, r.custoTotal, r.lucro], [500, 320, 180]);
-  assert.throws(() => calcularItem({ item, totalManual: 500 }), /Informe o custo/);
-  assert.equal(calcularItem({ item, totalManual: 50, custoManual: 0 }).custoTotal, 0);
+  const branco = calcularItem({ item, totalManual: 500, custoManual: "" });
+  assert.deepEqual([branco.custoTotal, branco.pendencias.includes("sem_custo")], [null, true]);
+  const zero = calcularItem({ item, totalManual: 50, custoManual: 0 });
+  assert.deepEqual([zero.custoTotal, zero.pendencias.includes("sem_custo")], [0, false]);
 });

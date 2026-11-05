@@ -1,7 +1,8 @@
 // Janela de impressão das vias (pedidos e orçamentos): escolha 2 vias / só loja / só cliente (lembrada no
 // aparelho), prévia na tela, Imprimir (A4, sem cabeçalho e rodapé do navegador) e Baixar PDF.
 // O documento sai de lib/impressao.js: nada de custo, margem, tabela, % ou controle interno.
-import { documentoDaVenda, documentoDoOrcamento, folhaHtml, lojaDaConfig, faltaNaImpressao, CSS_FOLHA } from "./lib/impressao.js";
+import { documentoDaVenda, documentoDoOrcamento, folhaHtml, lojaDaConfig, faltaNaImpressao, CSS_FOLHA, moeda } from "./lib/impressao.js";
+import { normalizarTelefone, pareceFixo } from "./lib/orcamentos.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -81,9 +82,56 @@ function abrir({ venda = null, orcamento = null, titulo = "", mensagem = "", exe
   // Venda registrada: dá para preencher/editar o cliente e a entrega da via
   $("imp-cliente-btn").hidden = !estado.vendaId;
   $("imp-cliente-form").hidden = true;
+  estado.orcamentoId = orcamento?.id && !exemplo ? orcamento.id : null;
+  atualizarWhats();
   $("modal-impressao").style.display = "flex";
   if (imprimirJa && !falta.length) setTimeout(imprimir, 60);
 }
+
+// ---------- 💬 Enviar no WhatsApp (venda registrada ou orçamento salvo) ----------
+// Usa o WhatsApp do cliente (não o fixo), só os números, com 55. Grava "WhatsApp aberto em", não "enviado":
+// o sistema só sabe que a conversa abriu com a mensagem pronta.
+const dataHoraBR = (iso) => new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(",", "");
+function textoPedido(l, doc) {
+  const primeiro = String(doc.cliente.nome || "").split(" ")[0];
+  const linhas = [`Olá${primeiro && primeiro !== "Consumidor" ? ` ${primeiro}` : ""}! Aqui é da ${loja().nome || "madeireira"}.`, "", `Pedido ${doc.numero || ""}${doc.data ? ` de ${doc.data.split("-").reverse().join("/")}` : ""}:`];
+  for (const i of doc.linhas) linhas.push(`• ${[i.quant, i.unid].filter(Boolean).join(" ")} ${i.descricao}${i.cep ? " (cepilhado)" : ""} – ${moeda(i.total)}`.replace("•  ", "• "));
+  if (doc.frete) linhas.push(`• Frete / entrega – ${moeda(doc.frete)}`);
+  linhas.push("", `Total: ${moeda(doc.total)}`);
+  if (doc.pagamentos?.length) linhas.push(`Pagamento: ${doc.pagamentos.map((p) => p.texto).join(" + ")}`);
+  if (doc.entrega) linhas.push(`Entrega: ${doc.entrega}`);
+  linhas.push("", "Obrigado pela preferência!");
+  return linhas.join("\n");
+}
+function atualizarWhats() {
+  const a = $("imp-whats"), info = $("imp-whats-info");
+  a.hidden = !estado.vendaId && !estado.orcamentoId;
+  info.textContent = "";
+  a.removeAttribute("href");
+  if (a.hidden) return;
+  if (estado.orcamentoId) { a.dataset.modo = "orcamento"; return; }
+  a.dataset.modo = "venda";
+  const l = window.Caixa?.itens?.find((x) => String(x.id) === String(estado.vendaId));
+  const cad = l?.clienteId ? window.Clientes?.porId(l.clienteId) : null;
+  const tel = l?.clienteVia?.telefone || cad?.telefone || "";
+  const t = normalizarTelefone(tel);
+  const abertos = l?.whatsappAbertoEm || [];
+  const ultimo = abertos.length ? ` · WhatsApp aberto em ${dataHoraBR(abertos[abertos.length - 1])}` : "";
+  if (!t.ok) { info.textContent = `Sem WhatsApp do cliente: preencha em "✎ Cliente e entrega".${ultimo}`; return; }
+  a.href = `https://wa.me/55${t.digitos}?text=${encodeURIComponent(textoPedido(l, estado.doc))}`;
+  info.textContent = `Para ${t.formatado}${pareceFixo(tel) ? " · ⚠ parece telefone fixo: o WhatsApp pode não abrir" : ""}${ultimo}`;
+}
+$("imp-whats").addEventListener("click", async (e) => {
+  if (e.currentTarget.dataset.modo === "orcamento") { e.preventDefault(); window.Orcamentos?.enviarWhats(estado.orcamentoId); return; }
+  if (!e.currentTarget.href) { e.preventDefault(); return alert('Preencha o WhatsApp do cliente em "✎ Cliente e entrega".'); }
+  // o link abre o WhatsApp (o navegador cuida disso); aqui só registramos que abriu
+  try {
+    const r = await window.api("/api/lancamento", { method: "PATCH", body: { acao: "whatsapp", id: estado.vendaId } });
+    const l = window.Caixa?.itens?.find((x) => String(x.id) === String(estado.vendaId));
+    if (l) l.whatsappAbertoEm = r.whatsappAbertoEm;
+    atualizarWhats();
+  } catch (err) { console.warn("WhatsApp aberto, mas não registrado:", err.message); }
+});
 
 // Recalcula a folha depois de mudar o cliente da venda
 function refazerDoc() {
@@ -92,6 +140,7 @@ function refazerDoc() {
   estado.doc = documentoDaVenda(l, { cadastro: l.clienteId ? window.Clientes?.porId(l.clienteId) : null });
   estado.paginaInteira = !cabeEmMeiaFolha(estado.doc);
   renderPrevia();
+  atualizarWhats();
 }
 
 // ---------- Cliente e entrega (dados da via salvos na venda) ----------

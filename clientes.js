@@ -20,6 +20,8 @@ async function carregar() {
 
 function preencherDatalist() {
   const dl = document.getElementById("clientes-lista");
+  const dt = document.getElementById("clientes-tel-lista"); // sugestão pelo WhatsApp (bloco Cliente do pedido)
+  if (dt) dt.innerHTML = estado.lista.filter((c) => !c.inativo && c.telefone).map((c) => `<option value="${esc(c.telefone)}">${esc(c.nome)}</option>`).join("");
   if (dl) dl.innerHTML = estado.lista.filter((c) => !c.inativo).map((c) => `<option value="${esc(c.nome)}">${esc(c.telefone || "sem WhatsApp")}</option>`).join("");
 }
 

@@ -33,24 +33,28 @@ await page.fill("#senha-input", "pinho123"); await page.click("#senha-form butto
 await page.waitForFunction(() => document.getElementById("catalogo-status").textContent.includes("itens"));
 await page.waitForFunction(() => window.Caixa && window.Caixa.migradoV2);
 
-// 1. Venda fiado pela aba Vender, cliente novo sem WhatsApp
+// 1. Venda fiado pela aba Vender, cliente novo: o bloco Cliente exige nome e WhatsApp; o cliente é cadastrado (prazo padrão)
 await page.selectOption("#material", "PINUS"); await page.selectOption("#dimension", "PINUS|2x4x3.00");
 await page.fill("#quantity-pieces", "10"); await page.click("#btn-adicionar");
 await page.locator("#calc-pagamentos .pag-forma").first().selectOption("fiado");
-ok(await page.isVisible("#calc-pagamentos .pag-fiado-cliente"), "forma Fiado pede o cliente");
+ok(nb(await page.textContent("#calc-pagamentos")).includes('use o campo "Cliente" acima'), "forma Fiado usa o bloco Cliente do pedido");
 ok(await page.inputValue("#calc-pagamentos .pag-fiado-venc") === "2026-11-09", "vencimento sugerido: data + 30 dias (09/11/2026)");
 await page.click("#btn-registrar-venda");
 await page.waitForTimeout(200);
-ok(dialogos.at(-1).includes("Informe o cliente"), "sem cliente, o fiado não é registrado");
-await page.fill("#calc-pagamentos .pag-fiado-cliente", "Zé da Obra");
+ok(dialogos.at(-1).includes("Fiado: informe o nome do cliente"), "sem cliente, o fiado não é registrado");
+await page.fill("#cp-nome", "Zé da Obra");
 await page.click("#btn-registrar-venda");
-await salvarCadastro(page); // cadastro completo abre com o nome; WhatsApp em branco
+await page.waitForTimeout(200);
+ok(dialogos.at(-1).includes("Fiado: informe o WhatsApp"), "fiado sem WhatsApp é recusado");
+await page.fill("#cp-tel", "(47) 97777-0000");
+await page.click("#btn-registrar-venda");
 await fecharVias(page, dialogos);
 await page.waitForFunction(() => document.querySelectorAll("#items-body tr.linha-item").length === 0);
-ok(dialogos.some((d) => d.includes('"Zé da Obra" não está no cadastro')), "cliente novo: pergunta se quer cadastrar");
+const ze = Object.values((await (await fetch(URL + "/__db")).json()).madeireira_clientes || {}).map((x) => JSON.parse(x)).find((c) => c.nome === "Zé da Obra");
+ok(ze && ze.telefone === "(47) 97777-0000" && !ze.contaCorrente && ze.prazoDias == null, "cliente novo no fiado: cadastrado com o WhatsApp e o prazo padrão");
 const v1 = (await lanc()).find((l) => l.origem === "calculadora");
-ok(v1 && v1.clienteId === "C1" && v1.cliente === "Zé da Obra" && v1.pagamentos[0].forma === "fiado" && v1.pagamentos[0].fiado.vencimento === "2026-11-09" && v1.cmv > 0,
-  "venda fiado gravada: cliente C1 (sem WhatsApp), vencimento 09/11, com CMV");
+ok(v1 && v1.clienteId === ze.id && v1.cliente === "Zé da Obra" && v1.pagamentos[0].forma === "fiado" && v1.pagamentos[0].fiado.vencimento === "2026-11-09" && v1.cmv > 0,
+  "venda fiado gravada: cliente cadastrado, vencimento 09/11, com CMV");
 ok(nb(dialogos.at(-1)).includes("Fiado: R$ 250,00 a receber de Zé da Obra"), "aviso da venda diz quanto ficou a receber");
 
 // 2. Venda fiado pelo Caixa › Lançar, já vencida
@@ -64,14 +68,14 @@ await page.click("#fin-form button[type=submit]");
 await fecharVias(page, dialogos);
 await page.waitForTimeout(500);
 const v2 = (await lanc()).find((l) => l.value === 100 && l.conta === "venda_produtos");
-ok(v2 && v2.clienteId === "C1" && v2.pagamentos[0].fiado.vencimento === "2026-10-05", "Lançar: venda fiado acha o cliente pelo nome (sem acento/maiúsculas) e grava o vencimento combinado");
+ok(v2 && v2.clienteId === ze.id && v2.pagamentos[0].fiado.vencimento === "2026-10-05", "Lançar: venda fiado acha o cliente pelo nome (sem acento/maiúsculas) e grava o vencimento combinado");
 
 // 3. A receber
 await irReceber();
 ok(await card("A receber") === "R$ 350,00" && await card("Atrasado") === "R$ 100,00" && await card("Total na rua") === "R$ 350,00", "cartões: a receber R$ 350, atrasado R$ 100, na rua R$ 350");
 ok(nb(await linhaZe().textContent()).includes("5 dia(s)"), "Zé: maior atraso 5 dias (venceu 05/10)");
 ok((await linhaZe().getAttribute("class")).includes("cor-vermelho"), "cliente com atraso fica em vermelho");
-ok(nb(await linhaZe().textContent()).includes("sem WhatsApp"), "sem WhatsApp: não mostra Cobrar");
+ok(await linhaZe().locator('[data-rc="cobrar"]').count() === 1, "com WhatsApp (obrigatório no fiado): mostra Cobrar");
 
 // 4. Recebimento parcial em cheque
 await linhaZe().locator('[data-rc="receber"]').click();
@@ -88,7 +92,7 @@ ok(nb(dialogos.at(-1)).includes("Recebido R$ 150,00 de Zé da Obra") && nb(dialo
 ok(await card("A receber") === "R$ 200,00" && await card("Atrasado") === "R$ 0,00" && await card("Cheques em carteira") === "R$ 150,00" && await card("Total na rua") === "R$ 350,00",
   "abate a mais antiga (a vencida): atrasado zera; cheque de R$ 150 na carteira; na rua continua R$ 350");
 const rec = (await lanc()).find((l) => l.conta === "recebimento");
-ok(rec && rec.clienteId === "C1" && rec.pagamentos[0].conta === "cheques_carteira", "recebimento gravado (conta recebimento, cheque na carteira)");
+ok(rec && rec.clienteId === ze.id && rec.pagamentos[0].conta === "cheques_carteira", "recebimento gravado (conta recebimento, cheque na carteira)");
 
 // 5. Cheque devolvido reabre a dívida
 await sub("caixa", "cheques");
@@ -121,7 +125,7 @@ ok(nb(await page.locator(".saldo-conta", { hasText: "Gaveta" }).locator("strong"
 
 // 8. Cadastro: dar WhatsApp ao Zé e cobrar
 // Compra nova depois de quitar (12/10, vence 31/10); hoje passa a ser 05/11
-const venda3 = { id: "F3V", v: 2, conta: "venda_produtos", value: 80, competencia: "2026-10-12", clienteId: "C1", cliente: "Zé da Obra", pagamentos: [{ forma: "fiado", valor: 80, fiado: { vencimento: "2026-10-31" } }] };
+const venda3 = { id: "F3V", v: 2, conta: "venda_produtos", value: 80, competencia: "2026-10-12", clienteId: ze.id, cliente: "Zé da Obra", pagamentos: [{ forma: "fiado", valor: 80, fiado: { vencimento: "2026-10-31" } }] };
 await fetch(URL + "/api/lancamento", { method: "POST", headers: H, body: JSON.stringify({ itens: [venda3] }) });
 await page.clock.setFixedTime(new Date("2026-11-05T10:00:00-03:00"));
 await page.reload();
@@ -131,8 +135,8 @@ ok(await card("A receber") === "R$ 80,00" && await card("Atrasado") === "R$ 80,0
 await abrirFicha(page, "Zé da Obra");
 await page.click("#cli-editar");
 await salvarCadastro(page, { tel: "(47) 98888-7777" });
-const cli = JSON.parse((await (await fetch(URL + "/__db")).json()).madeireira_clientes.C1);
-ok(cli.telefone === "(47) 98888-7777" && cli.id === "C1", "editar cliente pela ficha: ganhou WhatsApp e manteve o código C1");
+const cli = JSON.parse((await (await fetch(URL + "/__db")).json()).madeireira_clientes[ze.id]);
+ok(cli.telefone === "(47) 98888-7777" && cli.id === ze.id, "editar cliente pela ficha: trocou o WhatsApp e manteve o código");
 await irReceber();
 await ctx.route("https://wa.me/**", (r) => r.fulfill({ contentType: "text/html", body: "<p>WhatsApp (simulado)</p>" })); // sem internet no ensaio
 const [aba] = await Promise.all([ctx.waitForEvent("page"), linhaZe().locator('[data-rc="cobrar"]').click()]);

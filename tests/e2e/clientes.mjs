@@ -65,10 +65,10 @@ ok(ficha.includes("15 dias") && ficha.includes("Rua das Flores, 10, Centro, Curi
 // 2. Nova venda pela ficha: fiado com o prazo do cliente (10/10 + 15 = 25/10); o cliente vai na venda e na via
 await page.click("#cli-nova-venda");
 await page.waitForSelector("#tab-vender.active");
-ok(await page.inputValue("#calc-cliente-nome") === "Dona Lu" && nb(await page.textContent("#calc-cliente-info")).includes("cadastrado"), "Vender: o cliente da ficha já vem escolhido");
+ok(await page.inputValue("#cp-nome") === "Dona Lu" && await page.inputValue("#cp-endereco") === "Rua das Flores, 10" && nb(await page.textContent("#cp-status")).includes("Cliente cadastrado"), "Vender: o cliente da ficha já vem no bloco Cliente (vinculado, com o endereço)");
 await pedir(4);
 await page.locator("#calc-pagamentos .pag-forma").first().selectOption("fiado");
-ok(await page.inputValue("#calc-pagamentos .pag-fiado-cliente") === "Dona Lu" && await page.inputValue("#calc-pagamentos .pag-fiado-venc") === "2026-10-25" && nb(await page.textContent("#calc-pagamentos")).includes("prazo do cliente: 15 dias"),
+ok(await page.inputValue("#calc-pagamentos .pag-fiado-venc") === "2026-10-25" && nb(await page.textContent("#calc-pagamentos")).includes("prazo do cliente: 15 dias"),
   "fiado: vencimento pelo prazo do cliente (15 dias → 25/10)");
 await page.click("#btn-registrar-venda");
 await page.waitForSelector("#modal-impressao", { state: "visible" });
@@ -120,12 +120,17 @@ await page.click("#orc-salvar-botao");
 await fecharVias(page, dialogos);
 await pedir(1);
 await page.click("#btn-salvar-orcamento");
-await page.fill("#orc-nome", "Seu Zico");
-await page.click("#orc-cli-novo");
-await salvarCadastro(page, { tel: "(41) 97777-2222" });
-ok(await page.inputValue("#orc-tel") === "(41) 97777-2222" && (await clientes()).some((c) => c.nome === "Seu Zico"), "Salvar orçamento › + cadastrar novo: cadastra e preenche o WhatsApp");
+await page.fill("#orc-nome", "Seu Zico"); await page.fill("#orc-tel", "(41) 97777-2222");
 await page.click("#orc-salvar-botao");
 await fecharVias(page, dialogos);
+ok(!(await clientes()).some((c) => c.nome === "Seu Zico") && (await orcs()).some((o) => o.cliente?.nome === "Seu Zico" && !o.cliente.id), "orçamento de cliente novo não cria cadastro (os dados ficam no orçamento)");
+await pedir(1);
+await page.click("#btn-salvar-orcamento");
+await page.fill("#orc-nome", "Seu Zico"); await page.fill("#orc-tel", "(41) 97777-2222");
+await page.check("#orc-salvar-cli");
+await page.click("#orc-salvar-botao");
+await fecharVias(page, dialogos);
+ok((await clientes()).some((c) => c.nome === "Seu Zico" && c.telefone === "(41) 97777-2222"), "com \"Salvar como cliente\", o orçamento cadastra o cliente");
 // agora exclui (digitando EXCLUIR)
 await abrirFicha(page, "Dona Lu");
 await page.click("#cli-excluir");

@@ -82,15 +82,8 @@ ok(nb(await page.textContent("#total-variacao")).includes("−R$ 20,20 (−5,0%)
 await page.locator("#motivos-geral .chip", { hasText: "Cliente antigo" }).click();
 await page.screenshot({ path: "pedido-novo.png", fullPage: true });
 
-// WhatsApp
-await page.click("text=💬 Texto para WhatsApp");
-const zap = await page.inputValue("#whatsapp-texto");
-ok(!/custo|margem|tabela/i.test(zap) && zap.includes("*Total: R$ 383,80*"), "WhatsApp: itens e total, sem custo, margem ou tabela");
-await page.click("text=Copiar texto");
-await page.waitForTimeout(200);
-ok((await page.textContent("#whatsapp-copiado")).includes("Copiado"), "copiar texto");
-ok((await page.evaluate(() => navigator.clipboard.readText())) === zap, "texto foi para a área de transferência");
-await page.click("#modal-whatsapp >> text=Fechar");
+// WhatsApp: saiu do pedido (fica nas vias da venda registrada e no orçamento salvo)
+ok(!(await page.locator("text=💬 Texto para WhatsApp").count()) && !(await page.locator("#modal-whatsapp").count()), "sem o botão de WhatsApp no pedido antes de registrar");
 
 // Modo balcão: esconde custo e margem, e a escolha fica guardada no aparelho
 const vis = (sel) => page.locator(sel).first().isVisible();

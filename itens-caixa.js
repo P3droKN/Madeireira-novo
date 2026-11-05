@@ -43,7 +43,7 @@ export function criarItensCaixa(el, aoMudar) {
         <div class="form-group" id="ic-comp-grupo" hidden><label for="ic-comp">Comprimento (m)</label><input type="number" id="ic-comp" min="0" step="0.01" inputmode="decimal"></div>
         <div class="form-group" id="ic-livre-grupo" hidden><label for="ic-livre">Valor (R$)</label><input type="number" id="ic-livre" min="0" step="0.01" inputmode="decimal"></div>
         <div class="form-group" id="ic-desc-grupo" hidden><label for="ic-desc">Descrição</label><input type="text" id="ic-desc" maxlength="120" placeholder="o que é"></div>
-        <div class="form-group sigilo" id="ic-custo-grupo" hidden><label for="ic-custo-livre">Custo (R$)</label><input type="number" id="ic-custo-livre" min="0" step="0.01" inputmode="decimal" placeholder="quanto custou"></div>
+        <div class="form-group sigilo" id="ic-custo-grupo" hidden><label for="ic-custo-livre">Custo (R$, opcional)</label><input type="number" id="ic-custo-livre" min="0" step="0.01" inputmode="decimal" placeholder="em branco = não informado"></div>
         <div class="form-group"><label for="ic-preco">Preço unitário (R$)</label><input type="number" id="ic-preco" min="0" step="0.01" inputmode="decimal" placeholder="da tabela"></div>
         <div class="form-group"><button type="button" class="btn-icon" id="ic-adicionar" disabled>+ Adicionar item</button></div>
       </div>

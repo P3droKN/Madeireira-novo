@@ -41,6 +41,7 @@ ok((await page.textContent("#orc-tel-info")).includes("DDD"), "telefone sem DDD 
 await page.fill("#orc-tel", "(47) 99999-1234");
 await page.locator('label:has(input[name="orc-origem"][value="whatsapp"])').click();
 await page.fill("#orc-obs", "entrega na obra");
+await page.check("#orc-salvar-cli"); // "Salvar como cliente": sem isso, o orçamento não cria cadastro
 await page.click("#orc-salvar-botao");
 await fecharVias(page, dialogos);
 await page.waitForFunction(() => document.getElementById("modal-orc-salvar").style.display === "none");

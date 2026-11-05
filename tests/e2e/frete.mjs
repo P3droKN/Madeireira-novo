@@ -64,10 +64,7 @@ ok(await total() === "340.00", "total dos itens continua R$ 340 (frete fora dos 
 ok(await cobrar() === "R$ 390,00" && nb(await page.textContent("#total-cobrar-detalhe")).includes("frete R$ 50,00"), "Fechar o pedido: R$ 390,00 (itens + frete)");
 const margemAntes = nb(await page.textContent("#total-margem"));
 ok(margemAntes !== "—", "margem só dos produtos: " + margemAntes);
-await page.click("text=💬 Texto para WhatsApp");
-const zap = nb(await page.inputValue("#whatsapp-texto"));
-ok(zap.includes("Frete/entrega: R$ 50,00") && zap.includes("*Total: R$ 390,00*"), "WhatsApp mostra o frete à parte e o total R$ 390,00");
-await page.click("#modal-whatsapp >> text=Fechar");
+ok(!(await page.locator("text=💬 Texto para WhatsApp").count()), "sem WhatsApp no pedido antes de registrar (o caminho é Salvar como orçamento)");
 await page.reload();
 await page.waitForFunction(() => document.querySelectorAll("#items-body tr.linha-item").length === 2);
 ok((await page.inputValue("#frete-valor")) === "50.00", "frete mantido ao recarregar a página");

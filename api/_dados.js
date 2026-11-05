@@ -359,6 +359,15 @@ async function salvarLancamentosSemTrava(kv, k, itens) {
 export const numeroVenda = (n) => `V-${String(n).padStart(4, "0")}`;
 
 // Primeira impressão das vias: a partir daí, a via reimpressa sai marcada "2ª impressão em DD/MM"
+// "WhatsApp aberto em DD/MM HH:MM" (o sistema não sabe se a mensagem foi mandada, só que a conversa abriu)
+export const whatsappAberto = (kv, k, id) => comTrava(kv, k, [id], async () => {
+  const l = desembrulhar(await kv.hget(k.lancamentos, String(id || "")));
+  if (!l || l.excluido) throw erro(404, "Venda não encontrada.");
+  const novo = { ...l, whatsappAbertoEm: [...(l.whatsappAbertoEm || []), new Date().toISOString()].slice(-20) };
+  await kv.hset(k.lancamentos, { [novo.id]: novo });
+  return { whatsappAbertoEm: novo.whatsappAbertoEm };
+});
+
 // Cliente de uma venda já registrada: vincular a um cliente cadastrado e/ou guardar os dados da via
 // (nome, telefone, endereço, documentos e observação de entrega) para quem não tem cadastro.
 // Só muda o cliente; valor, itens e formas continuam (para isso, Corrigir).
@@ -388,8 +397,8 @@ const RECEITA_CLIENTE = ["venda_produtos", "servicos", "frete_cobrado"];
 const CAMPOS_CLIENTE_VIA = { nome: 120, telefone: 30, endereco: 160, bairro: 80, cidade: 80, uf: 2, documento: 20, ie: 20, obs: 300 };
 function limparClienteVia(v) {
   const r = Object.fromEntries(Object.entries(CAMPOS_CLIENTE_VIA).map(([c, max]) => [c, texto(v[c], c === "uf" ? 20 : max).trim()]));
-  r.uf = r.uf.toUpperCase();
-  if (r.uf && !/^[A-Z]{2}$/.test(r.uf)) throw erro(400, "Estado (UF) inválido: use as duas letras, ex. PR.");
+  r.uf = r.uf.toUpperCase() || "PR"; // a loja é do Paraná: a via sai com PR se ninguém mudar
+  if (!/^[A-Z]{2}$/.test(r.uf)) throw erro(400, "Estado (UF) inválido: use as duas letras, ex. PR.");
   return r;
 }
 
@@ -732,6 +741,7 @@ export function validarLancamentoV2(item, cfgSalva) {
 
   const conta = contaPorId[item.conta];
   if (!conta) throw erro(400, `Conta inválida: ${item.conta}`);
+  if (conta.pedeDescricao && !String(base.description || "").trim()) throw erro(400, 'Despesa "Outros": descreva o que foi (ex.: conserto do portão).');
   const natureza = naturezaDaConta(conta.id);
   const limpo = { ...base, conta: conta.id, category: categoriaLegada(conta.id), type: natureza === "entrada" ? "income" : "expense" };
   if (item.classificar) limpo.classificar = conta.id.startsWith("classificar_");
@@ -1070,12 +1080,20 @@ export async function salvarOrcamento(kv, k, d, cfgSalva) {
     if (atual.status === "fechado") throw erro(409, "Orçamento fechado (virou venda) não pode ser editado. Use Duplicar.");
     if (atual.excluidoEm) throw erro(409, "Orçamento está na lixeira. Restaure antes de editar.");
   }
-  const cliente = await salvarClienteDoOrcamento(kv, k, nome, tel.formatado);
+  // Cliente do orçamento: vinculado (id), ou o cadastrado com esse WhatsApp, ou um cadastro novo só se pediu
+  // "Salvar como cliente"; senão os dados ficam só no orçamento (como na venda avulsa)
+  let cliente = null;
+  if (d.cliente?.id) cliente = desembrulhar(await kv.hget(k.clientes, String(d.cliente.id)));
+  if (!cliente) cliente = (await clienteRepetido(kv, k, { telefone: tel.digitos }))?.cliente || null;
+  if (!cliente && d.salvarCliente) cliente = await salvarCliente(kv, k, { ...(d.clienteVia || {}), nome, telefone: tel.formatado });
+  const clienteOrc = cliente ? { id: cliente.id, nome: cliente.nome, telefone: cliente.telefone || tel.formatado } : { nome, telefone: tel.formatado };
+  const viaOrc = d.clienteVia && typeof d.clienteVia === "object" ? limparClienteVia({ ...d.clienteVia, nome, telefone: tel.formatado }) : null;
 
   if (d.id) {
     const editado = {
       ...atual, ...valores,
-      cliente: { id: cliente.id, nome: cliente.nome, telefone: cliente.telefone },
+      cliente: clienteOrc,
+      ...(viaOrc ? { clienteVia: viaOrc } : {}),
       origem: d.origem, obs: texto(d.obs, 500), validadeDias, validoAte: somarDias(hoje, validadeDias),
       editadoEm: agora,
       historico: [...(atual.historico || []), { em: agora, evento: "editado", total: valores.total }].slice(-50),
@@ -1087,7 +1105,8 @@ export async function salvarOrcamento(kv, k, d, cfgSalva) {
   const numero = Number(await kv.incr(k.orcSeq));
   const orc = {
     id: numeroOrcamento(numero), numero, data: hoje, criadoEm: agora, ...valores,
-    cliente: { id: cliente.id, nome: cliente.nome, telefone: cliente.telefone },
+    cliente: clienteOrc,
+    ...(viaOrc ? { clienteVia: viaOrc } : {}),
     origem: d.origem, obs: texto(d.obs, 500), validadeDias, validoAte: somarDias(hoje, validadeDias),
     status: "aberto", contatos: [], historico: [{ em: agora, evento: "criado", total: valores.total }],
   };
@@ -1197,7 +1216,7 @@ function dadosDaVia(c, atual) {
   for (const [campo, max] of Object.entries(CAMPOS_VIA_CLIENTE)) {
     r[campo] = c?.[campo] === undefined ? (atual?.[campo] || "") : texto(c[campo], max).trim();
   }
-  r.uf = r.uf.toUpperCase();
+  r.uf = r.uf.toUpperCase() || (atual ? "" : "PR"); // cliente novo: PR (editável no cadastro)
   if (r.uf && !/^[A-Z]{2}$/.test(r.uf)) throw erro(400, "Estado (UF) inválido: use as duas letras, ex. PR.");
   if (r.documento) {
     const d = r.documento.replace(/\D/g, "");
@@ -1207,6 +1226,21 @@ function dadosDaVia(c, atual) {
   return r;
 }
 
+// Outro cliente com o mesmo WhatsApp (só os números) ou o mesmo CPF/CNPJ (só os números). exceto: o próprio, ao editar.
+export async function clienteRepetido(kv, k, { telefone, documento }, exceto = null) {
+  const tel = String(telefone || "").replace(/\D/g, "").replace(/^55(?=\d{10,11}$)/, "");
+  const doc = String(documento || "").replace(/\D/g, "");
+  if (!tel && !doc) return null;
+  const todos = Object.values((await kv.hgetall(k.clientes)) || {}).map(desembrulhar).filter(Boolean);
+  for (const cli of todos) {
+    if (exceto && String(cli.id) === String(exceto)) continue;
+    const ct = String(cli.telefone || "").replace(/\D/g, "").replace(/^55(?=\d{10,11}$)/, "");
+    if (tel && ct && ct === tel) return { cliente: cli, campo: "telefone" };
+    if (doc && String(cli.documento || "").replace(/\D/g, "") === doc) return { cliente: cli, campo: "documento" };
+  }
+  return null;
+}
+
 export async function salvarCliente(kv, k, c) {
   const nome = texto(c?.nome, 120).trim();
   if (!nome) throw erro(400, "Informe o nome do cliente.");
@@ -1214,11 +1248,18 @@ export async function salvarCliente(kv, k, c) {
   const t = telTexto ? normalizarTelefone(telTexto) : null;
   if (t && !t.ok) throw erro(400, t.erro);
   const agora = new Date().toISOString();
+  // Sem duplicado: WhatsApp ou CPF/CNPJ igual ao de outro cliente cadastrado → oferece vincular a ele
+  const dup = await clienteRepetido(kv, k, { telefone: t?.digitos, documento: c?.documento }, c?.id);
+  if (dup) {
+    const e = erro(409, `Já existe ${dup.cliente.nome} com ${dup.campo === "telefone" ? "esse WhatsApp" : "esse CPF/CNPJ"}${dup.cliente.inativo ? " (inativo)" : ""}. Vincule a ele em vez de cadastrar de novo.`);
+    e.duplicado = { id: dup.cliente.id, nome: dup.cliente.nome, campo: dup.campo, inativo: Boolean(dup.cliente.inativo) };
+    throw e;
+  }
   let id;
   if (c?.id) {
     id = String(c.id);
     if (!(await kv.hget(k.clientes, id))) throw erro(404, "Cliente não encontrado.");
-  } else if (t) {
+  } else if (t && !(await kv.hget(k.clientes, t.digitos))) {
     id = t.digitos;
   } else {
     id = `C${Number(await kv.incr(k.cliSeq))}`;

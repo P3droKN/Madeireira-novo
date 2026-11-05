@@ -2,7 +2,7 @@
 // WhatsApp, converter em venda, duplicar, editar, imprimir, perdido, atualizar preços, excluir e lixeira.
 // A situação muda pelas ações (converter, perdido, reabrir), nunca por uma caixa de seleção.
 import {
-  ORIGENS, STATUS, MOTIVOS_PERDA, CONFIG_ORCAMENTOS_PADRAO, normalizarTelefone, linkWhatsApp, preencherModelo,
+  ORIGENS, STATUS, MOTIVOS_PERDA, CONFIG_ORCAMENTOS_PADRAO, normalizarTelefone, linkWhatsApp, pareceFixo, preencherModelo,
   textoParaCliente, situacao, indicadores, ordenar, atualizarPrecos, grupoDaLista, naLixeira, visivelNaLixeira,
 } from "./lib/orcamentos.js";
 import { mesclarConfigFinanceiro } from "./lib/planoContas.js";
@@ -234,7 +234,7 @@ function abrirWhats(o, tipo) {
   estado.atual = { orc: o, tipo };
   const t = normalizarTelefone(o.cliente?.telefone);
   $("orc-whats-titulo").textContent = tipo === "cobrar" ? `Cobrar ${o.id}` : `Enviar ${o.id}`;
-  $("orc-whats-para").textContent = `Para ${o.cliente?.nome} · ${t.ok ? t.formatado : "telefone inválido"}`;
+  $("orc-whats-para").textContent = `Para ${o.cliente?.nome} · ${t.ok ? t.formatado : "telefone inválido"}${pareceFixo(o.cliente?.telefone) ? " · ⚠ parece telefone fixo: o WhatsApp pode não abrir" : ""}`;
   const modelos = cfgOrc().modelos;
   $("orc-whats-modelo-grupo").hidden = tipo !== "cobrar";
   $("orc-whats-modelo").innerHTML = modelos.map((m, i) => `<option value="${i}">Modelo ${i + 1}: ${esc(m.slice(0, 60))}…</option>`).join("");
@@ -333,10 +333,15 @@ function abrirSalvar() {
   const editando = v?.modo === "editar";
   $("orc-salvar-titulo").textContent = editando ? `Salvar alterações no ${v.id}` : v?.modo === "duplicar" ? `Novo orçamento (cópia do ${v.id})` : "Salvar como orçamento";
   $("orc-salvar-resumo").textContent = `${f.itens.length} ${f.itens.length === 1 ? "item" : "itens"} · total ${moeda(f.total)}`;
-  // Cliente: o do orçamento sendo editado ou o escolhido na ficha (Clientes › Novo orçamento)
+  // Cliente: o do bloco "Cliente" do pedido (que já traz o do orçamento sendo editado)
   const cp = window.Calculadora?.clientePedido?.();
-  $("orc-nome").value = v?.cliente?.nome || cp?.nome || "";
-  $("orc-tel").value = v?.cliente?.telefone || cp?.telefone || "";
+  $("orc-nome").value = cp?.nome || v?.cliente?.nome || "";
+  $("orc-tel").value = cp?.telefone || v?.cliente?.telefone || "";
+  $("orc-salvar-cli").checked = Boolean(cp?.salvar);
+  $("orc-salvar-cli-rotulo").hidden = Boolean(cp?.id);
+  const d = cp?.dados || {};
+  const extra = [d.endereco, d.bairro, d.cidade, d.documento && `CPF/CNPJ ${d.documento}`, d.obs && `Entrega: ${d.obs}`].filter(Boolean).join(" · ");
+  $("orc-cli-dados").textContent = cp?.id ? `✓ Cliente cadastrado: ${cp.nome}.` : extra ? `Também vai no orçamento: ${extra}` : "";
   $("orc-obs").value = v?.obs || "";
   $("orc-validade").value = v?.validadeDias || cfgOrc().validadeDias;
   const origem = v?.origem || "balcao";
@@ -366,6 +371,9 @@ async function salvar(e) {
   const corpo = {
     ...f,
     cliente: { nome: $("orc-nome").value.trim(), telefone: t.formatado },
+    // Os dados do bloco Cliente ficam dentro do orçamento; cadastro só com "Salvar como cliente"
+    clienteVia: window.Calculadora?.clientePedido?.()?.dados || null,
+    salvarCliente: $("orc-salvar-cli").checked,
     origem: document.querySelector('input[name="orc-origem"]:checked').value,
     obs: $("orc-obs").value.trim(),
     validadeDias: Number($("orc-validade").value) || cfgOrc().validadeDias,
@@ -373,6 +381,8 @@ async function salvar(e) {
   };
   if (v?.modo === "editar") corpo.id = v.id;
   if (v?.modo === "duplicar") corpo.duplicadoDe = v.id;
+  const cp = window.Calculadora?.clientePedido?.();
+  if (cp?.id && cp.nome === corpo.cliente.nome) corpo.cliente.id = cp.id;
   const botao = $("orc-salvar-botao");
   botao.disabled = true;
   try {
@@ -434,14 +444,6 @@ $("orc-precos-aplicar").addEventListener("click", aplicarPrecos);
 $("orc-converter-orcamento").addEventListener("click", () => carregarNaCalculadora(estado.atual.orc, "converter", "orcamento"));
 $("orc-converter-atuais").addEventListener("click", () => carregarNaCalculadora(estado.atual.orc, "converter", "atuais"));
 $("orc-salvar-form").addEventListener("submit", salvar);
-$("orc-cli-novo").addEventListener("click", async () => {
-  const c = await window.ClientesUI?.novo({ nome: $("orc-nome").value.trim(), telefone: $("orc-tel").value.trim() });
-  if (!c) return;
-  $("orc-nome").value = c.nome;
-  $("orc-tel").value = c.telefone || $("orc-tel").value;
-  validarTelefone();
-  await carregar();
-});
 $("orc-tel").addEventListener("input", () => {
   const t = validarTelefone();
   if (t.ok && !$("orc-nome").value.trim()) {
@@ -456,6 +458,8 @@ $("orc-nome").addEventListener("change", () => {
 });
 
 window.Orcamentos = {
+  // Janela das vias do orçamento › "💬 Enviar no WhatsApp": o mesmo Enviar da lista (registra o contato)
+  enviarWhats(id) { const o = porId(id); if (o) abrirWhats(o, "enviar"); },
   async abrir() {
     if (await carregar()) renderTudo();
   },

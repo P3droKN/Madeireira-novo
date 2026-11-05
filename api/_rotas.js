@@ -6,7 +6,7 @@ import {
   lerTudo, salvarLancamentos, excluirLancamento, reclassificar, atualizarCheque, salvarAcumulado,
   montarBackup, salvarCopia, listarCopias, lerCopia, lerPrecosEConfig, salvarPrecos,
   salvarConfig, salvarConfigFinanceiro, salvarAbertura, registrarConferencia,
-  importar, migrar, migrarV2, restaurar, marcarImpresso, proximosNumeros, clienteDaVenda,
+  importar, migrar, migrarV2, restaurar, marcarImpresso, proximosNumeros, clienteDaVenda, whatsappAberto,
   listarOrcamentos, salvarOrcamento, atualizarOrcamento, salvarCliente, listarClientes, zerarMovimento,
   situacaoCliente, impactoExcluirCliente, excluirCliente,
 } from "./_dados.js";
@@ -56,6 +56,7 @@ export const ROTAS = {
     if (request.method === "PATCH") {
       if (request.body?.acao === "cheque") return response.status(200).json({ lancamento: await atualizarCheque(kv(), chaves(), request.body) });
       if (request.body?.acao === "impresso") return response.status(200).json(await marcarImpresso(kv(), chaves(), request.body.id));
+      if (request.body?.acao === "whatsapp") return response.status(200).json(await whatsappAberto(kv(), chaves(), request.body.id));
       if (request.body?.acao === "cliente") return response.status(200).json({ lancamento: await clienteDaVenda(kv(), chaves(), request.body) });
       return response.status(200).json(await reclassificar(kv(), chaves(), request.body));
     }

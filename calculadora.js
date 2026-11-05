@@ -1,7 +1,7 @@
 // Aba Vender (pedido, modo balcão) e Ajustes › Preços. Os cálculos ficam em lib/calculo.js (calcularItem).
 import { criarEditorPagamentos } from "./pagamentos.js";
 import { montarCatalogo, chavePreco, UNIDADES, ACABAMENTOS, CEPILHADO_PADRAO, idAtual } from "./lib/catalogo.js";
-import { calcularItem, totalizarPedido, distribuirTotal, arred, MOTIVOS_AJUSTE, textoWhatsApp } from "./lib/calculo.js";
+import { calcularItem, totalizarPedido, distribuirTotal, arred, MOTIVOS_AJUSTE } from "./lib/calculo.js";
 
 const $ = (id) => document.getElementById(id);
 const moeda = (v) => (v == null ? "—" : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v));
@@ -18,7 +18,8 @@ const configFiado = () => {
 };
 const editorPagamentos = criarEditorPagamentos(document.getElementById("calc-pagamentos"), {
   fiado: configFiado,
-  prazo: (nome) => window.Clientes?.prazoDe(nome) || null,
+  clienteExterno: true, // o cliente vem do bloco "Cliente" do pedido
+  prazo: () => window.ClientePedido?.prazo() || null,
 });
 
 const estado = {
@@ -481,33 +482,6 @@ function pedirOutro(atual) {
 
 // ---------- Orçamentos ----------
 
-// Cliente do pedido (opcional): cadastrado (vincula a venda à ficha) ou só o nome (sai na via)
-const chaveNomeCli = (n) => String(n || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase().replace(/\s+/g, " ");
-function cadastradoPeloNome(nome) {
-  const iguais = (window.Clientes?.lista || []).filter((c) => !c.inativo && chaveNomeCli(c.nome) === chaveNomeCli(nome));
-  return iguais.length === 1 ? iguais[0] : null;
-}
-function renderClientePedido() {
-  const c = estado.clientePedido;
-  const inp = $("calc-cliente-nome");
-  if (!inp) return;
-  if (document.activeElement !== inp) inp.value = c?.nome || "";
-  $("calc-cliente-info").textContent = !c ? "Cadastrado: a venda fica na ficha dele. Não cadastrado: o nome sai na via (endereço e entrega: na janela das vias, \"✎ Cliente e entrega\")."
-    : c.id ? `✓ ${c.nome} (cadastrado): a venda fica na ficha dele.` : `${c.nome} não está cadastrado: o nome sai na via. Para guardar, use "+ cadastrar novo".`;
-}
-function clienteDigitado() {
-  const nome = $("calc-cliente-nome").value.trim();
-  const cad = cadastradoPeloNome(nome);
-  estado.clientePedido = cad ? { id: cad.id, nome: cad.nome, telefone: cad.telefone || "" } : nome ? { id: null, nome } : null;
-  editorPagamentos.definirCliente(estado.clientePedido?.nome || "");
-  renderClientePedido();
-}
-$("calc-cliente-nome").addEventListener("change", clienteDigitado);
-$("calc-cliente-novo").addEventListener("click", async () => {
-  const c = await window.ClientesUI?.novo({ nome: $("calc-cliente-nome").value.trim() });
-  if (c) window.Calculadora.definirClientePedido(c);
-});
-
 function renderVinculo() {
   const el = $("orc-vinculo");
   const v = estado.vinculo;
@@ -687,42 +661,7 @@ window.Calculadora = {
     renderPedido();
   },
 
-  whatsapp() {
-    if (!estado.pedido.length) return alert("O pedido está vazio.");
-    const itens = estado.pedido.map((l) => {
-      const item = estado.catalogo.itens.get(l.itemId);
-      const r = calcularLinha(l);
-      const livre = item.unidade === "valor_livre";
-      const acab = l.acabamento !== "UNICO" ? ` (${ACABAMENTOS[l.acabamento].toLowerCase()})` : "";
-      return {
-        descricao: livre ? descricaoLivre(item, l) : `${item.material} ${item.rotuloDimensao}${acab}`,
-        quantidade: livre ? "" : descreverQtd(l, r).replace(/<small>/, " = ").replace(/<[^>]+>/g, ""),
-        precoUnitario: r.precoUnitario == null ? null : arred(r.precoUnitario),
-        unidade: livre ? "un" : r.unidadeCobranca,
-        vendaTotal: r.vendaTotal,
-      };
-    });
-    const texto = textoWhatsApp({ data: new Date().toLocaleDateString("pt-BR"), itens, totalItens: estado.ultimoTotal.venda, frete: valorFrete() });
-    $("whatsapp-texto").value = texto;
-    $("whatsapp-abrir").href = "https://wa.me/?text=" + encodeURIComponent(texto);
-    $("whatsapp-copiado").textContent = "";
-    $("modal-whatsapp").style.display = "flex";
-  },
 
-  async copiarWhatsapp() {
-    const campo = $("whatsapp-texto");
-    try {
-      await navigator.clipboard.writeText(campo.value);
-    } catch {
-      campo.select();
-      document.execCommand("copy");
-    }
-    $("whatsapp-copiado").textContent = "Copiado! Agora é só colar na conversa.";
-  },
-
-  fecharWhatsapp() {
-    $("modal-whatsapp").style.display = "none";
-  },
 
   limpar(perguntar) {
     if (perguntar && estado.pedido.length && !confirm("Remover todos os itens do pedido?")) return;
@@ -732,28 +671,23 @@ window.Calculadora = {
     // Depois de corrigir uma venda antiga, a data volta para hoje
     if (estado.vinculo?.modo === "corrigir" && $("direct-sale-date") && window.Caixa?.hoje) $("direct-sale-date").value = window.Caixa.hoje();
     estado.vinculo = null;
-    estado.clientePedido = null;
+    window.ClientePedido?.limpar();
     editorPagamentos.reiniciar(0);
     $("calc-nfe").value = "";
-    $("calc-cliente-nome").value = "";
-    renderClientePedido();
     renderPedido();
   },
 
-  // Cliente escolhido na ficha (Clientes › Nova venda / Novo orçamento): vai na venda e no orçamento
-  definirClientePedido(c) {
-    estado.clientePedido = c ? { id: c.id, nome: c.nome, telefone: c.telefone || "" } : null;
-    editorPagamentos.definirCliente(c?.nome || "");
-    renderClientePedido();
-  },
-  clientePedido: () => estado.clientePedido || null,
+  // Cliente escolhido na ficha (Clientes › Nova venda / Novo orçamento): vai para o bloco Cliente do pedido
+  definirClientePedido(c) { if (c) window.ClientePedido?.vincular(c); else window.ClientePedido?.limpar(); },
+  clientePedido: () => window.ClientePedido?.ler() || null,
+  // O prazo do fiado mudou (outro cliente no bloco): o editor de pagamento recalcula o vencimento
+  clienteMudou: () => editorPagamentos.atualizar(),
 
   // Formas de pagamento da venda (lança erro se a soma não fechar com o total)
   pagamentos() {
     return editorPagamentos.ler();
   },
   // Nome digitado no fiado (o cadastro é conferido em registerDirectSale)
-  clienteFiado: () => editorPagamentos.clienteDigitado(),
 
   fotografia: fotografiaPedido,
   vinculo: () => estado.vinculo,
@@ -789,7 +723,8 @@ window.Calculadora = {
     });
     estado.motivoGeral = orc.motivoGeral || "";
     estado.frete = orc.frete > 0 ? orc.frete : null;
-    if (modo === "converter") setTimeout(() => editorPagamentos.definirCliente(orc.cliente?.nome || ""), 0); // se a venda for fiado, o cliente já vem
+    // Os dados do cliente do orçamento vêm para o bloco Cliente do pedido (vinculado, se ele for cadastrado)
+    window.ClientePedido?.carregar({ clienteId: orc.cliente?.id, cliente: orc.cliente?.nome, clienteVia: { ...(orc.clienteVia || {}), telefone: orc.cliente?.telefone || orc.clienteVia?.telefone || "" } });
     estado.vinculo = { id: orc.id, modo, cliente: orc.cliente, origem: orc.origem, obs: orc.obs, validadeDias: orc.validadeDias };
     editorPagamentos.reiniciar(0);
     renderPedido();
@@ -828,6 +763,7 @@ window.Calculadora = {
     if ($("calc-nfe")) $("calc-nfe").value = l.nfe || "";
     estado.vinculo = { modo: "corrigir", id: l.id, numero: l.numero, valorAntes: l.value, versaoBase: Number(l.versao || 0), orcamento: l.orcamento || null, cliente: l.cliente ? { id: l.clienteId || null, nome: l.cliente } : null };
     renderPedido();
+    window.ClientePedido?.carregar({ clienteId: l.clienteId, cliente: l.cliente, clienteVia: l.clienteVia });
     editorPagamentos.carregar(l.pagamentos, l.value, l.cliente || "");
     return true;
   },

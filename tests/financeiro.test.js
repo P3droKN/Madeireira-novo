@@ -389,3 +389,28 @@ test("soma dos dias = mês, centavo por centavo (taxa e CMV estimado arredondado
   assert.equal(soma("taxaCartao"), mes.valores.taxaCartao);
   assert.equal(soma("cmvEstimado"), mes.valores.cmvEstimado);
 });
+
+test("Outros no DRE: custo digitado entra como CMV; em branco é estimado pela margem padrão; 0 é zero de verdade", () => {
+  const item = (custoTotal) => ({ itemId: "OUTROS|LIVRE", descricao: "Porta de correr", vendaTotal: 500, custoTotal, quantidadeCobrada: 1 });
+  const cmvDe = (custo, cmv) => montarDRE([venda(500, { itens: [item(custo)], cmv })], {}, "2026-09").info.cmvOrigem;
+  const digitado = cmvDe(320, 320);
+  assert.deepEqual([digitado.total, digitado.estimado.valor ?? digitado.estimado], [320, digitado.estimado.valor ?? digitado.estimado]);
+  assert.equal(montarDRE([venda(500, { itens: [item(320)], cmv: 320 })], {}, "2026-09").valores.lucroBruto, 180);
+  // em branco: a venda tem cmv 0 (dos itens com custo) e o item sem custo é estimado pela margem padrão (50%)
+  const branco = montarDRE([venda(500, { itens: [item(null)], cmv: 0 })], {}, "2026-09");
+  assert.equal(branco.valores.lucroBruto, 250);
+  assert.ok(branco.avisos.some((a) => a.includes("custo não informado")));
+  // 0 digitado: sem estimativa e sem aviso
+  const zero = montarDRE([venda(500, { itens: [item(0)], cmv: 0 })], {}, "2026-09");
+  assert.equal(zero.valores.lucroBruto, 500);
+  assert.ok(!zero.avisos.some((a) => a.includes("custo não informado")));
+});
+
+test("despesa Outros: entra em \"Outras despesas\" no DRE; reclassificada, vai para a conta nova", () => {
+  const d = montarDRE([venda(1000, { cmv: 500 }), saida("outras_despesas", 80, { description: "conserto do portão" })], {}, "2026-09");
+  assert.equal(d.linhas.find((l) => l.id === "outrasDespesas").valor, -80);
+  assert.equal(d.valores.lucroLiquido ?? d.linhas.find((l) => l.id === "lucroLiquido").valor, 420);
+  const r = montarDRE([venda(1000, { cmv: 500 }), saida("manut_maquinas", 80, { description: "conserto do portão" })], {}, "2026-09");
+  assert.equal(r.linhas.find((l) => l.id === "outrasDespesas").valor, 0);
+  assert.equal(r.linhas.find((l) => l.id === "operacionais").valor, -80);
+});

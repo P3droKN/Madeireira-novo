@@ -381,22 +381,11 @@ async function registrarVendaAgora(opcoes = {}) {
         vendaItem.versaoBase = Number(corrigindo.versaoBase || 0);
         if (corrigindo.orcamento) vendaItem.orcamento = corrigindo.orcamento;
     }
-    // Cliente: obrigatório (e cadastrado) no fiado; numa venda de orçamento, vem do orçamento
-    if (pagamentos.some((p) => p.forma === 'fiado')) {
-        const cli = await window.Clientes.garantir(window.Calculadora.clienteFiado());
-        if (!cli) return;
-        vendaItem.clienteId = cli.id;
-        vendaItem.cliente = cli.nome;
-    } else if (vinculo && (vinculo.modo === 'converter' || vinculo.modo === 'corrigir') && vinculo.cliente?.nome) {
-        vendaItem.cliente = vinculo.cliente.nome;
-        if (vinculo.cliente.id) vendaItem.clienteId = vinculo.cliente.id;
-    } else if (window.Calculadora.clientePedido()) {
-        // Cliente do pedido: cadastrado (a venda fica na ficha dele) ou só o nome (sai na via)
-        const cp = window.Calculadora.clientePedido();
-        vendaItem.cliente = cp.nome;
-        if (cp.id) vendaItem.clienteId = cp.id;
-        else vendaItem.clienteVia = { nome: cp.nome };
-    }
+    // Cliente: do bloco "Cliente" do pedido (vinculado a um cadastrado ou só os dados da via).
+    // No fiado é obrigatório (nome e WhatsApp) e o cliente novo é cadastrado.
+    const cli = await window.ClientePedido.paraVenda({ fiado: pagamentos.some((p) => p.forma === 'fiado') });
+    if (!cli) return;
+    Object.assign(vendaItem, cli);
     if (!(await gravarLancamentos([vendaItem]))) return;
     vendaPendenteId = null;
 

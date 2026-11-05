@@ -204,8 +204,9 @@ await page.click("#imp-fechar");
 
 // 10. Cadastro com endereço e documentos: os campos saem na via do orçamento
 const orc1 = JSON.parse((await db()).madeireira_orcamentos["ORC-0001"]);
-await fetch(URL + "/api/clientes", { method: "POST", headers: H, body: JSON.stringify({ cliente: { id: orc1.cliente.id, nome: "Carlos", telefone: "(47) 99999-1234", fixo: "(41) 3333-0000",
+const rCli = await fetch(URL + "/api/clientes", { method: "POST", headers: H, body: JSON.stringify({ cliente: { nome: "Carlos", telefone: "(47) 99999-1234", fixo: "(41) 3333-0000",
   endereco: "Rua das Araucárias, 210", bairro: "Santa Felicidade", cidade: "Curitiba", uf: "pr", documento: "12345678900", ie: "ISENTO" } }) });
+orc1.cliente.id = (await rCli.json()).cliente.id; // orçamento vinculado ao cadastro
 await page.evaluate(() => window.Clientes.carregar());
 await page.evaluate((o) => window.Impressao.abrir({ orcamento: o }), orc1);
 const pc = nb(await page.textContent("#imp-previa-folha"));

@@ -443,23 +443,37 @@ const novoOrc = (extra = {}) => ({
   total: 1650, custo: 2.97, margem: 0.998, tabelaTotal: 1500, variacao: 150, ...extra,
 });
 
-test("orçamento: número sequencial, validade, cliente cadastrado pelo telefone", async () => {
+test("orçamento: número sequencial, validade; os dados do cliente ficam no orçamento e só vira cadastro com \"Salvar como cliente\"", async () => {
   const kv = kvFalso({});
-  const a = await salvarOrcamento(kv, K, novoOrc(), {});
-  const b = await salvarOrcamento(kv, K, novoOrc({ cliente: { nome: "Carlos S.", telefone: "47999991234" } }), {});
+  const a = await salvarOrcamento(kv, K, novoOrc({ clienteVia: { endereco: "Rua A, 1", bairro: "Centro" } }), {});
   assert.equal(a.id, "ORC-0001");
-  assert.equal(b.id, "ORC-0002");
   assert.equal(a.validoAte, "2026-10-17");
   assert.equal(a.status, "aberto");
-  const { clientes, orcamentos } = await listarOrcamentos(kv, K);
-  assert.equal(clientes.length, 1); // mesmo telefone = mesmo cliente
-  assert.equal(clientes[0].nome, "Carlos S.");
-  assert.equal(clientes[0].telefone, "(47) 99999-1234");
-  assert.equal(orcamentos.length, 2);
+  assert.deepEqual([a.cliente.id, a.cliente.nome, a.clienteVia.endereco, a.clienteVia.uf], [undefined, "Carlos Souza", "Rua A, 1", "PR"]);
+  assert.equal((await listarOrcamentos(kv, K)).clientes.length, 0, "orçamento de cliente novo não cria cadastro");
+  const b = await salvarOrcamento(kv, K, novoOrc({ cliente: { nome: "Carlos S.", telefone: "47999991234" }, salvarCliente: true, clienteVia: { endereco: "Rua A, 1" } }), {});
+  assert.equal(b.id, "ORC-0002");
+  const { clientes } = await listarOrcamentos(kv, K);
+  assert.deepEqual([clientes.length, clientes[0].nome, clientes[0].telefone, clientes[0].endereco, b.cliente.id], [1, "Carlos S.", "(47) 99999-1234", "Rua A, 1", clientes[0].id]);
+  // mesmo WhatsApp de um cadastrado: vincula a ele (sem duplicar nem mudar o cadastro)
+  const c2 = await salvarOrcamento(kv, K, novoOrc({ cliente: { nome: "Carlinhos", telefone: "(47) 99999-1234" }, salvarCliente: true }), {});
+  assert.equal(c2.cliente.id, clientes[0].id);
+  assert.equal((await listarOrcamentos(kv, K)).clientes.length, 1);
   await assert.rejects(salvarOrcamento(kv, K, novoOrc({ cliente: { nome: "X", telefone: "9999-1234" } }), {}), /DDD/);
   await assert.rejects(salvarOrcamento(kv, K, novoOrc({ origem: "email" }), {}), /origem/);
   const c = await salvarOrcamento(kv, K, novoOrc({ validadeDias: 3 }), { orcamentos: { validadeDias: 7 } });
   assert.equal(c.validoAte, "2026-10-13");
+});
+
+test("cadastro sem duplicado: WhatsApp ou CPF/CNPJ de outro cliente é recusado com o nome dele", async () => {
+  const kv = kvFalso({});
+  const a = await salvarCliente(kv, K, { nome: "Fulano", telefone: "(41) 99999-0000", documento: "12345678900" });
+  await assert.rejects(salvarCliente(kv, K, { nome: "Outro", telefone: "41999990000" }), (e) => e.status === 409 && /Já existe Fulano com esse WhatsApp/.test(e.message) && e.duplicado.id === a.id);
+  await assert.rejects(salvarCliente(kv, K, { nome: "Outro", documento: "123.456.789-00" }), /esse CPF\/CNPJ/);
+  const b = await salvarCliente(kv, K, { nome: "Beltrano", telefone: "(41) 98888-0000" });
+  await assert.rejects(salvarCliente(kv, K, { id: b.id, nome: "Beltrano", telefone: "(41) 99999-0000" }), /Já existe Fulano/);
+  assert.equal((await salvarCliente(kv, K, { id: a.id, nome: "Fulano de Tal", telefone: "(41) 99999-0000" })).nome, "Fulano de Tal", "editar o próprio não acusa duplicado");
+  assert.equal(a.uf, "PR", "cliente novo: UF PR");
 });
 
 test("orçamento: contato não muda a situação (continua em aberto); perdido pede motivo; editar mantém o número", async () => {
@@ -692,9 +706,9 @@ test("conta corrente: cadastro guarda a marcação e os alertas; orçamento não
   await assert.rejects(salvarCliente(kv, K, { id: c.id, nome: "Seu Antônio", alertaDias: 0 }), /Alerta inválido/);
   const e = await salvarCliente(kv, K, { id: c.id, nome: "Seu Antônio", telefone: "47999991234", alertaLimite: "" });
   assert.deepEqual([e.contaCorrente, e.alertaLimite, e.alertaDias], [true, null, 45], "em branco = sem alerta; o resto é mantido");
-  await salvarOrcamento(kv, K, novoOrc({ cliente: { nome: "Antônio", telefone: "(47) 99999-1234" } }), {});
+  const o = await salvarOrcamento(kv, K, novoOrc({ cliente: { nome: "Antônio", telefone: "(47) 99999-1234" } }), {});
   const depois = (await listarClientes(kv, K)).clientes[0];
-  assert.deepEqual([depois.nome, depois.contaCorrente, depois.alertaDias], ["Antônio", true, 45], "salvar orçamento mantém a conta corrente");
+  assert.deepEqual([o.cliente.id, depois.nome, depois.contaCorrente, depois.alertaDias], [c.id, "Seu Antônio", true, 45], "orçamento com o WhatsApp dele vincula e não mexe no cadastro");
   const v = validarLancamentoV2({ id: "CC1V", v: 2, conta: "venda_produtos", value: 300, competencia: "2026-10-10", clienteId: c.id, cliente: "Antônio", pagamentos: [{ forma: "fiado", valor: 300, fiado: { contaCorrente: true } }] }, {});
   assert.deepEqual(v.pagamentos[0].fiado, { contaCorrente: true, vencimento: "" }, "conta corrente: sem vencimento");
   const fa = validarLancamentoV2({ id: "FA9", v: 2, conta: "fiado_anterior", value: 480, competencia: "2026-11-02", clienteId: c.id, cliente: "Antônio", contaCorrente: true, vencimento: "2026-12-01" }, {});

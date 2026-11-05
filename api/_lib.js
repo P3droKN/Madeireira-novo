@@ -142,5 +142,5 @@ export async function autorizar(request, response) {
 
 export function responderErro(response, error) {
   const status = error.status || 500;
-  response.status(status).json({ error: error.message });
+  response.status(status).json({ error: error.message, ...(error.duplicado ? { duplicado: error.duplicado } : {}) });
 }

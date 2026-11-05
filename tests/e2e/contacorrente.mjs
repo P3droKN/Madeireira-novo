@@ -100,7 +100,7 @@ await page.click("#btn-tab-vender");
 await page.selectOption("#material", "PINUS"); await page.selectOption("#dimension", "PINUS|2x4x3.00");
 await page.fill("#quantity-pieces", "10"); await page.click("#btn-adicionar");
 await page.locator("#calc-pagamentos .pag-forma").first().selectOption("fiado");
-await page.fill("#calc-pagamentos .pag-fiado-cliente", "Seu Arlindo"); await page.dispatchEvent("#calc-pagamentos .pag-fiado-cliente", "change");
+await page.fill("#cp-nome", "Seu Arlindo"); await page.dispatchEvent("#cp-nome", "change"); // escolhido na sugestão: vincula ao cadastro
 ok(nb(await page.textContent("#calc-pagamentos")).includes("Sem prazo: acerta quando juntar") && !(await page.locator("#calc-pagamentos .pag-fiado-venc").count()), "cliente sem prazo: sem campo de vencimento");
 await page.click("#btn-registrar-venda");
 await page.waitForFunction(() => document.querySelectorAll("#items-body tr.linha-item").length === 0);

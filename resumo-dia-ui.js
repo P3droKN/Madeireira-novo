@@ -119,11 +119,12 @@ function render(el, modo = estado.modo) {
   ${ehMes() ? `<details class="glass-panel dia-recolhido" id="dia-dia-a-dia"><summary>Dia a dia do mês</summary><div id="dia-dia-a-dia-conteudo"><p class="texto-suave">Calculando…</p></div></details>` : ""}
 
   <details class="glass-panel dia-recolhido" id="dia-detalhes">
-    <summary>Mais detalhes <span class="texto-suave">cheques · orçamentos · resultado</span></summary>
+    <summary>Mais detalhes <span class="texto-suave">cheques · orçamentos · despesas "Outros" · resultado</span></summary>
     <div class="dia-colunas">
       <div><h3>Cheques</h3>${chequesHtml(r)}</div>
       <div><h3>Orçamentos</h3>${orcamentosHtml(r)}</div>
     </div>
+    ${outrasDespesasHtml(r)}
     <div class="sigilo" id="dia-resultado">
       <h3>Resultado <span class="texto-suave">(some no modo balcão)</span></h3>
       <table class="tabela-fin dia-resultado"><tbody>
@@ -163,6 +164,15 @@ function diaADiaHtml() {
   }
   return `<div class="table-container"><table class="tabela-fin"><thead><tr><th>Dia</th><th class="num">Vendeu</th><th class="num">Entrou</th><th class="num">Saiu</th><th class="num">Caixa no fim</th></tr></thead>
     <tbody>${linhas.join("") || '<tr><td colspan="5" class="texto-suave">Nenhum movimento no mês.</td></tr>'}</tbody></table></div>`;
+}
+
+// Despesas "Outros" do período (para não virar depósito de tudo: o dono vê e reclassifica em Caixa › Lançamentos)
+function outrasDespesasHtml(r) {
+  const g = r.saidas.grupos.find((x) => x.grupo === "Outras despesas");
+  if (!g) return "";
+  return `<div id="dia-outras-despesas"><h3>Despesas "Outros" ${esc(quando())} <span class="texto-suave">· ${moeda(g.total)}</span></h3>
+    <table class="tabela-fin"><tbody>${g.itens.map((i) => `<tr><td>${dataBR(i.data)}</td><td>${esc(i.descricao)}</td><td>${esc(i.pagoCom)}</td><td class="num">${moeda(i.valor)}</td></tr>`).join("")}</tbody></table>
+    <p class="texto-suave">Dá para mudar para a conta certa em Caixa › Lançamentos (selecionar › Aplicar conta).</p></div>`;
 }
 
 function gavetaHtml(g) {

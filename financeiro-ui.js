@@ -179,7 +179,8 @@ function renderFormulario() {
       <div class="form-group"><label for="ff-valor">Valor (R$)</label><input type="number" id="ff-valor" step="0.01" min="0.01" inputmode="decimal" required></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label for="ff-desc">Descrição</label><input type="text" id="ff-desc" maxlength="200"></div>
+      <div class="form-group"><label for="ff-desc">Descrição</label><input type="text" id="ff-desc" maxlength="200">
+        <small class="aviso aviso-alerta ff-outros-aviso" id="ff-outros-aviso" hidden>Descreva o que foi (obrigatório), ex.: "conserto do portão". Compra de madeira ou mercadoria para revender não é Outros: use Compras.</small></div>
       ${entrada ? "" : `<div class="form-group"><label for="ff-fornecedor">Fornecedor / favorecido</label><input type="text" id="ff-fornecedor" maxlength="120" list="ff-fornecedores"><datalist id="ff-fornecedores">${fornecedores.map((f) => `<option value="${esc(f)}">`).join("")}</datalist></div>`}
     </div>
     <div class="form-group">
@@ -263,6 +264,7 @@ function renderFormulario() {
       $("ff-cheque") && ($("ff-cheque").hidden = pc !== "cheque_emitido");
       $("ff-vida-grupo").hidden = $("ff-conta").value !== "investimento";
       $("ff-vinculo-grupo").hidden = $("ff-conta").value !== "salarios" || !estimativasLigadas();
+      $("ff-outros-aviso").hidden = !contaPorId[$("ff-conta").value]?.pedeDescricao;
       if (pc === "cheque_emitido" && !$("ff-ch-favorecido").value && $("ff-fornecedor")) $("ff-ch-favorecido").value = $("ff-fornecedor").value;
     };
     $("ff-conta").addEventListener("change", atualizarSugestao);
@@ -318,6 +320,7 @@ async function enviarFormularioAgora() {
   } else {
     item.conta = $("ff-conta").value;
     if (!item.conta) return alert("Escolha a conta.");
+    if (contaPorId[item.conta]?.pedeDescricao && !item.description) { alert('Despesa "Outros": descreva o que foi (ex.: conserto do portão).'); return $("ff-desc").focus(); }
     const pc = document.querySelector('input[name="ff-pagocom"]:checked')?.value;
     if (!pc) return alert(tipo === "entrada" ? 'Escolha onde foi recebido.' : 'Escolha "Pago com".');
     item.pagoCom = pc;
@@ -367,7 +370,7 @@ function filtrarLista() {
   return lista.filter((l) => {
     if (mes && mesDe(l) !== mes) return false;
     if (conta && l.conta !== conta) return false;
-    if (tipo === "classificar" && !l.classificar) return false;
+    if (tipo === "classificar" && !l.classificar && !custoPendente(l)) return false;
     if (tipo === "sugestao" && !sugestaoDe(l)) return false;
     if (tipo === "entradas" && naturezaDaConta(l.conta) !== "entrada") return false;
     if (tipo === "saidas" && (l.conta === "transferencia" || naturezaDaConta(l.conta) !== "saida")) return false;
@@ -409,6 +412,9 @@ async function corrigirVenda(id) {
 }
 window.Vendas = { vias: viasDaVenda, corrigir: corrigirVenda };
 
+// Venda com item "Outros" sem custo: fica "a classificar" até o dono completar o custo em Corrigir
+const custoPendente = (l) => l.conta === "venda_produtos" && (l.itens || []).some((i) => i.custoTotal == null);
+
 function renderLista() {
   if (!$("fin-f-conta").options.length) {
     $("fin-f-conta").innerHTML = `<option value="">Todas</option>${opcoesContas(() => true)}<option value="transferencia">Transferência</option><option value="recebimento">Recebimento de fiado</option>`;
@@ -428,7 +434,7 @@ function renderLista() {
     const entrada = naturezaDaConta(l.conta) === "entrada";
     const s = sugestaoDe(l);
     const sug = s ? `<small class="sugestao">sugestão: ${esc(contaPorId[s.conta]?.nome || s.conta)} (${esc(s.motivo)})</small>` : "";
-    const tags = [l.classificar ? '<span class="tag tag-menos">a classificar</span>' : "", l.abertura ? '<span class="tag">abertura</span>' : "", l.migrado && !l.abertura ? '<span class="tag">migrado</span>' : ""].join(" ");
+    const tags = [l.classificar ? '<span class="tag tag-menos">a classificar</span>' : "", custoPendente(l) ? '<span class="tag tag-menos sigilo">custo não informado</span>' : "", l.abertura ? '<span class="tag">abertura</span>' : "", l.migrado && !l.abertura ? '<span class="tag">migrado</span>' : ""].join(" ");
     return `<tr class="${estado.selecionados.has(String(l.id)) ? "selecionado" : ""}">
       <td><input type="checkbox" class="fin-sel" value="${esc(l.id)}" ${estado.selecionados.has(String(l.id)) ? "checked" : ""} aria-label="Selecionar"></td>
       <td>${dataBR(l.competencia)}</td>
