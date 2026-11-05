@@ -49,6 +49,34 @@ async function carregar() {
   renderPedido();
 }
 
+// Preços e ajustes salvos depois que esta tela abriu (o dono mudou em Ajustes › Preços, ou em outro aparelho):
+// relê do servidor sem mexer no pedido nem no que está sendo escolhido; os itens do pedido recalculam com o preço novo.
+let atualizandoPrecos = null;
+async function atualizarPrecos() {
+  if (!estado.dados || atualizandoPrecos) return atualizandoPrecos;
+  atualizandoPrecos = (async () => {
+    let novo;
+    try { novo = await window.api("/api/catalogo"); } catch { return false; }
+    const mudouPrecos = JSON.stringify(novo.precos || {}) !== JSON.stringify(estado.dados.precos || {});
+    const mudouConfig = JSON.stringify(novo.config || {}) !== JSON.stringify(estado.dados.config || {});
+    if (!mudouPrecos && !mudouConfig) return false;
+    const material = $("material").value, medida = $("dimension").value, acab = acabamentoEscolhido();
+    estado.dados = novo;
+    reconstruirCatalogo();
+    if (mudouConfig) { // cepilhado ligado/desligado: refaz as opções e volta ao que estava escolhido
+      preencherMateriais();
+      if (material) { $("material").value = material; $("material").dispatchEvent(new Event("change")); }
+      if (medida && estado.catalogo.itens.has(medida)) { $("dimension").value = medida; aoEscolherMedida(); }
+      const r = $("acabamento").querySelector(`input[value="${acab}"]`);
+      if (r) r.checked = true;
+    }
+    renderPedido();
+    atualizarPrevia();
+    return true;
+  })();
+  try { return await atualizandoPrecos; } finally { atualizandoPrecos = null; }
+}
+
 function reconstruirCatalogo() {
   estado.catalogo = montarCatalogo(estado.dados.custos, estado.dados.config);
   const total = estado.catalogo.itens.size;
@@ -539,6 +567,7 @@ function fotografiaPedido() {
 
 window.Calculadora = {
   recarregar: carregar,
+  atualizarPrecos,
 
   remover(uid) {
     estado.pedido = estado.pedido.filter((l) => l.uid !== uid);

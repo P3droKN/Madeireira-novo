@@ -251,6 +251,7 @@ async function atualizarSozinho() {
     await carregarDados();
     window.Orcamentos?.recarregar();
     window.Clientes?.carregar();
+    window.Calculadora?.atualizarPrecos?.(); // preço salvo pelo dono depois que esta tela abriu
 }
 setInterval(atualizarSozinho, 30000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) atualizarSozinho(); });
@@ -416,6 +417,11 @@ async function registerDirectSale(opcoes) {
 }
 
 async function registrarVendaAgora(opcoes = {}) {
+    // Antes de registrar, confere se a tabela de preços mudou (se mudou, a pessoa vê os preços novos e registra de novo)
+    if (window.Calculadora?.atualizarPrecos && await window.Calculadora.atualizarPrecos()) {
+        alert('A tabela de preços foi atualizada agora há pouco (Ajustes › Preços). Confira os valores do pedido e registre de novo.');
+        return;
+    }
     const pedido = window.Calculadora && window.Calculadora.resumo();
     if (!pedido || pedido.itens.length === 0) {
         alert("O pedido está vazio. Adicione itens primeiro.");

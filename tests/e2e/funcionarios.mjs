@@ -99,6 +99,17 @@ await ana.fill("#quantity-pieces", "2"); await ana.fill("#quantity-length", "3")
 await ana.waitForSelector("#items-body tr.linha-item");
 ok(await ana.inputValue("#items-body .preco-input") === "11.50" && !nb(await ana.textContent("#items-body")).includes("Sem preço de tabela"), "no pedido do funcionário o preço unitário vem preenchido com o da tabela (R$ 11,50/m)");
 await ana.evaluate(() => window.Calculadora.limpar(false));
+// preço salvo pelo dono DEPOIS que a tela do funcionário abriu: chega sozinho (ao voltar para a tela / a cada 30 s)
+await ana.selectOption("#material", "EUCALIPTO"); await ana.selectOption("#dimension", "EUCALIPTO|1x3");
+await ana.fill("#quantity-pieces", "4"); await ana.fill("#quantity-length", "5"); await ana.click("#btn-adicionar");
+await ana.waitForSelector("#items-body tr.linha-item");
+const antesPreco = nb(await ana.textContent("#pendencias"));
+await api("precos", { m: "POST", b: { alteracoes: { "EUCALIPTO|1x3|BRUTO": 5.5 } } });
+await ana.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+await ana.waitForFunction(() => document.querySelector("#items-body .preco-input")?.value === "5.50", null, { timeout: 5000 }).catch(() => {});
+ok(antesPreco.includes("Eucalipto 1x3") && await ana.inputValue("#items-body .preco-input") === "5.50" && nb(await ana.textContent("#total-tabela")).includes("110,00"),
+  "preço cadastrado pelo dono depois que o funcionário abriu a tela: o pedido dele passa a mostrar R$ 5,50/m (R$ 110,00) sozinho");
+await ana.evaluate(() => window.Calculadora.limpar(false));
 const catDono = (await api("catalogo")).corpo.precos;
 
 // 3. O que o funcionário recebe da API: sem custos, sem saldos, sem rotas do dono
