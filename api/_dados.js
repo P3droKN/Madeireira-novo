@@ -6,6 +6,7 @@ import { converterLancamento, lancamentosDeAbertura, categoriaLegada, sugestaoDe
 import { numeroOrcamento, normalizarTelefone, somarDias, ORIGENS, MOTIVOS_PERDA } from "../lib/orcamentos.js";
 import { dataSP, hojeSP } from "../lib/datas.js";
 import { catalogoDoServidor, custoDosItens } from "./_custos.js";
+import { chaves } from "./_lib.js";
 import { contasAReceber } from "../lib/receber.js";
 
 const brl = (v) => "R$ " + Number(v || 0).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -570,6 +571,21 @@ export async function restaurar(kv, k, arquivo) {
 }
 
 // --- Preços de venda e configuração (Fase 1) ---
+
+// Ensaio: copia da loja (chaves sem prefixo) os preços de venda e os ajustes da calculadora (cepilhado,
+// modificadores). Só LÊ da loja; grava só nas chaves do ensaio (preview:), com cópia antes.
+export async function copiarDaLoja(kv, k) {
+  if (k.prefixo !== "preview:") throw erro(403, "Só no ensaio.");
+  const loja = chaves("production", "");
+  if (loja.precos === k.precos) throw erro(403, "Só no ensaio.");
+  const precos = (await kv.hgetall(loja.precos)) || {};
+  const config = await kv.get(loja.config);
+  const copia = await salvarCopia(kv, k, "antes-de-copiar-da-loja");
+  await kv.del(k.precos);
+  if (Object.keys(precos).length) await kv.hset(k.precos, precos);
+  if (config != null) await kv.set(k.config, config);
+  return { precos: Object.keys(precos).length, config: config != null, copia };
+}
 
 export async function lerPrecosEConfig(kv, k) {
   const precos = (await kv.hgetall(k.precos)) || {};

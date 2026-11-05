@@ -1011,3 +1011,25 @@ test("backup leva os funcionários (nome, situação e resumo do PIN, nunca o PI
   assert.equal((await listarFuncionarios(kv, K)).length, 1);
   assert.ok(!CHAVES_ZERAR.includes("funcionarios"));
 });
+
+test("ensaio: copiar catálogo e preços da loja só lê a loja e grava só no preview:; na produção o botão não existe", async () => {
+  const { copiarDaLoja } = await import("../api/_dados.js");
+  const { podeCopiarDaLoja } = await import("../api/_lib.js");
+  const LOJA = chaves("production", ""), TESTE = chaves("preview", "");
+  const kv = kvFalso({ [LOJA.precos]: { "CAMBARA|1x4|BRUTO": 9, "CAMBARA|1x4|CEPILHADO": 11.5 }, [LOJA.config]: { modificadores: { selecionadaPct: 10, ultimasPecasPct: 15 }, temCepilhado: { CAMBARA: true } },
+    [TESTE.precos]: { "PINUS|1x2x2.50|BRUTO": 1 } });
+  const antesLoja = JSON.stringify([...kv.dados].filter(([k]) => !k.startsWith("preview:")));
+  const r = await copiarDaLoja(kv, TESTE);
+  assert.equal(r.precos, 2);
+  assert.deepEqual(await kv.hgetall(TESTE.precos), { "CAMBARA|1x4|BRUTO": 9, "CAMBARA|1x4|CEPILHADO": 11.5 });
+  assert.equal((await kv.get(TESTE.config)).modificadores.ultimasPecasPct, 15);
+  assert.equal(JSON.stringify([...kv.dados].filter(([k]) => !k.startsWith("preview:"))), antesLoja, "nada gravado na loja");
+  await assert.rejects(copiarDaLoja(kv, LOJA), /Só no ensaio/);
+  const env = { ...process.env };
+  try {
+    delete process.env.KV_PREFIXO; delete process.env.BANCO_PRODUCAO_HOST;
+    process.env.VERCEL_ENV = "production"; assert.equal(podeCopiarDaLoja(), false);
+    process.env.VERCEL_ENV = "preview"; assert.equal(podeCopiarDaLoja(), true);
+    process.env.KV_PREFIXO = "teste:"; assert.equal(podeCopiarDaLoja(), false);
+  } finally { process.env = env; }
+});

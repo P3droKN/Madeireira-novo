@@ -302,7 +302,19 @@ function atualizarStatusBanco() {
     el.textContent = partes.join(' · ');
     el.classList.toggle('texto-ruim', Boolean(statusBanco.gravacaoBloqueada || statusBanco.zerarPermitido));
     document.getElementById('zerar-bloco').hidden = !statusBanco.zerarPermitido;
+    document.getElementById('copiar-loja-bloco').hidden = !statusBanco.copiarDaLoja;
 }
+
+// Ensaio: copiar os preços de venda e os ajustes da calculadora da loja (o botão não aparece na produção)
+document.getElementById('copiar-loja')?.addEventListener('click', async () => {
+    if (!statusBanco?.copiarDaLoja) return;
+    if (!confirm('Copiar os preços de venda e os ajustes da calculadora da loja para o ensaio?\n\nOs preços do ensaio são substituídos (fica uma cópia antes). Nada é gravado na loja.')) return;
+    try {
+        const r = await api('/api/config', { method: 'POST', body: { copiarDaLoja: true } });
+        await window.Calculadora?.recarregar?.();
+        alert(`Copiado para o ensaio: ${r.precos} preços de venda${r.config ? ' e os ajustes da calculadora' : ''}.`);
+    } catch (e) { alert(`Não foi copiado: ${e.message}`); }
+});
 
 // --- ZERAR BANCO (dia da virada): backup baixado + digitar ZERAR ---
 let zerarBackupOk = false;

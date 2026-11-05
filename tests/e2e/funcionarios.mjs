@@ -34,6 +34,7 @@ const add = async (page, mat, dim, qtd, comp) => {
   await page.click("#btn-adicionar");
 };
 
+let r0;
 // 1. Dono cadastra dois funcionários em Ajustes › Funcionários
 const dono = await abrirPagina("/");
 await dono.fill("#senha-input", "pinho123"); await dono.click("#senha-form button");
@@ -44,6 +45,8 @@ await dono.waitForSelector("#aj-func-lista tr:has-text('Ana Souza')");
 await dono.fill("#aj-func-nome", "Beto"); await dono.fill("#aj-func-pin", "5678"); await dono.click("#aj-func-salvar");
 await dono.waitForSelector("#aj-func-lista tr:has-text('Beto')");
 const funcs = (await api("funcionarios")).corpo.funcionarios;
+await dono.click('.subtabs[data-grupo="ajustes"] .subtab[data-sub="dados"]');
+ok(await dono.isHidden("#copiar-loja-bloco") && (await api("config", { m: "POST", b: { copiarDaLoja: true } })).status === 403, "produção: sem o botão \"Copiar catálogo e preços da loja\" (e a rota recusa)");
 ok(funcs.length === 2 && funcs.every((f) => f.ativo && !f.pin), "Ajustes › Funcionários: cadastra Ana e Beto (o PIN não volta na lista)");
 const banco = await db();
 ok(!JSON.stringify(banco.madeireira_funcionarios).includes("1234"), "o PIN fica guardado só como resumo (nunca o número)");
@@ -67,10 +70,37 @@ ok(!(await ana.evaluate(() => JSON.stringify(localStorage))).includes("1234"), "
 const r401 = await fetch(URL + "/api/getFinance", { headers: { "x-senha": "1234" } });
 ok(r401.status === 401, "o PIN não vale na entrada do dono");
 
+// 2b. Preço de tabela: o mesmo no Vender do dono e do funcionário (Cambará 1×4 bruto e cepilhado); sem preço, pede para digitar
+await api("precos", { m: "POST", b: { alteracoes: { "CAMBARA|1x4|BRUTO": 9, "CAMBARA|1x4|CEPILHADO": 11.5 } } });
+await dono.evaluate(() => window.Calculadora.recarregar());
+await ana.evaluate(() => window.Calculadora.recarregar());
+async function previaDe(page, mat, dim, acab) {
+  await page.click("#btn-tab-vender");
+  await page.selectOption("#material", mat); await page.selectOption("#dimension", dim);
+  if (acab) await page.locator(`#acabamento label:has(input[value="${acab}"])`).click();
+  await page.fill("#quantity-pieces", "2"); await page.fill("#quantity-length", "3"); await page.dispatchEvent("#quantity-length", "input");
+  await page.waitForTimeout(200);
+  return nb(await page.textContent("#calc-previa")).replace(/Custo.*?(?=Tabela|Sem)/, "").replace(/Margem.*/, "").trim();
+}
+for (const acab of ["BRUTO", "CEPILHADO"]) {
+  const pd = await previaDe(dono, "CAMBARA", "CAMBARA|1x4", acab), pa = await previaDe(ana, "CAMBARA", "CAMBARA|1x4", acab);
+  ok(pd === pa && pa.includes(acab === "BRUTO" ? "R$ 54,00" : "R$ 69,00"), `Cambará 1×4 ${acab.toLowerCase()}: o mesmo preço no Vender do dono e do funcionário (${pa})`);
+}
+const semPrecoAna = await previaDe(ana, "CAMBARA", "CAMBARA|1x6", "BRUTO");
+ok(semPrecoAna.includes("Sem preço de tabela"), "item sem preço em Ajustes › Preços: o funcionário continua tendo de digitar");
+// no pedido, o preço unitário já vem com o da tabela
+await ana.selectOption("#dimension", "CAMBARA|1x4"); await ana.locator('#acabamento label:has(input[value="CEPILHADO"])').click();
+await ana.fill("#quantity-pieces", "2"); await ana.fill("#quantity-length", "3"); await ana.click("#btn-adicionar");
+await ana.waitForSelector("#items-body tr.linha-item");
+ok(await ana.inputValue("#items-body .preco-input") === "11.50" && !nb(await ana.textContent("#items-body")).includes("Sem preço de tabela"), "no pedido do funcionário o preço unitário vem preenchido com o da tabela (R$ 11,50/m)");
+await ana.evaluate(() => window.Calculadora.limpar(false));
+const catDono = (await api("catalogo")).corpo.precos;
+
 // 3. O que o funcionário recebe da API: sem custos, sem saldos, sem rotas do dono
 const sessao = await ana.evaluate(() => JSON.parse(localStorage.getItem("madeireira_sessao_func")).token);
 const F = { "x-sessao": sessao };
 const cat = (await api("catalogo", { h: F })).corpo;
+ok(JSON.stringify(cat.precos) === JSON.stringify(catDono) && JSON.stringify(cat.config) === JSON.stringify((await api("catalogo")).corpo.config), "o servidor manda ao funcionário os mesmos preços de venda e ajustes da calculadora que ao dono");
 ok(cat.custos.pinus_por_peca.dimensoes["1x2x2.50"] === null && Object.entries(cat.custos.portas || {}).filter(([k]) => !k.startsWith("_")).every(([, m]) => Object.values(m).every((v) => v.custo === null && v.venda > 0)), "catálogo do funcionário vem sem custo nenhum");
 const gf = (await api("getFinance", { h: F })).corpo;
 ok(gf.saldos === null && gf.acumulado === null && !gf.configFinanceiro.cartao && !gf.configFinanceiro.impostos, "getFinance do funcionário: sem saldos, acumulado, taxas e impostos");
@@ -102,6 +132,14 @@ await ana.waitForTimeout(150);
 await ana.click("#btn-registrar-venda");
 await fecharVias(ana, dialogos);
 ok((await lanc()).some((l) => l.numero === "V-0002" && l.value === 95), "desconto de 5% (o máximo padrão) passa: V-0002 de R$ 95");
+
+// 5b. Desconto conferido com o mesmo preço de tabela (cepilhado R$ 11,50/m × 6 m = R$ 69): 5% passa, 6% não
+const vCep = (id, valor) => ({ id, v: 2, conta: "venda_produtos", value: valor, competencia: "2026-01-01", description: "cep", pagamentos: [{ forma: "dinheiro", valor }],
+  itens: [{ itemId: "CAMBARA|1x4", acabamento: "CEPILHADO", quantidade: 2, comprimento: 3, vendaTotal: valor }] });
+r0 = await api("lancamento", { m: "POST", h: F, b: { itens: [vCep("1790000000041", 64.86)] } });
+ok(r0.status === 400 && r0.corpo.error.includes("Desconto acima"), "servidor: cepilhado com 6% abaixo da tabela é recusado");
+r0 = await api("lancamento", { m: "POST", h: F, b: { itens: [vCep("1790000000042", 65.55)] } });
+ok(r0.status === 200, "servidor: cepilhado com 5% abaixo da tabela passa (mesmo preço do Vender)");
 
 // 6. Pela API: abaixo do custo, preço digitado, corrigir, estornar e lançar despesa são recusados
 const hoje = gf.proximos && (await ana.evaluate(() => window.Caixa.hoje()));

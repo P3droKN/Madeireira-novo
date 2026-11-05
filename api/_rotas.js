@@ -1,7 +1,7 @@
 // Todas as rotas da API num arquivo só. Quem atende é api/[recurso].js (uma única função na Vercel),
 // então novas rotas não contam no limite de 12 funções do plano Hobby. Os endereços continuam os mesmos:
 // /api/getFinance, /api/lancamento, /api/orcamentos...
-import { kv, chaves, autorizar, lerCustos, responderErro, statusBanco, gravacaoBloqueada } from "./_lib.js";
+import { kv, chaves, autorizar, lerCustos, responderErro, statusBanco, gravacaoBloqueada, podeCopiarDaLoja } from "./_lib.js";
 import {
   listarFuncionarios, salvarFuncionario, entrar, sair, custosSemValores, lancamentosDoFuncionario, configParaFuncionario,
   orcamentoParaFuncionario, lancamentoParaFuncionario, prepararLancamentoDoFuncionario, prepararOrcamentoDoFuncionario,
@@ -10,7 +10,7 @@ import {
   lerTudo, salvarLancamentos, excluirLancamento, reclassificar, atualizarCheque,
   montarBackup, salvarCopia, listarCopias, lerCopia, lerPrecosEConfig, salvarPrecos,
   salvarConfig, salvarConfigFinanceiro, salvarAbertura, registrarConferencia,
-  restaurar, marcarImpresso, proximosNumeros, clienteDaVenda, whatsappAberto,
+  restaurar, marcarImpresso, proximosNumeros, clienteDaVenda, whatsappAberto, copiarDaLoja,
   listarOrcamentos, salvarOrcamento, atualizarOrcamento, salvarCliente, listarClientes, zerarMovimento,
   situacaoCliente, impactoExcluirCliente, excluirCliente,
 } from "./_dados.js";
@@ -144,6 +144,11 @@ export const ROTAS = {
   // POST { abertura: {...} }    -> abertura de saldos (dia da troca)
   // POST { conferencia: {...} } -> conferência de saldo de uma conta
   config: rota(["POST"], async (request, response) => {
+    // Ensaio: "Copiar catálogo e preços da loja para o teste" (lê da loja, grava só no preview:)
+    if (request.body?.copiarDaLoja) {
+      if (!podeCopiarDaLoja()) return response.status(403).json({ error: "Isso só existe no ensaio." });
+      return response.status(200).json(await copiarDaLoja(kv(), chaves()));
+    }
     if (request.body?.abertura) return response.status(200).json({ saldos: await salvarAbertura(kv(), chaves(), request.body.abertura) });
     if (request.body?.conferencia) return response.status(200).json({ conferencia: await registrarConferencia(kv(), chaves(), request.body.conferencia) });
     if (request.body?.financeiro) {

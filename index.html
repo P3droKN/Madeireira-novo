@@ -541,6 +541,8 @@
                         <div class="dados-acao"><label class="btn-icon">♻️ Restaurar
                             <input type="file" id="restore-file" accept=".json" style="display: none;" onchange="restoreBackup(event)"></label>
                             <small class="texto-suave">Volta os dados exatamente ao estado de um backup (guarda uma cópia antes).</small></div>
+                        <div class="dados-acao" id="copiar-loja-bloco" hidden><button type="button" class="btn-icon" id="copiar-loja">📋 Copiar catálogo e preços da loja para o teste</button>
+                            <small class="texto-suave">Só no ensaio: lê os preços de venda e os ajustes da calculadora da loja (sem gravar nada lá) e grava aqui, no ensaio.</small></div>
                         <div class="dados-acao"><label class="btn-icon">🔍 Conferir com arquivo
                             <input type="file" id="conferir-file" accept=".json" style="display: none;" onchange="Conferencia.abrir(event)"></label>
                             <small class="texto-suave">Compara um arquivo de backup com o que está no banco, mês a mês.</small></div>

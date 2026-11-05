@@ -35,6 +35,12 @@ export function gravacaoBloqueada() {
   return Boolean(prod) && prod === bancoHost();
 }
 
+// Ensaio (preview): copiar o catálogo e os preços da loja para o teste. Só com o prefixo preview:, nunca na
+// produção, nem com prefixo forçado (projeto de testes) nem no banco do sistema antigo.
+export function podeCopiarDaLoja() {
+  return chaves().prefixo === "preview:" && !process.env.KV_PREFIXO && process.env.VERCEL_ENV !== "production" && !gravacaoBloqueada();
+}
+
 export function statusBanco() {
   return {
     ambiente: chaves().ambiente,
@@ -43,6 +49,7 @@ export function statusBanco() {
     travaConfigurada: Boolean(process.env.BANCO_PRODUCAO_HOST),
     gravacaoBloqueada: gravacaoBloqueada(),
     // "Zerar banco" só aparece no dia da virada: PERMITIR_ZERAR=sim + trava configurada + este banco não é o de produção
+    copiarDaLoja: podeCopiarDaLoja(),
     zerarPermitido: process.env.PERMITIR_ZERAR === "sim" && Boolean(process.env.BANCO_PRODUCAO_HOST) && !gravacaoBloqueada(),
   };
 }

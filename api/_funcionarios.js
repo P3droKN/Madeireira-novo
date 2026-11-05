@@ -138,6 +138,8 @@ export async function conferirItensDoFuncionario(kv, k, itens, { refTabela = nul
   const tabela = precosComPadrao(precosComIdsAtuais(precos), cat);
   const cfg = mesclarConfigFinanceiro(desembrulhar(await kv.get(k.configFinanceiro)) || {});
   const max = Number(cfg.funcionarios?.descontoMaxPct ?? 5) / 100;
+  // "Últimas peças" (Ajustes da calculadora): o desconto que o dono configurou vale para o funcionário também
+  const ultimas = Number(config?.modificadores?.ultimasPecasPct || 0) / 100;
   let cmv = 0, precoDigitado = false;
   const novos = itens.map((i) => {
     const item = cat.itens.get(idAtual(String(i?.itemId || "")));
@@ -152,7 +154,8 @@ export async function conferirItensDoFuncionario(kv, k, itens, { refTabela = nul
     const ref = refTabela?.(item.id, acab);
     const tab = livre ? null : ref ?? tabela[`${item.id}|${acab}`] ?? null;
     if (tab != null) {
-      if (centavos(venda) < Math.round(centavos(tab * qc) * (1 - max)) - 1) throw erro(400, `Desconto acima do permitido em ${item.material} ${livre ? "" : item.rotuloDimensao}: chame o responsável.`);
+      const maxItem = i.motivo === "Últimas peças" ? Math.max(max, ultimas) : max;
+      if (centavos(venda) < Math.round(centavos(tab * qc) * (1 - maxItem)) - 1) throw erro(400, `Desconto acima do permitido em ${item.material} ${livre ? "" : item.rotuloDimensao}: chame o responsável.`);
     } else if (!livre || item.pedeCusto) precoDigitado = true;
     if (custoTotal != null && centavos(venda) < centavos(custoTotal)) throw erro(400, `Preço abaixo do permitido em ${item.material} ${item.rotuloDimensao}: chame o responsável.`);
     if (custoTotal != null) cmv += centavos(custoTotal);
