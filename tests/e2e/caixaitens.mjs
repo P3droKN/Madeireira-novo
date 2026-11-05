@@ -10,8 +10,6 @@ const nb = (s) => (s || "").replace(/ /g, " ");
 const ok = (cond, msg) => { console.log((cond ? "OK   " : "FALHA") + " " + msg); if (!cond) process.exitCode = 1; };
 const lanc = async () => Object.values((await (await fetch(URL + "/__db")).json()).madeireira_lancamentos || {}).map((x) => JSON.parse(x)).filter((l) => !l.excluido);
 
-await fetch(URL + "/api/migrar", { method: "POST", headers: H });
-await fetch(URL + "/api/migrar?versao=2", { method: "POST", headers: H });
 await fetch(URL + "/api/config", { method: "POST", headers: H, body: JSON.stringify({ abertura: { data: "2026-10-01", contas: { gaveta: 300, bradesco: 1000, picpay: 0, cheques_carteira: 0 } } }) });
 await fetch(URL + "/api/precos", { method: "POST", headers: H, body: JSON.stringify({ alteracoes: { "PINUS|2x4x3.00|BRUTO": 25, "CEDRO_MESCLADO|1x2|BRUTO": 8 } }) });
 

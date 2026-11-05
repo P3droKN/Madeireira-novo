@@ -10,7 +10,6 @@ const db = async () => (await fetch(URL + "/__db")).json();
 const orc = async (id) => JSON.parse((await db()).madeireira_orcamentos[id]);
 const preco = (alteracoes) => fetch(URL + "/api/precos", { method: "POST", headers: H, body: JSON.stringify({ alteracoes }) });
 
-await fetch(URL + "/api/migrar", { method: "POST", headers: H });
 await preco({ "PINUS|2x4x3.00|BRUTO": 25 });
 
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });

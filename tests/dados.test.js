@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { chaves, senhaConfere } from "../api/_lib.js";
 import {
-  lerTudo, migrar, salvarLancamentos, excluirLancamento, importar, restaurar,
-  montarBackup, salvarAcumulado, listarCopias, validarLancamento,
+  lerTudo, migrar, salvarLancamentos, excluirLancamento, restaurar,
+  montarBackup, listarCopias, validarLancamento,
   salvarPrecos, salvarConfig, lerPrecosEConfig,
 } from "../api/_dados.js";
 
@@ -101,17 +101,6 @@ test("excluir marca como excluído, some da tela e continua guardado", async () 
   assert.equal((await kv.hget(K.lancamentos, "1001")).excluido, true);
 });
 
-test("importar junta: adiciona só o que falta e não altera os existentes", async () => {
-  const kv = sistemaAntigo();
-  await migrar(kv, K);
-  const r = await importar(kv, K, { financeItems: [{ ...ANTIGOS[0], value: 1 }, lanc("novo"), { id: "ruim" }], acumulado: {} });
-  assert.deepEqual(r, { adicionados: 1, existentes: 1, invalidos: 1, migrou: false, acumuladoImportado: false });
-  assert.equal((await kv.hget(K.lancamentos, "1001")).value, 748.41);
-  const vazio = await importar(kv, K, { financeItems: [] });
-  assert.equal(vazio.adicionados, 0);
-  assert.equal((await lerTudo(kv, K)).financeItems.length, 4);
-});
-
 test("restaurar o backup feito antes da migração volta ao estado original", async () => {
   const kv = sistemaAntigo();
   const antes = await montarBackup(kv, K);
@@ -129,13 +118,18 @@ test("restaurar o backup feito antes da migração volta ao estado original", as
   assert.ok(copia.chaves.madeireira_lancamentos.depois);
 });
 
-test("restaurar aceita o arquivo do botão Exportar antigo", async () => {
+test("restaurar recusa o arquivo do botão Exportar do sistema antigo (virada zerada) e não mexe em nada", async () => {
+  const kv = kvFalso({ [K.precos]: { "PINUS|2x4x3.00|BRUTO": 25 } });
+  await assert.rejects(restaurar(kv, K, { financeItems: ANTIGOS, acumulado: ACUMULADO }), /sistema antigo/);
+  assert.equal(kv.dados.has(K.finance), false);
+  assert.ok(kv.dados.has(K.precos));
+});
+
+test("banco novo (sem a lista antiga) já está pronto para lançar, sem migrar", async () => {
   const kv = kvFalso({});
-  await restaurar(kv, K, { financeItems: ANTIGOS, acumulado: ACUMULADO });
   const r = await lerTudo(kv, K);
-  assert.equal(r.migrado, false);
-  assert.equal(r.financeItems.length, 3);
-  assert.deepEqual(r.acumulado, ACUMULADO);
+  assert.deepEqual([r.migrado, r.migradoV2], [true, true]);
+  assert.equal((await salvarLancamentos(kv, K, [{ id: "N1", v: 2, conta: "venda_produtos", value: 10, competencia: "2026-11-02", pagamentos: [{ forma: "dinheiro", valor: 10 }] }])).numeros.N1, "V-0001");
 });
 
 test("restaurar um backup depois da migração devolve o estado migrado", async () => {
@@ -175,14 +169,6 @@ test("validação: rejeita valor zero, data e forma inválidas; remove campos es
   const ok = validarLancamento(lanc("a", { type: "expense", hack: 1 }));
   assert.equal(ok.type, "income");
   assert.equal(ok.hack, undefined);
-});
-
-test("acumulado: guarda cópia antes de alterar", async () => {
-  const kv = sistemaAntigo();
-  await salvarAcumulado(kv, K, { venda: 1 });
-  assert.equal((await kv.get(K.acumulado)).venda, 1);
-  const [copia] = await listarCopias(kv, K);
-  assert.deepEqual((await kv.get(copia)).chaves.madeireira_acumulado, ACUMULADO);
 });
 
 const valida = (c) => /^[A-Z_]+\|[^|]+\|(BRUTO|CEPILHADO|UNICO)$/.test(c);
@@ -238,32 +224,11 @@ test("venda da calculadora guarda CMV e itens no próprio lançamento", () => {
 import { lerArquivoBackup, resumirLancamentos, compararResumos } from "../lib/resumo.js";
 import { hostDe, gravacaoBloqueada, bancoHost } from "../api/_lib.js";
 
-test("importar num banco vazio: ativa o salvamento seguro, traz o acumulado e os totais batem", async () => {
-  const kv = kvFalso({});
-  const arquivo = { financeItems: ANTIGOS.slice(0, 2), acumulado: ACUMULADO };
-  const r = await importar(kv, K, arquivo);
-  assert.equal(r.migrou, true);
-  assert.equal(r.acumuladoImportado, true);
-  assert.equal(r.adicionados, 2);
-  const banco = await lerTudo(kv, K);
-  const doArquivo = lerArquivoBackup(arquivo);
-  const cmp = compararResumos(resumirLancamentos(doArquivo.lista, doArquivo.acumulado), resumirLancamentos(banco.financeItems, banco.acumulado));
-  assert.equal(cmp.diferencas, 0);
-});
-
-test("importar não substitui um acumulado que já existe", async () => {
+test("conferência: arquivo de dados antigos de teste + migrar dá zero diferenças; diferença é apontada", async () => {
   const kv = sistemaAntigo();
-  const r = await importar(kv, K, { financeItems: [], acumulado: { ...ACUMULADO, venda: 1 } });
-  assert.equal(r.acumuladoImportado, false);
-  assert.equal((await kv.get(K.acumulado)).venda, 48866);
-});
-
-test("conferência: restaurar arquivo antigo + migrar dá zero diferenças; diferença é apontada", async () => {
-  const kv = kvFalso({});
-  const arquivo = { financeItems: ANTIGOS, acumulado: ACUMULADO };
-  await restaurar(kv, K, arquivo);
   await migrar(kv, K);
   const banco = await lerTudo(kv, K);
+  const arquivo = { financeItems: ANTIGOS, acumulado: ACUMULADO };
   const a = lerArquivoBackup(arquivo);
   const resA = resumirLancamentos(a.lista, a.acumulado);
   assert.equal(compararResumos(resA, resumirLancamentos(banco.financeItems, banco.acumulado)).diferencas, 0);
@@ -295,35 +260,6 @@ test("trava: recusa gravar quando o banco em uso é o da produção", () => {
     }
   }
   assert.equal(hostDe("abc.upstash.io"), "abc.upstash.io");
-});
-
-test("importar em lotes: continua de onde parou, sem duplicar, e a soma final bate", async () => {
-  const kv = kvFalso({});
-  const lista = Array.from({ length: 742 }, (_, i) => lanc(`L${i}`, { value: 1 + (i % 7), date: `2026-${String(8 + (i % 3)).padStart(2, "0")}-10` }));
-  // Primeira tentativa "para" depois de 2 lotes de 100
-  for (let i = 0; i < 200; i += 100) await importar(kv, K, { financeItems: lista.slice(i, i + 100) });
-  assert.equal((await lerTudo(kv, K)).financeItems.length, 200);
-  // Segunda tentativa: arquivo inteiro de novo, em lotes
-  let adicionados = 0, existentes = 0;
-  for (let i = 0; i < lista.length; i += 100) {
-    const r = await importar(kv, K, { financeItems: lista.slice(i, i + 100) });
-    adicionados += r.adicionados; existentes += r.existentes;
-  }
-  assert.equal(adicionados, 542);
-  assert.equal(existentes, 200);
-  const banco = await lerTudo(kv, K);
-  assert.equal(banco.financeItems.length, 742);
-  const a = resumirLancamentos(lista, null), b = resumirLancamentos(banco.financeItems, null);
-  assert.equal(compararResumos(a, b).diferencas, 0);
-});
-
-test("importar: id repetido dentro do lote conta uma vez; lote grande demais é recusado", async () => {
-  const kv = kvFalso({});
-  const r = await importar(kv, K, { financeItems: [lanc("x"), lanc("x", { value: 99 })] });
-  assert.equal(r.adicionados, 1);
-  assert.equal(r.existentes, 1);
-  assert.equal((await kv.hget(K.lancamentos, "x")).value, 10);
-  await assert.rejects(importar(kv, K, { financeItems: Array.from({ length: 501 }, (_, i) => lanc(`y${i}`)) }), /no máximo 500/);
 });
 
 import { validarLancamentoV2, migrarV2, reclassificar, salvarConfigFinanceiro } from "../api/_dados.js";

@@ -32,7 +32,7 @@ window.Conferencia = {
     }
     const { linhas, diferencas } = compararResumos(doArquivo, banco.resumo);
     const st = banco.status;
-    $("conferencia-status").textContent = `Arquivo: ${file.name} · Banco: ${st.bancoHost} (${st.ambiente}${st.prefixo ? ", prefixo " + st.prefixo : ""}) · salvamento seguro ${st.migrado ? "ativo" : "não ativado"}`;
+    $("conferencia-status").textContent = `Arquivo: ${file.name} · Banco: ${st.bancoHost} (${st.ambiente}${st.prefixo ? ", prefixo " + st.prefixo : ""})`;
     const ver = $("conferencia-veredito");
     ver.className = "aviso " + (diferencas ? "aviso-erro" : "aviso-ok");
     ver.innerHTML = diferencas

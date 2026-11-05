@@ -40,38 +40,31 @@ const saida = async (valor, desc, pagoCom = "bradesco") => {
 };
 
 await irLista();
-ok(await page.isVisible("#aviso-sistema"), "aviso de ativar salvamento seguro aparece");
-ok(await page.isDisabled("#aviso-sistema .btn-success"), "botão 2 bloqueado antes do backup");
-ok((await linhas()) === 10, "mostra os 10 lançamentos da lista antiga");
+ok(!(await page.isVisible("#aviso-sistema")) && !(await page.locator("#fin-aviso-v2, #import-file, #modal-acumulado").count()), "já começa pronto para lançar: sem aviso de salvamento seguro, sem migrar, sem importar e sem \"Saldos passados\"");
+const base = hashLen(await db()); // 10 do sistema antigo de teste + 7 de abertura (convertidos na partida do servidor de teste)
+const n0 = await linhas();
+ok(base === 17 && n0 > 0, `mostra os lançamentos (${n0} na tela, ${base} no banco)`);
 ok((await page.locator("form#finance-form, #fin-category").count()) === 0 && (await page.locator("#fin-form").count()) === 1, "só existe um formulário de lançamento (o antigo saiu)");
+for (const rota of ["/api/migrar", "/api/importar", "/api/acumulado"]) {
+  const r = await fetch(URL + rota, { method: "POST", headers: { "content-type": "application/json", "x-senha": "pinho123" }, body: "{}" });
+  ok(r.status === 404, `${rota} não existe mais (${r.status})`);
+}
 
-// Tenta lançar antes de migrar
-await saida(50);
-await page.waitForTimeout(200);
-ok(ultimo().includes("Antes de lançar"), "bloqueia lançamento antes da migração");
-ok(oldLen(await db()) === 10, "lista antiga intacta");
-
-// Backup + migração
-const [download] = await Promise.all([page.waitForEvent("download"), page.click("text=1. 💾 Baixar backup")]);
+// Backup (para restaurar no fim)
+const [download] = await Promise.all([page.waitForEvent("download"), page.evaluate(() => window.Caixa.baixarBackup())]);
 const caminhoBackup = "backup_antes.json"; await download.saveAs(caminhoBackup);
 const backup = JSON.parse((await import("node:fs")).readFileSync(caminhoBackup, "utf8"));
-ok(backup.chaves.madeireira_finance.length === 10 && backup.chaves.madeireira_acumulado.venda === 48866, "backup baixado tem os 10 lançamentos e o acumulado");
-ok(!(await page.isDisabled("#aviso-sistema .btn-success")), "botão 2 liberado depois do backup");
-await page.click("#aviso-sistema .btn-success");
-await page.waitForFunction(() => document.getElementById("aviso-sistema").style.display === "none");
-ok(ultimo().includes("10 lançamentos copiados"), "migração copia 10 lançamentos");
+ok(Object.keys(backup.chaves.madeireira_lancamentos).length === base, `backup baixado tem os ${base} lançamentos`);
 let d = await db();
-ok(hashLen(d) === 10 && oldLen(d) === 10, "hash com 10 e lista antiga ainda com 10");
-ok(Object.keys(d).some((k) => k.includes("antes-da-migracao")), "cópia automática antes da migração no KV");
 
 // Lançamento com texto perigoso
 await saida(50, '<img src=x onerror="window.__xss=1">Energia');
 await page.waitForFunction(() => document.querySelectorAll("#fin-lista-body").length && true);
 await page.waitForTimeout(400);
 d = await db();
-ok(hashLen(d) === 11 && oldLen(d) === 10, "novo lançamento vai só para o hash (11), lista antiga não é regravada");
+ok(hashLen(d) === base + 1 && oldLen(d) === 10, "novo lançamento vai só para o hash, a lista antiga de teste não é regravada");
 await irLista();
-ok((await linhas()) === 11, "lista mostra 11");
+ok((await linhas()) === n0 + 1, "lista mostra mais um");
 ok(!(await page.evaluate(() => window.__xss)), "descrição com HTML aparece como texto (não executa)");
 ok((await page.textContent("#fin-lista-body")).includes("<img src=x"), "texto exibido literalmente");
 
@@ -81,26 +74,29 @@ await fetch(URL + "/api/lancamento", { method: "POST", headers: { "content-type"
 await saida(10, "energia 2", "gaveta");
 await page.waitForTimeout(400);
 await irLista();
-ok((await linhas()) === 13, "lançamento do outro aparelho aparece e nenhum some (13)");
+ok((await linhas()) === n0 + 3, "lançamento do outro aparelho aparece e nenhum some");
 
 // Excluir (estornar) na lista nova
 const antes = dialogos.length;
 await page.locator("#fin-lista-body tr", { hasText: "celular 2" }).locator("[data-excluir]").click();
-await page.waitForFunction(() => document.querySelectorAll("#fin-lista-body tr .fin-sel").length === 12);
+await page.waitForFunction((n) => document.querySelectorAll("#fin-lista-body tr .fin-sel").length === n, n0 + 2);
 ok(dialogos.slice(antes).some((m) => m.startsWith("Estornar este lançamento?")), "pede confirmação ao estornar");
 d = await db();
 ok(JSON.parse(d.madeireira_lancamentos.outroaparelho1).excluido === true, "excluído continua guardado com marca");
 
-// Restaurar o backup de antes da migração (Ajustes › Dados)
+// Restaurar o backup do começo (Ajustes › Dados)
 await page.click("#btn-tab-ajustes"); await page.click('.subtabs[data-grupo="ajustes"] .subtab[data-sub="dados"]');
-ok((await page.textContent("#status-banco")).includes("Banco:"), "Ajustes › Dados mostra a linha do banco");
+ok((await page.textContent("#status-banco")).includes("Banco:") && !(await page.textContent("#status-banco")).includes("salvamento seguro"), "Ajustes › Dados mostra a linha do banco (sem \"salvamento seguro\")");
 await page.setInputFiles("#restore-file", caminhoBackup);
-await page.waitForFunction(() => document.getElementById("aviso-sistema").style.display === "block");
+await page.waitForTimeout(600);
 d = await db();
-ok(!d.madeireira_lancamentos && !d.madeireira_migrado_v1 && oldLen(d) === 10, "restaurar volta exatamente ao estado de antes da migração");
+ok(hashLen(d) === base && !Object.keys(d.madeireira_lancamentos).includes("outroaparelho1"), "restaurar volta exatamente ao estado do backup");
 await irLista();
-ok((await linhas()) === 10, "tela mostra os 10 originais");
+ok((await linhas()) === n0, "tela mostra os do backup");
 ok(Object.keys(d).some((k) => k.includes("antes-de-restaurar")), "estado anterior à restauração guardado no KV");
+// O "Exportar" do sistema antigo não é mais aceito (a virada foi zerada)
+const rAntigo = await fetch(URL + "/api/restaurar", { method: "POST", headers: { "content-type": "application/json", "x-senha": "pinho123" }, body: JSON.stringify({ confirmacao: "RESTAURAR", arquivo: { financeItems: [] } }) });
+ok(rAntigo.status === 400 && (await rAntigo.json()).error.includes("sistema antigo"), "arquivo do sistema antigo é recusado ao restaurar");
 
 // Sem conexão
 await page.route("**/api/getFinance", (r) => r.abort());

@@ -100,7 +100,6 @@ await page.click("#btn-balcao");
 ok(await vis("#items-table th.sigilo") && await vis("#total-custo"), "desligar o modo balcão mostra custo e margem de novo");
 
 // Registrar (depois da migração)
-await fetch(URL + "/api/migrar", { method: "POST", headers: H });
 await page.reload();
 await page.waitForFunction(() => document.querySelectorAll("#items-body tr.linha-item").length === 3);
 ok((await page.inputValue("#total-final")) === "383.80", "pedido e ajustes mantidos ao recarregar");

@@ -7,10 +7,10 @@ import {
   orcamentoParaFuncionario, lancamentoParaFuncionario, prepararLancamentoDoFuncionario, prepararOrcamentoDoFuncionario,
 } from "./_funcionarios.js";
 import {
-  lerTudo, salvarLancamentos, excluirLancamento, reclassificar, atualizarCheque, salvarAcumulado,
+  lerTudo, salvarLancamentos, excluirLancamento, reclassificar, atualizarCheque,
   montarBackup, salvarCopia, listarCopias, lerCopia, lerPrecosEConfig, salvarPrecos,
   salvarConfig, salvarConfigFinanceiro, salvarAbertura, registrarConferencia,
-  importar, migrar, migrarV2, restaurar, marcarImpresso, proximosNumeros, clienteDaVenda, whatsappAberto,
+  restaurar, marcarImpresso, proximosNumeros, clienteDaVenda, whatsappAberto,
   listarOrcamentos, salvarOrcamento, atualizarOrcamento, salvarCliente, listarClientes, zerarMovimento,
   situacaoCliente, impactoExcluirCliente, excluirCliente,
 } from "./_dados.js";
@@ -107,11 +107,6 @@ export const ROTAS = {
     naoPermitido(response);
   }, { funcionario: true }),
 
-  // POST { acumulado } -> "Saldos passados"
-  acumulado: rota(["POST"], async (request, response) => {
-    response.status(200).json({ acumulado: await salvarAcumulado(kv(), chaves(), request.body?.acumulado) });
-  }),
-
   // GET              -> baixa o backup completo (e guarda uma cópia no KV)
   // GET ?lista=1     -> nomes das cópias automáticas guardadas no KV
   // GET ?copia=<nome> -> baixa uma dessas cópias
@@ -156,18 +151,6 @@ export const ROTAS = {
     }
     const config = await salvarConfig(kv(), chaves(), request.body?.config, Object.keys(CEPILHADO_PADRAO));
     response.status(200).json({ config });
-  }),
-
-  // Junta os lançamentos do arquivo aos existentes. Não apaga nem altera nada.
-  importar: rota(["POST"], async (request, response) => {
-    response.status(200).json(await importar(kv(), chaves(), request.body));
-  }),
-
-  // POST            -> ativa o salvamento seguro (lista antiga -> lançamento a lançamento)
-  // POST ?versao=2  -> migra para o financeiro novo (plano de contas, formas, abertura de agosto)
-  migrar: rota(["POST"], async (request, response) => {
-    const r = request.query.versao === "2" ? await migrarV2(kv(), chaves()) : await migrar(kv(), chaves());
-    response.status(200).json(r);
   }),
 
   // GET                       -> { orcamentos, clientes }

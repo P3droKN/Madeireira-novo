@@ -13,8 +13,6 @@ const db = async () => (await fetch(URL + "/__db")).json();
 const fs = await import("node:fs");
 
 // "Dados de teste" no v2: migrado, com orçamento, cliente, preço e configuração
-await fetch(URL + "/api/migrar", { method: "POST", headers: H });
-await fetch(URL + "/api/migrar?versao=2", { method: "POST", headers: H });
 await fetch(URL + "/api/precos", { method: "POST", headers: H, body: JSON.stringify({ alteracoes: { "PINUS|2x4x3.00|BRUTO": 25, "BEIRAL_CEDRO|13cm|UNICO": 16 } }) });
 await fetch(URL + "/api/config", { method: "POST", headers: H, body: JSON.stringify({ financeiro: { impressao: { nome: "MERCADO DA MADEIRA", endereco: "Av. Teste, 1", telefone: "41 0000-0000", pix: "Pix CNPJ: 73.871.956/0001-32" } } }) });
 // venda e orçamento de teste (contadores andando) e uma cópia automática antiga

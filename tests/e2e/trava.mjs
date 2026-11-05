@@ -4,7 +4,7 @@ const { chromium } = require("playwright");
 const URL = "http://localhost:4321";
 const H = { "content-type": "application/json", "x-senha": "pinho123" };
 const ok = (cond, msg) => { console.log((cond ? "OK   " : "FALHA") + " " + msg); if (!cond) process.exitCode = 1; };
-for (const [rota, corpo] of [["/api/restaurar", { confirmacao: "RESTAURAR", arquivo: { financeItems: [] } }], ["/api/migrar", {}], ["/api/importar", { financeItems: [] }], ["/api/precos", { alteracoes: { "CAMBARA|1x2|BRUTO": 5 } }]]) {
+for (const [rota, corpo] of [["/api/restaurar", { confirmacao: "RESTAURAR", arquivo: { app: "madeireira", chaves: {} } }], ["/api/precos", { alteracoes: { "CAMBARA|1x2|BRUTO": 5 } }]]) {
   const r = await fetch(URL + rota, { method: "POST", headers: H, body: JSON.stringify(corpo) });
   ok(r.status === 423, `${rota} bloqueado (${r.status})`);
 }

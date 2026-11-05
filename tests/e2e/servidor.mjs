@@ -45,7 +45,8 @@ function redis([cmd, ...a]) {
   }
 }
 
-// Estado inicial = sistema antigo em produção (dados-iniciais.json)
+// Estado inicial = dados antigos de teste (dados-iniciais.json ou SEED), convertidos para o formato atual na partida
+// (as telas de importar e migrar saíram do sistema; a conversão fica só aqui, para os dados de teste antigos)
 const inicial = JSON.parse(fs.readFileSync(process.env.SEED || path.join(RAIZ, "dados-iniciais.json"), "utf8"));
 if (!process.env.VAZIO) {
   db.set("madeireira_finance", JSON.stringify(inicial.financeItems));
@@ -80,12 +81,7 @@ http.createServer(async (req, res) => {
   }
   if (url.pathname === "/__db") { res.setHeader("content-type", "application/json"); return res.end(JSON.stringify(Object.fromEntries(db))); }
 
-  // Simula a Vercel derrubando pedidos de importação escolhidos (ex.: FALHAR_IMPORTAR=3,4,5)
-  if (url.pathname === "/api/importar") {
-    globalThis.nImport = (globalThis.nImport || 0) + 1;
-    const falhar = (process.env.FALHAR_IMPORTAR || "").split(",").map(Number);
-    if (falhar.includes(globalThis.nImport)) { res.statusCode = 504; res.setHeader("content-type", "text/html"); return res.end("<html>FUNCTION_INVOCATION_TIMEOUT</html>"); }
-  }
+  if (url.pathname === "/__pronto") { res.statusCode = globalThis.pronto ? 200 : 503; return res.end(); }
   if (url.pathname.startsWith("/api/")) {
     // Igual à Vercel: arquivo com o mesmo nome, senão a rota dinâmica api/[recurso].js
     const nome = url.pathname.slice("/api/".length);
@@ -108,4 +104,13 @@ http.createServer(async (req, res) => {
   if (!fs.existsSync(f)) { res.statusCode = 404; return res.end(); }
   res.setHeader("content-type", tipos[path.extname(f)] || "application/octet-stream");
   fs.createReadStream(f).pipe(res);
-}).listen(PORTA, () => console.log("ok " + PORTA));
+}).listen(PORTA, async () => {
+  if (!process.env.VAZIO) {
+    const { kv, chaves } = await import(pathToFileURL(path.join(RAIZ, "api", "_lib.js")).href);
+    const { migrar, migrarV2 } = await import(pathToFileURL(path.join(RAIZ, "api", "_dados.js")).href);
+    await migrar(kv(), chaves());
+    await migrarV2(kv(), chaves());
+  }
+  globalThis.pronto = true;
+  console.log("ok " + PORTA);
+});

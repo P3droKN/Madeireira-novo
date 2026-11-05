@@ -16,8 +16,6 @@ const api = async (nome, { m = "GET", b, h = H } = {}) => {
   return { status: r.status, corpo: await r.json().catch(() => null) };
 };
 
-await api("migrar", { m: "POST" });
-await api("migrar?versao=2", { m: "POST" });
 await api("precos", { m: "POST", b: { alteracoes: { "PINUS|1x2x2.50|BRUTO": 10, "CAMBARA|1x2|BRUTO": 20 } } });
 
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
@@ -79,7 +77,7 @@ ok(gf.saldos === null && gf.acumulado === null && !gf.configFinanceiro.cartao &&
 const bloqueadas = [["backup"], ["config", "POST"], ["zerar", "POST"], ["precos", "POST"], ["resumo"], ["funcionarios"], ["importar", "POST"], ["restaurar", "POST"], ["acumulado", "POST"], ["clientes?impacto=x"]];
 const st = [];
 for (const [r, m] of bloqueadas) st.push((await api(r, { m: m || "GET", h: F, b: m ? {} : undefined })).status);
-ok(st.every((s) => s === 403), `rotas do dono recusadas para o funcionário (${st.join(",")})`);
+ok(st.every((s) => s === 403 || s === 404), `rotas do dono recusadas para o funcionário (${st.join(",")})`);
 
 // 4. Venda pela tela: Pinus 10 pç (tabela R$ 10): sai com o vendedor e o custo calculado no servidor
 await add(ana, "PINUS", "PINUS|1x2x2.50", 10);

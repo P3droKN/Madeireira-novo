@@ -9,8 +9,6 @@ const nb = (s) => (s || "").replace(/\u00a0/g, " ");
 const ok = (cond, msg) => { console.log((cond ? "OK   " : "FALHA") + " " + msg); if (!cond) process.exitCode = 1; };
 const db = async () => (await fetch(URL + "/__db")).json();
 
-await fetch(URL + "/api/migrar", { method: "POST", headers: H });
-await fetch(URL + "/api/migrar?versao=2", { method: "POST", headers: H });
 await fetch(URL + "/api/precos", { method: "POST", headers: H, body: JSON.stringify({ alteracoes: { "PINUS|2x4x3.00|BRUTO": 25 } }) });
 
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });

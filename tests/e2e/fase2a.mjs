@@ -19,13 +19,13 @@ const fs = await import("node:fs");
 
 await page.goto(URL);
 await page.fill("#senha-input", "pinho123"); await page.click("#senha-form button");
-// Salvamento seguro (fase 0) e backup do estado antigo para a conferência
-await fetch(URL + "/api/migrar", { method: "POST", headers: H });
+// Os dados antigos de teste (seed2a) chegam já convertidos para o formato atual (o servidor de teste converte na partida;
+// as telas de migrar e importar saíram do sistema). Backup do estado inicial para a conferência.
 const backup = await (await fetch(URL + "/api/backup", { headers: H })).json();
 fs.writeFileSync("backup-2a.json", JSON.stringify(backup));
 await page.reload();
+await page.waitForFunction(() => window.Caixa && window.Caixa.migradoV2);
 
-// Relatórios › Resumo do mês (a antiga tela do Gestor de Caixa): total de agosto antes da migração v2
 await page.click("#btn-tab-relatorios");
 ok(await page.isVisible("#rel-dia-sec #dia-panorama") && await page.isHidden("#rel-barra"), "Relatórios abre no Dia (sem a barra antiga do mês)");
 const mesAgosto = async () => {
@@ -34,16 +34,11 @@ const mesAgosto = async () => {
   await page.waitForFunction(() => document.querySelector("#dia-numeros h2")?.textContent.toLowerCase().includes("agosto"));
   return nb(await page.textContent('#dia-numeros [data-numero="vendeu"] strong'));
 };
-const totAgoAntes = await mesAgosto();
-ok(/^R\$ [1-9]/.test(totAgoAntes), "Relatórios › Mês: vendido em agosto antes da migração: " + totAgoAntes);
+ok(/^R\$ [1-9]/.test(await mesAgosto()), "Relatórios › Mês: vendido em agosto (dados de teste convertidos)");
 
-// 1. Migração v2
+// 1. Dados antigos de teste convertidos (sem aviso de migrar na tela)
 await page.click("#btn-tab-caixa");
-ok(await page.isVisible("#fin-aviso-v2"), "aviso para migrar ao financeiro novo");
-const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#fin-v2-backup")]);
-await page.click("#fin-v2-migrar");
-await page.waitForFunction(() => document.getElementById("fin-aviso-v2").hidden);
-console.log("     ", dialogos.at(-1).split("\n").filter(Boolean).slice(0, 3).join(" | "));
+ok(!(await page.locator("#fin-aviso-v2").count()), "Caixa sem o aviso de migrar (a tela saiu)");
 const todos = await lanc();
 ok(todos.every((l) => l.v === 2), "todos os lançamentos no formato novo");
 ok((await porId("1760000000001V")).pagamentos[0].forma === "pix_bradesco", "PIX antigo → PIX Bradesco");
@@ -51,15 +46,11 @@ ok((await porId("1003")).pagamentos[0].forma === "transferencia", "método 'brad
 ok((await porId("1760000000002C")).chequeEmitido.compensacao === "2026-10-20", "custo em cheque → cheque emitido com compensação");
 ok(todos.filter((l) => l.abertura).length === 7, "7 lançamentos de abertura (agosto)");
 
-// Resumo do mês não conta agosto em dobro
-await page.click("#btn-tab-relatorios");
-ok(await mesAgosto() === totAgoAntes, "Mês: vendido em agosto igual antes e depois da migração (" + totAgoAntes + ")");
-
-// Conferência com o backup de antes
+// Conferência com o backup
+await page.click("#btn-tab-ajustes"); await page.click('.subtabs[data-grupo="ajustes"] .subtab[data-sub="dados"]');
 await page.setInputFiles("#conferir-file", "backup-2a.json");
 await page.waitForSelector("#modal-conferencia", { state: "visible" });
-ok((await page.textContent("#conferencia-veredito")).includes("Tudo confere"), "conferência após migração v2: " + (await page.textContent("#conferencia-veredito")).trim());
-ok((await page.textContent("#conferencia-body")).includes("Abertura × acumulado"), "conferência compara abertura × acumulado");
+ok((await page.textContent("#conferencia-veredito")).includes("Tudo confere"), "conferência com o backup: " + (await page.textContent("#conferencia-veredito")).trim());
 await page.click("#modal-conferencia >> text=Fechar");
 
 // 2. Reclassificação em lote

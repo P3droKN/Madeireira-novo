@@ -12,8 +12,6 @@ const ok = (cond, msg) => { console.log((cond ? "OK   " : "FALHA") + " " + msg);
 const db = async () => (await fetch(URL + "/__db")).json();
 const lanc = async (todos = false) => Object.values((await db()).madeireira_lancamentos || {}).map((x) => JSON.parse(x)).filter((l) => todos || !l.excluido);
 
-await fetch(URL + "/api/migrar", { method: "POST", headers: H });
-await fetch(URL + "/api/migrar?versao=2", { method: "POST", headers: H });
 await fetch(URL + "/api/config", { method: "POST", headers: H, body: JSON.stringify({ abertura: { data: "2026-10-01", contas: { gaveta: 300, bradesco: 1000, picpay: 0, cheques_carteira: 0 } } }) });
 await fetch(URL + "/api/precos", { method: "POST", headers: H, body: JSON.stringify({ alteracoes: { "PINUS|1x2x2.50|BRUTO": 4.5 } }) });
 

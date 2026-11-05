@@ -11,8 +11,6 @@ const nb = (s) => (s || "").replace(/ /g, " ");
 const ok = (cond, msg) => { console.log((cond ? "OK   " : "FALHA") + " " + msg); if (!cond) process.exitCode = 1; };
 const post = (rota, corpo, metodo = "POST") => fetch(URL + rota, { method: metodo, headers: H, body: JSON.stringify(corpo) }).then((r) => r.json());
 
-await post("/api/migrar", {});
-await post("/api/migrar?versao=2", {});
 await post("/api/config", { abertura: { data: "2026-10-01", contas: { gaveta: 300, bradesco: 1000, picpay: 0, cheques_carteira: 0 } } });
 await post("/api/clientes", { cliente: { nome: "Zé da Obra", contaCorrente: true } });
 const v = (id, data, valor, pagamentos, extra = {}) => ({ id, v: 2, conta: "venda_produtos", value: valor, competencia: data, pagamentos, ...extra });

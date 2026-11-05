@@ -9,8 +9,6 @@ const post = (itens) => fetch(URL + "/api/lancamento", { method: "POST", headers
 const db = async () => (await fetch(URL + "/__db")).json();
 const lanc = async (id) => JSON.parse((await db()).madeireira_lancamentos[id]);
 
-await fetch(URL + "/api/migrar", { method: "POST", headers: H });
-await fetch(URL + "/api/migrar?versao=2", { method: "POST", headers: H });
 const V = (id, data, pagamentos) => ({ id, v: 2, conta: "venda_produtos", competencia: data, value: pagamentos.reduce((s, p) => s + p.valor, 0), pagamentos });
 await post([V("chq1", "2026-10-28", [{ forma: "cheque", valor: 400, cheque: { numero: "555", emissor: "José", compensacao: "2026-11-10" } }])]);
 

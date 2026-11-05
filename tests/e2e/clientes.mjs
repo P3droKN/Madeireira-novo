@@ -14,8 +14,6 @@ const lanc = async () => Object.values((await db()).madeireira_lancamentos || {}
 const clientes = async () => Object.values((await db()).madeireira_clientes || {}).map((x) => JSON.parse(x));
 const orcs = async () => Object.values((await db()).madeireira_orcamentos || {}).map((x) => JSON.parse(x));
 
-await fetch(URL + "/api/migrar", { method: "POST", headers: H });
-await fetch(URL + "/api/migrar?versao=2", { method: "POST", headers: H });
 await fetch(URL + "/api/config", { method: "POST", headers: H, body: JSON.stringify({ abertura: { data: "2026-10-01", contas: { gaveta: 300, bradesco: 1000, picpay: 0, cheques_carteira: 0 } } }) });
 await fetch(URL + "/api/precos", { method: "POST", headers: H, body: JSON.stringify({ alteracoes: { "PINUS|2x4x3.00|BRUTO": 25 } }) });
 

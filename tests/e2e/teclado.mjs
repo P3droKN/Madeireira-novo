@@ -10,8 +10,6 @@ const ok = (cond, msg) => { console.log((cond ? "OK   " : "FALHA") + " " + msg);
 const db = async () => (await fetch(URL + "/__db")).json();
 const quantos = async () => Object.keys((await db()).madeireira_lancamentos || {}).length + Object.keys((await db()).madeireira_orcamentos || {}).length;
 
-await fetch(URL + "/api/migrar", { method: "POST", headers: H });
-await fetch(URL + "/api/migrar?versao=2", { method: "POST", headers: H });
 await fetch(URL + "/api/precos", { method: "POST", headers: H, body: JSON.stringify({ alteracoes: { "PINUS|1x2x2.50|BRUTO": 4.5, "CAMBARA|1x2|BRUTO": 30 } }) });
 
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });

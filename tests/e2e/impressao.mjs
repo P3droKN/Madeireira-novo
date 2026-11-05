@@ -15,8 +15,6 @@ const db = async () => (await fetch(URL + "/__db")).json();
 const lanc = async (comExcluidos = false) => Object.values((await db()).madeireira_lancamentos || {}).map((x) => JSON.parse(x)).filter((l) => comExcluidos || !l.excluido);
 const centavos = (t) => Math.round(Number(nb(t).replace(/[^\d,−-]/g, "").replace(/\./g, "").replace(",", ".").replace("−", "-")) * 100);
 
-await fetch(URL + "/api/migrar", { method: "POST", headers: H });
-await fetch(URL + "/api/migrar?versao=2", { method: "POST", headers: H });
 await fetch(URL + "/api/config", { method: "POST", headers: H, body: JSON.stringify({ abertura: { data: "2026-10-01", contas: { gaveta: 300, bradesco: 1000, picpay: 0, cheques_carteira: 0 } } }) });
 await fetch(URL + "/api/precos", { method: "POST", headers: H, body: JSON.stringify({ alteracoes: {
   "PINUS|1x2x2.50|BRUTO": 4.5, "PINUS|1x3x2.50|BRUTO": 6.7, "PINUS|1x4x2.50|BRUTO": 8.9, "CEDRO_MESCLADO|1x2|BRUTO": 8.8, "FORRO|CEDRO_MESCLADO_CURTO|UNICO": 34.9,

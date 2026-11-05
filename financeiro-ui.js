@@ -61,7 +61,6 @@ function renderSub() {
   const grupo = estado.aba;
   const sub = estado.sub[grupo];
   if (grupo === "caixa") {
-    avisoMigracao();
     if (sub === "lancar") renderFormulario();
     if (sub === "lista") renderLista();
     if (sub === "saldos") window.CaixaUI?.saldos($("fin-saldos"));
@@ -93,30 +92,6 @@ function renderSub() {
     if (sub === "funcionarios") window.FuncionariosUI?.abrir();
     if (sub === "saldos") window.CaixaUI?.abertura($("aj-abertura"));
   }
-}
-
-function avisoMigracao() {
-  const el = $("fin-aviso-v2");
-  if (!C() || C().somenteLeitura) { el.hidden = true; return; }
-  if (C().migradoV2) { el.hidden = true; return; }
-  el.hidden = false;
-  el.innerHTML = `<strong>Migrar para o financeiro novo (uma vez só).</strong>
-    Converte os lançamentos antigos para o plano de contas (PIX antigo → PIX Bradesco, "bradesco" → Transferência, custos e despesas "a classificar")
-    e transforma o acumulado de agosto em lançamentos de abertura. Nada é apagado e uma cópia é guardada antes.
-    <div class="aviso-acoes">
-      <button class="btn-icon" id="fin-v2-backup">1. 💾 Baixar backup</button>
-      <button class="btn-success" id="fin-v2-migrar" ${estado.backupV2 ? "" : "disabled"}>2. Migrar</button>
-    </div>`;
-  $("fin-v2-backup").onclick = async () => { if (await C().baixarBackup()) { estado.backupV2 = true; avisoMigracao(); } };
-  $("fin-v2-migrar").onclick = async () => {
-    try {
-      const r = await window.api("/api/migrar?versao=2", { method: "POST", timeoutMs: 90000 });
-      alert(r.jaMigrado ? "A migração já tinha sido feita." : `Migração concluída.\n\nLançamentos convertidos: ${r.convertidos}\nLançamentos de abertura (agosto): ${r.abertura}\n\nConfira com "🔍 Conferir com arquivo" em Ajustes › Dados e classifique os custos em Lançamentos › A classificar.`);
-    } catch (e) {
-      alert(`A migração não foi feita: ${e.message}`);
-    }
-    await C().recarregar();
-  };
 }
 
 // ---------- Lançar ----------

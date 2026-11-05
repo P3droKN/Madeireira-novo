@@ -11,8 +11,8 @@ function resposta() {
   return r;
 }
 
-test("roteador único: as 12 rotas de antes continuam com o mesmo nome (+ clientes, da 2C)", () => {
-  assert.deepEqual(Object.keys(ROTAS).sort(), ["acumulado", "backup", "catalogo", "clientes", "config", "funcionarios", "getFinance", "importar", "lancamento", "migrar", "orcamentos", "precos", "restaurar", "resumo", "sessao", "zerar"]);
+test("roteador único: as rotas (importar, migrar e \"Saldos passados\" saíram na virada zerada; sessao e funcionarios entraram)", () => {
+  assert.deepEqual(Object.keys(ROTAS).sort(), ["backup", "catalogo", "clientes", "config", "funcionarios", "getFinance", "lancamento", "orcamentos", "precos", "restaurar", "resumo", "sessao", "zerar"]);
 });
 
 test("roteador único: rota inexistente dá 404; nomes do protótipo não viram rota", async () => {
@@ -33,7 +33,7 @@ test("roteador único: entrega para a rota, pede senha e tira o parâmetro do ca
     assert.equal(res.statusCode, 401);
     assert.deepEqual(req.query, { id: "1" });
     const res2 = resposta();
-    await handler({ query: { recurso: "acumulado" }, headers: { "x-senha": "certa" }, method: "GET" }, res2);
+    await handler({ query: { recurso: "zerar" }, headers: { "x-senha": "certa" }, method: "GET" }, res2);
     assert.equal(res2.statusCode, 405, "método não aceito continua 405");
   } finally {
     process.env = antes;

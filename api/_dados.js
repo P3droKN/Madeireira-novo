@@ -108,8 +108,17 @@ export function validarAcumulado(acc) {
   return limpo;
 }
 
+// Banco sem a lista antiga (novo, ou zerado na virada) já está pronto: não há nada a migrar.
+// A lista antiga só existe em bancos de antes da virada (e nos dados de teste antigos).
+async function temListaAntiga(kv, k) {
+  const l = desembrulhar(await kv.get(k.finance));
+  return Array.isArray(l) && l.length > 0;
+}
 async function estaMigrado(kv, k) {
-  return Boolean(await kv.get(k.migrado));
+  return Boolean(await kv.get(k.migrado)) || !(await temListaAntiga(kv, k));
+}
+async function estaMigradoV2(kv, k) {
+  return Boolean(await kv.get(k.migradoV2)) || !(await temListaAntiga(kv, k));
 }
 
 // Próximos números (V-000X e ORC-000X), para conferir depois de zerar sem gastar um número com teste
@@ -120,7 +129,7 @@ export async function proximosNumeros(kv, k) {
 
 export async function lerTudo(kv, k) {
   const migrado = await estaMigrado(kv, k);
-  const migradoV2 = Boolean(await kv.get(k.migradoV2));
+  const migradoV2 = await estaMigradoV2(kv, k);
   const configFinanceiro = desembrulhar(await kv.get(k.configFinanceiro)) || {};
   const saldos = await lerSaldos(kv, k);
   let financeItems, estornados = [];
@@ -443,85 +452,14 @@ async function excluirLancamentoSemTrava(kv, k, id) {
   return { excluido: atual.id, orcamentoReaberto };
 }
 
-// Junta os lançamentos de um arquivo: só adiciona ids que ainda não existem. Não apaga nem altera nada.
-export const MAX_LOTE_IMPORTACAO = 500;
-
-function listaDoArquivo(arquivo) {
-  if (Array.isArray(arquivo)) return arquivo;
-  if (Array.isArray(arquivo?.financeItems)) return arquivo.financeItems;
-  if (arquivo?.chaves) {
-    const hash = arquivo.chaves.madeireira_lancamentos;
-    if (hash) return Object.values(hash).map(desembrulhar);
-    return desembrulhar(arquivo.chaves.madeireira_finance) || [];
-  }
-  return null;
-}
-
-function acumuladoDoArquivo(arquivo) {
-  if (arquivo?.chaves) return desembrulhar(arquivo.chaves.madeireira_acumulado) || null;
-  return arquivo && !Array.isArray(arquivo) ? arquivo.acumulado || null : null;
-}
-
-const acumuladoVazio = (a) => !a || Object.values(a).every((v) => !Number(v));
-
-export async function importar(kv, k, arquivo) {
-  const lista = listaDoArquivo(arquivo);
-  if (!Array.isArray(lista)) throw erro(400, "Arquivo sem lançamentos reconhecíveis.");
-
-  // Banco ainda no formato antigo: ativa o salvamento seguro antes (a migração guarda cópia)
-  let migrou = false;
-  if (!(await estaMigrado(kv, k))) {
-    await migrar(kv, k);
-    migrou = true;
-  }
-  // Acumulado do arquivo só entra se o banco ainda não tiver um (nunca substitui)
-  let acumuladoImportado = false;
-  const accArquivo = acumuladoDoArquivo(arquivo);
-  if (accArquivo && !acumuladoVazio(accArquivo) && acumuladoVazio(desembrulhar(await kv.get(k.acumulado)))) {
-    await kv.set(k.acumulado, validarAcumulado(accArquivo));
-    acumuladoImportado = true;
-  }
-
-  if (lista.length > MAX_LOTE_IMPORTACAO) {
-    throw erro(400, `Lote grande demais (${lista.length}). Envie no máximo ${MAX_LOTE_IMPORTACAO} lançamentos por vez.`);
-  }
-  // Valida e tira ids repetidos dentro do próprio lote (fica o primeiro)
-  let invalidos = 0;
-  const porId = new Map();
-  for (const item of lista) {
-    try {
-      // Excluídos entram como estão (histórico); os demais passam pela validação.
-      const limpo = item?.excluido && ID.test(String(item.id)) ? { ...item } : validarLancamento(item);
-      if (!porId.has(limpo.id)) porId.set(limpo.id, limpo);
-    } catch {
-      invalidos++;
-    }
-  }
-  // Uma leitura e uma gravação por lote (antes era uma ida ao banco por lançamento,
-  // o que estourava o tempo da função com centenas de lançamentos).
-  const ids = [...porId.keys()];
-  const atuais = ids.length ? (await kv.hmget(k.lancamentos, ...ids)) || {} : {};
-  const novos = ids.filter((id) => atuais[id] == null);
-  if (novos.length) await kv.hset(k.lancamentos, Object.fromEntries(novos.map((id) => [id, porId.get(id)])));
-  const adicionados = novos.length;
-  const existentes = ids.length - novos.length + (lista.length - invalidos - ids.length);
-  return { adicionados, existentes, invalidos, migrou, acumuladoImportado };
-}
-
-// Volta o sistema exatamente ao estado do arquivo. Antes, guarda uma cópia do estado atual.
-// Aceita o arquivo novo (/api/backup) e o antigo (botão "Exportar": { financeItems, acumulado }).
+// Volta o sistema exatamente ao estado do arquivo (o backup do próprio sistema, /api/backup). Antes, guarda uma
+// cópia do estado atual. O "Exportar" do sistema antigo não é aceito: a virada foi zerada, sem trazer o histórico.
 export async function restaurar(kv, k, arquivo) {
   let alvo;
   if (arquivo?.app === "madeireira" && arquivo.chaves) {
     alvo = { ...arquivo.chaves };
   } else if (Array.isArray(arquivo?.financeItems) || Array.isArray(arquivo)) {
-    // Arquivo do sistema antigo: representa o estado antes da migração.
-    alvo = {
-      madeireira_finance: Array.isArray(arquivo) ? arquivo : arquivo.financeItems,
-      madeireira_acumulado: Array.isArray(arquivo) ? undefined : arquivo.acumulado,
-      madeireira_lancamentos: null,
-      madeireira_migrado_v1: null,
-    };
+    throw erro(400, "Este arquivo é do sistema antigo. A virada foi feita do zero, sem trazer o histórico: use um backup deste sistema (Ajustes › Dados › Baixar backup).");
   } else {
     throw erro(400, "Arquivo de backup não reconhecido.");
   }
@@ -567,13 +505,6 @@ export async function restaurar(kv, k, arquivo) {
     listaAntiga: Array.isArray(f) ? f.length : 0,
     migrado: Boolean(alvo.madeireira_migrado_v1),
   };
-}
-
-export async function salvarAcumulado(kv, k, acumulado) {
-  const limpo = validarAcumulado(acumulado);
-  await salvarCopia(kv, k, "antes-de-alterar-acumulado");
-  await kv.set(k.acumulado, limpo);
-  return limpo;
 }
 
 // --- Preços de venda e configuração (Fase 1) ---
@@ -871,7 +802,7 @@ export async function reclassificar(kv, k, pedido) {
   if (conta && !contaPorId[conta]) throw erro(400, `Conta inválida: ${conta}`);
   const cfg = mesclarConfigFinanceiro(desembrulhar(await kv.get(k.configFinanceiro)) || {});
   if (forma && (!(forma in cfg.formas) || forma === "nao_informada")) throw erro(400, `Forma inválida: ${forma}`);
-  if (!(await kv.get(k.migradoV2))) throw erro(409, "Faça primeiro a migração para o financeiro novo.");
+  if (!(await estaMigradoV2(kv, k))) throw erro(409, "Faça primeiro a migração para o financeiro novo.");
 
   const atuais = (await kv.hmget(k.lancamentos, ...ids.map(String))) || {};
   const alterados = {};

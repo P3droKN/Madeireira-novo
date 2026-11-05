@@ -192,7 +192,6 @@ let somenteLeitura = false;
 let proximosNumeros = null; // próxima venda e próximo orçamento (Ajustes › Dados)
 // Até o backup + migração, os lançamentos ficam na lista antiga, que é regravada inteira.
 let migrado = true;
-let backupBaixado = false;
 let erroConexao = '';
 let configFinanceiro = {};
 let saldosCaixa = { abertura: null, conferencias: [] };
@@ -284,14 +283,6 @@ function atualizarAviso() {
             <br><small>Motivo: ${esc(erroConexao || 'desconhecido')}</small>
             <button class="btn-icon" onclick="carregarDados()">🔄 Tentar de novo</button>`;
         aviso.style.display = 'block';
-    } else if (!migrado) {
-        aviso.className = 'aviso aviso-alerta';
-        aviso.innerHTML = `<strong>Ativar salvamento seguro (uma vez só).</strong> Antes de lançar, baixe o backup e depois ative o salvamento seguro.
-            <div class="aviso-acoes">
-                <button class="btn-icon" onclick="baixarBackup()">1. 💾 Baixar backup</button>
-                <button class="btn-success" onclick="ativarSalvamentoSeguro()" ${backupBaixado ? '' : 'disabled'}>2. Ativar salvamento seguro</button>
-            </div>`;
-        aviso.style.display = 'block';
     } else {
         aviso.style.display = 'none';
     }
@@ -303,7 +294,6 @@ function atualizarStatusBanco() {
     if (!statusBanco) { el.textContent = ''; return; }
     const partes = [`Banco: ${statusBanco.bancoHost || '—'}`, `ambiente: ${statusBanco.ambiente}`];
     if (statusBanco.prefixo) partes.push(`prefixo: ${statusBanco.prefixo}`);
-    partes.push(migrado ? 'salvamento seguro: ativo' : 'salvamento seguro: não ativado');
     if (statusBanco.gravacaoBloqueada) partes.push('⛔ GRAVAÇÃO BLOQUEADA (banco de produção)');
     else if (statusBanco.travaConfigurada) partes.push('trava de produção: ativa');
     if (statusBanco.zerarPermitido) partes.push('⚠️ ZERAR LIGADO (desligar depois da virada)');
@@ -349,10 +339,6 @@ function podeGravar() {
         alert('Sem conexão com a nuvem. Nada foi lançado. Clique em "Tentar de novo" quando a internet voltar.');
         return false;
     }
-    if (!migrado) {
-        alert('Antes de lançar, baixe o backup e ative o salvamento seguro (aviso no topo da tela).');
-        return false;
-    }
     return true;
 }
 
@@ -367,17 +353,6 @@ async function gravarLancamentos(itens) {
     }
     await carregarDados();
     return true;
-}
-
-async function ativarSalvamentoSeguro() {
-    if (!backupBaixado) return;
-    try {
-        const r = await api('/api/migrar', { method: 'POST' });
-        alert(r.jaMigrado ? 'O salvamento seguro já estava ativo.' : `Pronto! ${r.migrados} lançamentos copiados para o salvamento seguro.\nA lista antiga foi mantida intacta.`);
-    } catch (e) {
-        alert(`Não foi possível ativar: ${e.message}`);
-    }
-    await carregarDados();
 }
 
 // Hoje em Brasília (America/Sao_Paulo), mesmo com o relógio do aparelho em outro fuso
@@ -509,51 +484,6 @@ async function registrarVendaAgora(opcoes = {}) {
     window.Impressao.abrir({ venda: salva, titulo: `Venda ${num} ${corrigindo ? 'corrigida' : 'registrada'}`, mensagem: linhas.map((t) => `<div>${t}</div>`).join(''), imprimirJa: Boolean(opcoes.imprimir) });
 }
 
-// --- LOGICA DE ACUMULADOS ---
-function openAcumuladoModal() {
-    document.getElementById('mod-acc-dinheiro').value = acumulado.dinheiroCaixa || 0;
-    document.getElementById('mod-acc-venda').value = acumulado.venda || 0;
-    document.getElementById('mod-acc-pix').value = acumulado.pix || 0;
-    document.getElementById('mod-acc-credito').value = acumulado.credito || 0;
-    document.getElementById('mod-acc-debito').value = acumulado.debito || 0;
-    document.getElementById('mod-acc-custo').value = acumulado.custo || 0;
-    document.getElementById('mod-acc-despesa').value = acumulado.despesa || 0;
-    document.getElementById('mod-acc-func').value = acumulado.func || 0;
-    document.getElementById('modal-acumulado').style.display = 'flex';
-}
-
-function closeAcumuladoModal() {
-    document.getElementById('modal-acumulado').style.display = 'none';
-}
-
-async function saveAcumulado() {
-    if (somenteLeitura) {
-        alert('Sem conexão com a nuvem. Nada foi salvo.');
-        return;
-    }
-    const novo = {
-        dinheiroCaixa: parseFloat(document.getElementById('mod-acc-dinheiro').value) || 0,
-        venda: parseFloat(document.getElementById('mod-acc-venda').value) || 0,
-        pix: parseFloat(document.getElementById('mod-acc-pix').value) || 0,
-        credito: parseFloat(document.getElementById('mod-acc-credito').value) || 0,
-        debito: parseFloat(document.getElementById('mod-acc-debito').value) || 0,
-        custo: parseFloat(document.getElementById('mod-acc-custo').value) || 0,
-        despesa: parseFloat(document.getElementById('mod-acc-despesa').value) || 0,
-        func: parseFloat(document.getElementById('mod-acc-func').value) || 0,
-    };
-
-    try {
-        await api('/api/acumulado', { method: 'POST', body: { acumulado: novo } });
-        alert("Saldos acumulados salvos com sucesso na nuvem!");
-    } catch (e) {
-        alert(`Os acumulados não foram salvos: ${e.message}`);
-        return;
-    }
-
-    closeAcumuladoModal();
-    await carregarDados();
-}
-
 // --- BACKUP ---
 function baixarArquivo(objeto, nome) {
     const blob = new Blob([JSON.stringify(objeto, null, 2)], { type: 'application/json' });
@@ -571,7 +501,6 @@ async function baixarBackup() {
     try {
         const backup = await api('/api/backup');
         baixarArquivo(backup, `madeireira_backup_${backup.ambiente}_${getLocalDateString()}.json`);
-        backupBaixado = true;
         atualizarAviso();
         return true;
     } catch (e) {
@@ -600,99 +529,6 @@ function lerArquivoJson(event) {
     });
 }
 
-// Importar = JUNTAR: adiciona só os lançamentos que ainda não existem (pelo id). Não apaga nada.
-// Vai em lotes, com progresso; se parar no meio, importar o mesmo arquivo de novo continua
-// de onde parou, porque o que já entrou é reconhecido e não é duplicado.
-const LOTE_IMPORTACAO = 100;
-
-function extrairDoArquivo(arquivo) {
-    if (Array.isArray(arquivo)) return { lista: arquivo, acumulado: null };
-    if (arquivo && arquivo.chaves) {
-        const ler = (v) => (typeof v === 'string' ? JSON.parse(v) : v);
-        const hash = arquivo.chaves.madeireira_lancamentos;
-        const lista = hash && Object.keys(hash).length ? Object.values(hash).map(ler) : (ler(arquivo.chaves.madeireira_finance) || []);
-        return { lista, acumulado: ler(arquivo.chaves.madeireira_acumulado) || null };
-    }
-    if (arquivo && Array.isArray(arquivo.financeItems)) return { lista: arquivo.financeItems, acumulado: arquivo.acumulado || null };
-    return null;
-}
-
-function progressoImportacao({ titulo, feito, total, texto, fim, erro }) {
-    document.getElementById('modal-progresso').style.display = 'flex';
-    document.getElementById('progresso-titulo').textContent = titulo;
-    const barra = document.getElementById('progresso-barra');
-    barra.max = total || 1;
-    barra.value = feito;
-    document.getElementById('progresso-texto').textContent = texto;
-    const msg = document.getElementById('progresso-erro');
-    msg.hidden = !erro;
-    msg.textContent = erro || '';
-    document.getElementById('progresso-fechar').hidden = !fim;
-}
-
-async function importBackup(event) {
-    const arquivo = await lerArquivoJson(event);
-    if (!arquivo) return;
-    if (somenteLeitura) {
-        alert(`Sem conexão com a nuvem (${erroConexao || 'motivo desconhecido'}). Nada foi importado.`);
-        return;
-    }
-    const dados = extrairDoArquivo(arquivo);
-    if (!dados) {
-        alert('Arquivo de backup não reconhecido. Nada foi importado.');
-        return;
-    }
-    if (!migrado && !confirm('Importar também ativa o salvamento seguro (uma cópia do banco é guardada antes).\n\nContinuar?')) return;
-
-    const { lista, acumulado: acc } = dados;
-    const total = lista.length;
-    const soma = { adicionados: 0, existentes: 0, invalidos: 0, migrou: false, acumuladoImportado: false };
-    const titulo = `Importando ${total} lançamentos`;
-    progressoImportacao({ titulo, feito: 0, total, texto: 'Começando…' });
-
-    for (let i = 0; i < total || i === 0; i += LOTE_IMPORTACAO) {
-        const lote = lista.slice(i, i + LOTE_IMPORTACAO);
-        const corpo = { financeItems: lote };
-        if (i === 0 && acc) corpo.acumulado = acc;
-        let r, ultimoErro;
-        for (let tentativa = 1; tentativa <= 3 && !r; tentativa++) {
-            try {
-                r = await api('/api/importar', { method: 'POST', body: corpo, timeoutMs: 45000 });
-            } catch (e) {
-                ultimoErro = e;
-                if (tentativa < 3) await new Promise((ok) => setTimeout(ok, 1500 * tentativa));
-            }
-        }
-        if (!r) {
-            progressoImportacao({
-                titulo: 'A importação parou', feito: i, total, fim: true,
-                texto: `Entraram ${soma.adicionados} novos lançamentos antes de parar (${i} de ${total} processados).`,
-                erro: `Erro no lote ${i + 1} a ${Math.min(i + LOTE_IMPORTACAO, total)}: ${ultimoErro.message}. ` +
-                    'Nada foi duplicado. Para continuar, clique em 📂 Importar e escolha o MESMO arquivo: o que já entrou é pulado.',
-            });
-            await carregarDados();
-            return;
-        }
-        soma.adicionados += r.adicionados;
-        soma.existentes += r.existentes;
-        soma.invalidos += r.invalidos;
-        soma.migrou = soma.migrou || r.migrou;
-        soma.acumuladoImportado = soma.acumuladoImportado || r.acumuladoImportado;
-        const feito = Math.min(i + LOTE_IMPORTACAO, total);
-        progressoImportacao({ titulo, feito, total, texto: `${feito} de ${total} processados · ${soma.adicionados} novos · ${soma.existentes} já existiam` });
-        if (total === 0) break;
-    }
-
-    progressoImportacao({
-        titulo: 'Importação concluída', feito: total, total, fim: true,
-        texto: `Novos: ${soma.adicionados} · Já existiam: ${soma.existentes} · Ignorados (inválidos): ${soma.invalidos}` +
-            (soma.acumuladoImportado ? ' · Acumulado de agosto importado' : '') +
-            (soma.migrou ? ' · Salvamento seguro ativado' : '') +
-            '. Agora use "🔍 Conferir com arquivo" com o mesmo arquivo.',
-    });
-    await carregarDados();
-}
-
 // Restaurar = VOLTAR NO TEMPO: deixa os dados exatamente como estão no arquivo.
 // O servidor guarda uma cópia do estado atual antes, então dá para desfazer.
 async function restoreBackup(event) {
@@ -706,11 +542,10 @@ async function restoreBackup(event) {
     if (resposta !== 'RESTAURAR') return;
     try {
         const r = await api('/api/restaurar', { method: 'POST', body: { confirmacao: 'RESTAURAR', arquivo } });
-        alert(`Backup restaurado.\n\nLista antiga: ${r.listaAntiga} lançamentos\nSalvamento seguro: ${r.migrado ? `ativo (${r.lancamentos} lançamentos)` : 'desativado'}\n\nCópia do estado anterior: ${r.copia}`);
+        alert(`Backup restaurado: ${r.lancamentos} lançamentos.\n\nCópia do estado anterior: ${r.copia}`);
     } catch (e) {
         alert(`Erro ao restaurar: ${e.message}`);
     }
-    backupBaixado = false;
     await carregarDados();
 }
 
