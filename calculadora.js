@@ -433,7 +433,17 @@ function renderPedido() {
   $("voltar-tabela-geral").hidden = !resultados.some((r) => r.ajustado || r.base);
 
   const pend = [];
-  if (t.semPreco) pend.push(`${t.semPreco} ${t.semPreco > 1 ? "itens sem" : "item sem"} preço: digite o preço na linha do item.`);
+  if (t.semPreco) {
+    // Diz QUAL item está sem preço (e, se houver, o preço do outro acabamento), para conferir em Ajustes › Preços
+    const nomes = estado.pedido.filter((l, i) => resultados[i] && resultados[i].vendaTotal == null).map((l) => {
+      const it = estado.catalogo.itens.get(l.itemId);
+      const nome = `${it.material} ${it.unidade === "valor_livre" ? l.descricao || "" : it.rotuloDimensao}${l.acabamento && l.acabamento !== "UNICO" ? " " + ACABAMENTOS[l.acabamento].toLowerCase() : ""}`.trim();
+      const outro = it.unidade === "valor_livre" ? null : ["BRUTO", "CEPILHADO"].filter((a) => a !== l.acabamento).map((a) => [a, precoTabela(l.itemId, a)]).find(([, v]) => v != null);
+      console.warn("Sem preço de tabela:", chavePreco(l.itemId, l.acabamento));
+      return `${nome}${outro ? ` (só há preço para ${ACABAMENTOS[outro[0]].toLowerCase()}: ${moeda(outro[1])})` : ""}`;
+    });
+    pend.push(`Sem preço em Ajustes › Preços: ${nomes.join("; ")}. Digite o preço na linha do item.`);
+  }
   if (t.semCusto && !document.body.classList.contains("modo-balcao")) pend.push(`${t.semCusto} ${t.semCusto > 1 ? "itens sem" : "item sem"} custo cadastrado: a margem não considera ${t.semCusto > 1 ? "esses itens" : "esse item"}.`);
   $("pendencias").innerHTML = pend.map((p) => `<li>${esc(p)}</li>`).join("");
 

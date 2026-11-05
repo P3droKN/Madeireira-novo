@@ -88,6 +88,11 @@ for (const acab of ["BRUTO", "CEPILHADO"]) {
 }
 const semPrecoAna = await previaDe(ana, "CAMBARA", "CAMBARA|1x6", "BRUTO");
 ok(semPrecoAna.includes("Sem preço de tabela"), "item sem preço em Ajustes › Preços: o funcionário continua tendo de digitar");
+await ana.click("#btn-adicionar");
+await ana.waitForSelector("#items-body tr.linha-item");
+const pendAna = nb(await ana.textContent("#pendencias"));
+ok(pendAna.includes("Sem preço em Ajustes › Preços: Cambará 1x6"), `o aviso diz qual item está sem preço ("${pendAna}")`);
+await ana.evaluate(() => window.Calculadora.limpar(false));
 // no pedido, o preço unitário já vem com o da tabela
 await ana.selectOption("#dimension", "CAMBARA|1x4"); await ana.locator('#acabamento label:has(input[value="CEPILHADO"])').click();
 await ana.fill("#quantity-pieces", "2"); await ana.fill("#quantity-length", "3"); await ana.click("#btn-adicionar");
