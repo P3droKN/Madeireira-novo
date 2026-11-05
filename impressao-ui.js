@@ -80,7 +80,9 @@ function abrir({ venda = null, orcamento = null, titulo = "", mensagem = "", exe
     : "";
   $("imp-ir-ajustes")?.addEventListener("click", (e) => { e.preventDefault(); fechar(); window.Financeiro?.irPara("ajustes", "impressao"); });
   // Venda registrada: dá para preencher/editar o cliente e a entrega da via
-  $("imp-cliente-btn").hidden = !estado.vendaId;
+  // Funcionário: só nas vendas de hoje (as outras são do dono)
+  const vendaAtual = estado.vendaId ? window.Caixa?.itens?.find((x) => String(x.id) === String(estado.vendaId)) : null;
+  $("imp-cliente-btn").hidden = !estado.vendaId || (window.MODO_FUNC && vendaAtual?.competencia !== window.Caixa?.hoje());
   $("imp-cliente-form").hidden = true;
   estado.orcamentoId = orcamento?.id && !exemplo ? orcamento.id : null;
   atualizarWhats();
@@ -152,7 +154,14 @@ const cadastradoPeloNome = (nome) => {
   const iguais = (window.Clientes?.lista || []).filter((c) => !c.inativo && chaveNome(c.nome) === chaveNome(nome));
   return iguais.length === 1 ? iguais[0] : null;
 };
+const vendaFiado = () => (window.Caixa?.itens?.find((x) => String(x.id) === String(estado.vendaId))?.pagamentos || []).some((p) => p.forma === "fiado");
 function mostrarVinculo() {
+  // Venda no fiado: o cliente (quem deve) não muda aqui; só os dados de entrega e da via
+  if (vendaFiado()) {
+    $("imp-cli-vinculo").textContent = "Venda no fiado: para trocar quem deve, o dono usa Corrigir venda.";
+    $("imp-cli-cadastrar-rotulo").hidden = true;
+    return null;
+  }
   const cad = cadastradoPeloNome($("imp-cli-nome").value);
   $("imp-cli-vinculo").textContent = cad ? "✓ cliente cadastrado: a venda fica vinculada a ele" : $("imp-cli-nome").value.trim() ? "sem cadastro: os dados ficam só nesta venda" : "";
   $("imp-cli-cadastrar-rotulo").hidden = Boolean(cad);
@@ -166,6 +175,7 @@ function abrirCliente() {
   const base = cad ? { nome: cad.nome, telefone: cad.telefone || cad.fixo, endereco: cad.endereco, bairro: cad.bairro, cidade: cad.cidade, uf: cad.uf, documento: cad.documento, ie: cad.ie } : { ...via, nome: via.nome || l.cliente || "" };
   for (const c of CAMPOS_CLI) $(`imp-cli-${c}`).value = (c === "obs" ? via.obs : base[c]) || "";
   $("imp-cli-cadastrar").checked = false;
+  $("imp-cli-nome").readOnly = vendaFiado();
   mostrarVinculo();
   $("imp-cliente-form").hidden = false;
   $("imp-cli-nome").focus();
@@ -187,7 +197,8 @@ $("imp-cliente-form").addEventListener("submit", async (e) => {
   const v = Object.fromEntries(CAMPOS_CLI.map((c) => [c, $(`imp-cli-${c}`).value.trim()]));
   botao.disabled = true;
   try {
-    let cad = cadastradoPeloNome(v.nome);
+    const l = window.Caixa?.itens?.find((x) => String(x.id) === String(estado.vendaId));
+    let cad = vendaFiado() ? (l?.clienteId ? { id: l.clienteId } : null) : cadastradoPeloNome(v.nome);
     if (!cad && $("imp-cli-cadastrar").checked) {
       if (!v.nome) throw new Error("Informe o nome do cliente para cadastrar.");
       const tel = v.telefone.replace(/\D/g, "");

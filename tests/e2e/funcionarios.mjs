@@ -187,6 +187,53 @@ const via = await dono.evaluate(async () => {
 });
 ok(!via.sem && via.com === "Ana", "via: sem o vendedor (padrão); ligado em Ajustes › Impressão, sai o primeiro nome (Ana)");
 
+// 8d. Funcionário com o bloco Cliente do pedido (mesmo do dono): vincular, avulso, salvar como cliente, duplicado, fiado
+await ana.click("#btn-tab-vender");
+await ana.evaluate(() => window.Clientes.carregar());
+const blocoAna = () => ana.textContent("#cp-status").then(nb);
+await add(ana, "PINUS", "PINUS|1x2x2.50", 1);
+await ana.fill("#cp-nome", "dona maria"); await ana.dispatchEvent("#cp-nome", "change");
+ok((await blocoAna()).includes("Cliente cadastrado"), "funcionário: escolher o cadastrado vincula a venda");
+await ana.click("#btn-registrar-venda"); await fecharVias(ana, dialogos);
+let ult = (await lanc()).sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))[0];
+ok(ult.clienteId === cli.id && ult.vendedor.nome === "Ana Souza", `venda ${ult.numero} vinculada à Dona Maria`);
+// avulso: os dados saem na via, sem cadastro
+await add(ana, "PINUS", "PINUS|1x2x2.50", 1);
+await ana.fill("#cp-nome", "Seu Avulso"); await ana.fill("#cp-endereco", "Rua Avulsa, 5"); await ana.fill("#cp-obs", "deixar no portão");
+await ana.click("#btn-registrar-venda"); await fecharVias(ana, dialogos);
+ult = (await lanc()).sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))[0];
+const nClientes = async () => Object.keys((await db()).madeireira_clientes || {}).length;
+const nAntes = await nClientes();
+ok(!ult.clienteId && ult.clienteVia?.endereco === "Rua Avulsa, 5" && ult.clienteVia.obs === "deixar no portão", "cliente avulso: dados só na venda (saem na via)");
+// duplicado: WhatsApp de cadastrado → "É a Dona Maria? Vincular"
+await add(ana, "PINUS", "PINUS|1x2x2.50", 1);
+await ana.fill("#cp-nome", "Maria"); await ana.fill("#cp-tel", "47988887777"); await ana.dispatchEvent("#cp-tel", "change");
+ok((await blocoAna()).includes("Dona Maria") && await ana.isVisible('#cp-status [data-cp="vincular"]'), "funcionário: WhatsApp igual ao de um cadastrado → \"É a Dona Maria? Vincular\"");
+await ana.click("#cp-limpar");
+// salvar como cliente + fiado com cliente novo
+await ana.fill("#cp-nome", "Zé Novo"); await ana.fill("#cp-tel", "(47) 97777-1234"); await ana.check("#cp-salvar");
+await ana.locator("#calc-pagamentos .pag-forma").first().selectOption("fiado");
+await ana.click("#btn-registrar-venda"); await fecharVias(ana, dialogos);
+const ze = Object.values((await db()).madeireira_clientes).map((x) => JSON.parse(x)).find((c) => c.nome === "Zé Novo");
+ult = (await lanc()).sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))[0];
+ok(ze && ult.clienteId === ze.id && ult.pagamentos[0].forma === "fiado" && (await nClientes()) === nAntes + 1, "fiado com cliente novo: cadastrado pelo funcionário e a venda fica na ficha");
+// Pedidos de hoje › Vias › "✎ Cliente e entrega": corrige endereço e entrega; no fiado, o cliente não muda
+await ana.click(`#pedidos-hoje [data-ph-vias="${ult.id}"]`);
+await ana.waitForSelector("#modal-impressao", { state: "visible" });
+await ana.click("#imp-cliente-btn");
+ok(await ana.evaluate(() => document.getElementById("imp-cli-nome").readOnly) && nb(await ana.textContent("#imp-cli-vinculo")).includes("Corrigir venda"), "venda fiado: o nome (quem deve) fica travado");
+await ana.fill("#imp-cli-endereco", "Rua Nova, 77"); await ana.fill("#imp-cli-obs", "ligar antes");
+await ana.click("#imp-cli-salvar");
+await ana.waitForSelector("#imp-cliente-form", { state: "hidden" });
+await ana.click("#imp-fechar");
+const corr = (await lanc()).find((l) => l.id === ult.id);
+ok(corr.clienteId === ze.id && corr.clienteVia.endereco === "Rua Nova, 77" && corr.clienteVia.obs === "ligar antes" && corr.alteracoesCliente?.at(-1)?.por === "Ana Souza",
+  "funcionário corrige endereço e entrega da venda de hoje; grava quem fez e quando");
+r = await api("lancamento", { m: "PATCH", h: F, b: { acao: "cliente", id: ult.id, clienteId: cli.id, clienteVia: { nome: "Dona Maria" } } });
+ok(r.status === 409, "trocar o cliente de uma venda fiado: recusado (só o dono, em Corrigir venda)");
+r = await api("lancamento", { m: "PATCH", h: F, b: { acao: "cliente", id: "1790000000032", clienteVia: { nome: "x", endereco: "y" } } });
+ok(r.status === 403, "venda de outro dia: o funcionário não altera o cliente");
+
 // 9. Sessão: Sair encerra; funcionário desativado não entra mais
 await ana.click("#btn-sair");
 await ana.waitForSelector("#modal-pin", { state: "visible" });

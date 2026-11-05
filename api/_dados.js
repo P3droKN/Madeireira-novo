@@ -310,7 +310,7 @@ export async function comTrava(kv, k, ids, fn) {
 export const salvarLancamentos = (kv, k, itens, quem = { papel: "dono" }, extras = {}) =>
   comTrava(kv, k, Array.isArray(itens) && itens.length <= 50 ? itens.map((i) => i?.id) : [], () => salvarLancamentosSemTrava(kv, k, itens, quem, extras));
 export const marcarImpresso = (kv, k, id) => comTrava(kv, k, [id], () => marcarImpressoSemTrava(kv, k, id));
-export const clienteDaVenda = (kv, k, p) => comTrava(kv, k, [p?.id], () => clienteDaVendaSemTrava(kv, k, p));
+export const clienteDaVenda = (kv, k, p, quem = { papel: "dono" }) => comTrava(kv, k, [p?.id], () => clienteDaVendaSemTrava(kv, k, p, quem));
 export const excluirLancamento = (kv, k, id) => comTrava(kv, k, [id], () => excluirLancamentoSemTrava(kv, k, id));
 export const atualizarCheque = (kv, k, p) => comTrava(kv, k, [p?.id], () => atualizarChequeSemTrava(kv, k, p));
 
@@ -417,7 +417,7 @@ export const whatsappAberto = (kv, k, id) => comTrava(kv, k, [id], async () => {
 // Cliente de uma venda já registrada: vincular a um cliente cadastrado e/ou guardar os dados da via
 // (nome, telefone, endereço, documentos e observação de entrega) para quem não tem cadastro.
 // Só muda o cliente; valor, itens e formas continuam (para isso, Corrigir).
-async function clienteDaVendaSemTrava(kv, k, p) {
+async function clienteDaVendaSemTrava(kv, k, p, quem = { papel: "dono" }) {
   const l = desembrulhar(await kv.hget(k.lancamentos, String(p?.id || "")));
   if (!l || l.excluido) throw erro(404, "Venda não encontrada.");
   if (!RECEITA_CLIENTE.includes(l.conta)) throw erro(400, "Só vendas têm cliente na via.");
@@ -429,7 +429,10 @@ async function clienteDaVendaSemTrava(kv, k, p) {
   const temFiado = (l.pagamentos || []).some((x) => x.forma === "fiado");
   if (temFiado && String(cad?.id || "") !== String(l.clienteId || "")) throw erro(409, "Venda no fiado: para trocar o cliente (quem deve), use Corrigir no Caixa › Lançamentos.");
   const via = p.clienteVia && typeof p.clienteVia === "object" ? limparClienteVia(p.clienteVia) : null;
-  const novo = { ...l, atualizadoEm: new Date().toISOString(), versao: Number(l.versao || 0) + 1 };
+  const agora = new Date().toISOString();
+  const novo = { ...l, atualizadoEm: agora, versao: Number(l.versao || 0) + 1 };
+  // Quem mudou os dados do cliente/entrega e quando (as últimas 20)
+  novo.alteracoesCliente = [...(l.alteracoesCliente || []), { em: agora, por: quem.papel === "funcionario" ? quem.nome : "Dono", ...(quem.papel === "funcionario" ? { funcionarioId: quem.id } : {}) }].slice(-20);
   if (cad) { novo.clienteId = cad.id; novo.cliente = cad.nome; } else { delete novo.clienteId; }
   if (via && Object.values(via).some(Boolean)) {
     novo.clienteVia = via;

@@ -431,7 +431,7 @@ function renderLista() {
       <td><input type="checkbox" class="fin-sel" value="${esc(l.id)}" ${estado.selecionados.has(String(l.id)) ? "checked" : ""} aria-label="Selecionar"></td>
       <td>${dataBR(l.competencia)}</td>
       <td>${l.numero ? `<strong>${esc(l.numero)}</strong>` : ""}${l.historico?.length ? `<small title="${esc(l.historico.map((h) => `corrigida em ${dataHoraBR(h.em)}, antes ${moeda(h.valorAntes)}`).join("\n"))}">corrigida</small>` : ""}</td>
-      <td>${esc(l.description || "")}${l.cliente ? `<small>cliente: ${esc(l.cliente)}</small>` : ""}${l.fornecedor ? `<small>${esc(l.fornecedor)}</small>` : ""}${l.nfe ? `<small>NF-e ${esc(l.nfe)}</small>` : ""}${l.frete ? `<small>inclui frete ${moeda(l.frete)}</small>` : ""}</td>
+      <td>${esc(l.description || "")}${l.cliente ? `<small>cliente: ${esc(l.cliente)}</small>` : ""}${l.fornecedor ? `<small>${esc(l.fornecedor)}</small>` : ""}${l.nfe ? `<small>NF-e ${esc(l.nfe)}</small>` : ""}${l.alteracoesCliente?.length ? `<small title="${esc(l.alteracoesCliente.map((x) => `${x.por}, ${dataHoraBR(x.em)}`).join("\n"))}">cliente/entrega alterados por ${esc(l.alteracoesCliente.at(-1).por)} em ${dataHoraBR(l.alteracoesCliente.at(-1).em)}</small>` : ""}${l.frete ? `<small>inclui frete ${moeda(l.frete)}</small>` : ""}</td>
       <td>${esc(c?.nome || NOMES_ESPECIAIS[l.conta] || l.conta)}${l.conta === "salarios" && estimativasLigadas() ? ` <small class="texto-suave">(${esc(VINCULOS.find((v) => v.id === (l.vinculo || "clt"))?.nome || "CLT")})</small>` : ""} ${tags}${sug}</td>
       <td>${esc(descreverForma(l))}</td>
       <td>${esc(nomeVendedor(l) || "—")}</td>

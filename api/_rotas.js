@@ -90,14 +90,14 @@ export const ROTAS = {
         if (acao === "cliente") {
           const venda = (await lerTudo(kv(), chaves())).financeItems.find((l) => l.id === String(request.body.id || ""));
           if (!venda || venda.competencia !== hojeSP()) return soDono(response);
-          return response.status(200).json({ lancamento: lancamentoParaFuncionario(await clienteDaVenda(kv(), chaves(), request.body)) });
+          return response.status(200).json({ lancamento: lancamentoParaFuncionario(await clienteDaVenda(kv(), chaves(), request.body, quem)) });
         }
         return soDono(response);
       }
       if (request.body?.acao === "cheque") return response.status(200).json({ lancamento: await atualizarCheque(kv(), chaves(), request.body) });
       if (request.body?.acao === "impresso") return response.status(200).json(await marcarImpresso(kv(), chaves(), request.body.id));
       if (request.body?.acao === "whatsapp") return response.status(200).json(await whatsappAberto(kv(), chaves(), request.body.id));
-      if (request.body?.acao === "cliente") return response.status(200).json({ lancamento: await clienteDaVenda(kv(), chaves(), request.body) });
+      if (request.body?.acao === "cliente") return response.status(200).json({ lancamento: await clienteDaVenda(kv(), chaves(), request.body, quem) });
       return response.status(200).json(await reclassificar(kv(), chaves(), request.body));
     }
     if (request.method === "DELETE") {
