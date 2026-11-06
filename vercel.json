@@ -10,6 +10,51 @@
       "source": "/data/:path*",
       "destination": "/",
       "permanent": false
+    },
+    {
+      "source": "/funcionarios/",
+      "destination": "/funcionarios",
+      "permanent": false
+    },
+    {
+      "source": "/funcionario",
+      "destination": "/funcionarios",
+      "permanent": false
+    },
+    {
+      "source": "/funcionario/",
+      "destination": "/funcionarios",
+      "permanent": false
+    },
+    {
+      "source": "/Funcionarios",
+      "destination": "/funcionarios",
+      "permanent": false
+    },
+    {
+      "source": "/Funcionarios/",
+      "destination": "/funcionarios",
+      "permanent": false
+    },
+    {
+      "source": "/Funcionario",
+      "destination": "/funcionarios",
+      "permanent": false
+    },
+    {
+      "source": "/FUNCIONARIOS",
+      "destination": "/funcionarios",
+      "permanent": false
+    },
+    {
+      "source": "/funcion%C3%A1rios",
+      "destination": "/funcionarios",
+      "permanent": false
+    },
+    {
+      "source": "/funcion%C3%A1rio",
+      "destination": "/funcionarios",
+      "permanent": false
     }
   ],
   "rewrites": [
