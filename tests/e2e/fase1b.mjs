@@ -31,7 +31,7 @@ await page.waitForFunction(() => document.getElementById("catalogo-status").text
 // Sem tabela: vendedor digita
 await add("CAMBARA", "CAMBARA|1x2", 6, 3);
 ok((await ajuste(0).textContent()).includes("Sem preço de tabela"), "item sem tabela pede preço");
-await muda(linha(0).locator(".preco-input"), 5);
+await muda(linha(0).locator(".preco-input"), 15); // valor da peça: R$ 5/m × 3 m
 ok((await linha(0).textContent()).includes("31,2%"), "R$ 5/m → R$ 90 → margem 31,2%");
 
 // Preços de tabela e % padrão
@@ -44,7 +44,7 @@ for (const [k, v] of [["CAMBARA|1x2|BRUTO", 5.5], ["PINUS|2x4x3.00|BRUTO", 25]])
 }
 await page.click("text=Salvar preços"); await page.waitForTimeout(300);
 await page.click("#btn-tab-vender");
-ok(nb(await ajuste(0).textContent()).includes("Tabela R$ 5,50/m"), "linha mostra o preço de tabela");
+ok(nb(await ajuste(0).textContent()).includes("Tabela R$ 16,50/pç (R$ 5,50/m)"), "linha mostra o preço de tabela da peça (e o do metro)");
 ok(nb(await ajuste(0).locator(".variacao").textContent()).includes("−R$ 9,00 (−9,1%)"), "preço digitado 5,00 vs tabela 5,50 → −9,1% (laranja)");
 
 await add("PINUS", "PINUS|2x4x3.00", 10);

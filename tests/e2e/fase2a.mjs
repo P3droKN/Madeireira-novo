@@ -147,7 +147,7 @@ await page.click("#btn-tab-vender");
 await page.waitForFunction(() => document.getElementById("catalogo-status").textContent.includes("itens"));
 await page.selectOption("#material", "CAMBARA"); await page.selectOption("#dimension", "CAMBARA|1x2");
 await page.fill("#quantity-pieces", "6"); await page.fill("#quantity-length", "3"); await page.click("#btn-adicionar");
-await page.locator("#items-body .preco-input").first().fill("5"); await page.locator("#items-body .preco-input").first().dispatchEvent("change");
+await page.locator("#items-body .preco-input").first().fill("15"); /* valor da peça: R$ 5/m × 3 m */ await page.locator("#items-body .preco-input").first().dispatchEvent("change");
 await page.waitForTimeout(150);
 await page.fill("#direct-sale-date", "2026-10-14");
 await page.locator("#calc-pagamentos .pag-valor").first().fill("40"); await page.locator("#calc-pagamentos .pag-valor").first().dispatchEvent("input");

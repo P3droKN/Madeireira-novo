@@ -31,7 +31,7 @@ await page.waitForFunction(() => document.getElementById("catalogo-status").text
 
 // 1. % geral num item SEM preço de tabela: vale sobre o preço digitado
 await add("CAMBARA", "CAMBARA|1x2", 6, 3);
-await page.locator("#items-body .preco-input").first().fill("5"); await page.locator("#items-body .preco-input").first().dispatchEvent("change");
+await page.locator("#items-body .preco-input").first().fill("15"); /* valor da peça: R$ 5/m × 3 m */ await page.locator("#items-body .preco-input").first().dispatchEvent("change");
 await page.waitForTimeout(150);
 ok(await total() === "90.00", "sem tabela, preço digitado R$ 5/m × 18 m = R$ 90,00");
 await page.click("#pct-geral"); await page.keyboard.type("10");

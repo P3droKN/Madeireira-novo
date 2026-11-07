@@ -252,7 +252,7 @@ function atualizarPrevia() {
       `<span class="sigilo">Custo <strong>${moeda(r.custoTotal)}</strong></span>`];
     partes.push(r.vendaTotal == null
       ? '<span class="texto-alerta">Sem preço de tabela: digite no pedido</span>'
-      : `<span>Tabela <strong>${moeda(r.vendaTotal)}</strong></span><span class="sigilo">Margem <strong>${pct(r.margem)}</strong></span>`);
+      : `<span>Tabela <strong>${moeda(r.vendaTotal)}</strong>${emPecas(estado.catalogo.itens.get(l.itemId), l) ? ` <small>(${moeda(arred(r.vendaTotal / Number(l.quantidade)))}/pç)</small>` : ""}</span><span class="sigilo">Margem <strong>${pct(r.margem)}</strong></span>`);
     previa.innerHTML = partes.join("");
     previa.hidden = false;
   } catch {
@@ -338,6 +338,10 @@ function restaurarPedido() {
   }
 }
 
+// Madeira por metro linear pedida em peças: o pedido mostra e aceita o valor da PEÇA (o preço de tabela continua por metro)
+const emPecas = (item, l) => Boolean(UNIDADES[item?.unidade]?.pedeComprimento) && Number(l.comprimento) > 0 && Number(l.quantidade) > 0;
+const porPeca = (item, l, valorM) => (valorM == null ? null : emPecas(item, l) ? arred(valorM * Number(l.comprimento)) : valorM);
+
 function descreverQtd(l, r) {
   const item = estado.catalogo.itens.get(l.itemId);
   if (item.unidade === "valor_livre") return "—";
@@ -385,7 +389,7 @@ function linhaAjuste(l, r, item) {
     const b = r.base;
     const ref = b ? b.precoUnitario : (l.precoBase ?? arred(r.precoUnitario));
     return `<tr class="linha-ajuste"><td colspan="7"><div class="ajuste">
-      <span class="tabela-ref">Sem tabela · preço digitado ${moeda(ref)}/${r.unidadeCobranca}</span>
+      <span class="tabela-ref">Sem tabela · preço digitado ${moeda(porPeca(item, l, ref))}/${emPecas(item, l) ? "pç" : r.unidadeCobranca}</span>
       <label class="pct-campo" title="% sobre o preço digitado (negativo = desconto)">
         <input type="number" step="0.1" inputmode="decimal" class="pct-input" value="${b ? pctCampo(b.pct) : ""}"
           aria-label="Variação em % sobre o preço digitado" onchange="Calculadora.pct('${l.uid}', this.value)">%
@@ -396,7 +400,7 @@ function linhaAjuste(l, r, item) {
     </div></td></tr>`;
   }
   return `<tr class="linha-ajuste"><td colspan="7"><div class="ajuste">
-    <span class="tabela-ref">Tabela ${moeda(r.precoTabela)}/${r.unidadeCobranca} · ${moeda(r.tabelaTotal)}</span>
+    <span class="tabela-ref">Tabela ${emPecas(item, l) ? `${moeda(porPeca(item, l, r.precoTabela))}/pç (${moeda(r.precoTabela)}/m)` : `${moeda(r.precoTabela)}/${r.unidadeCobranca}`} · ${moeda(r.tabelaTotal)}</span>
     <label class="pct-campo" title="% sobre a tabela (negativo = desconto)">
       <input type="number" step="0.1" inputmode="decimal" class="pct-input" value="${pctCampo(r.variacaoPct)}"
         aria-label="Variação em % sobre a tabela" onchange="Calculadora.pct('${l.uid}', this.value)">%
@@ -417,7 +421,9 @@ function renderPedido() {
     resultados.push(r);
     const livre = item.unidade === "valor_livre";
     const tags = l.acabamento !== "UNICO" ? `<span class="tag">${ACABAMENTOS[l.acabamento]}</span>` : "";
-    const valorInput = livre ? (r.vendaTotal ?? "") : (r.precoUnitario == null ? "" : arred(r.precoUnitario).toFixed(2));
+    const pc = emPecas(item, l);
+    const valorInput = livre ? (r.vendaTotal ?? "") : pc ? (r.vendaTotal == null ? "" : arred(r.vendaTotal / Number(l.quantidade)).toFixed(2))
+      : (r.precoUnitario == null ? "" : arred(r.precoUnitario).toFixed(2));
     return `<tr class="linha-item">
       <td class="col-item"><strong>${esc(item.material)}</strong> ${esc(livre ? (l.descricao || "") : item.rotuloDimensao)} ${tags}</td>
       <td class="num">${descreverQtd(l, r)}</td>
@@ -427,7 +433,7 @@ function renderPedido() {
           <input type="number" class="preco-input ${r.vendaTotal == null ? "falta" : ""} ${r.ajustado ? "alterado" : ""}" step="0.01" min="0" inputmode="decimal"
             value="${valorInput}" placeholder="digite" aria-label="Preço final"
             onchange="Calculadora.preco('${l.uid}', this.value)">
-          <small>${livre ? "total" : "/" + r.unidadeCobranca}</small>
+          <small>${livre ? "total" : pc ? "/pç" : "/" + r.unidadeCobranca}</small>
         </div>
       </td>
       <td class="num"><strong>${moeda(r.vendaTotal)}</strong></td>
@@ -584,7 +590,9 @@ window.Calculadora = {
       return redesenhar();
     }
     limparAjuste(l);
-    l.precoManual = v; // vazio = volta à tabela
+    // Madeira em peças: o valor digitado é o da peça; o total do item = peças × valor da peça (centavos exatos)
+    if (emPecas(item, l) && v != null) l.totalManual = arred(v * Number(l.quantidade));
+    else l.precoManual = v; // vazio = volta à tabela
     l.precoBase = null; // preço digitado de novo: vira a nova base do %
     redesenhar();
   },

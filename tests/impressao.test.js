@@ -18,14 +18,16 @@ const venda = { id: "V1", numero: "V-0012", conta: "venda_produtos", competencia
 
 test("linhas impressas: unitário final com 2 casas e a soma fecha com o total (centavos na última linha)", () => {
   const l = linhasImpressas(itens, 813.7);
-  assert.deepEqual(l.map((x) => x.unitario), [24.25, 8.54, 33.85, null]);
+  assert.deepEqual(l.map((x) => x.unitario), [24.25, 21.34, 33.85, null]); // a madeira por metro sai com o valor da peça
   assert.equal(l.reduce((s, x) => s + Math.round(x.total * 100), 0), 81370);
   assert.equal(l[1].quantidade, "6 pç × 2,50 m = 15,00 m");
   assert.equal(l[0].quantidade, "10 peças");
   assert.equal(l[2].quantidade, "12,50 m²");
   assert.deepEqual([l[0].acabamento, l[1].acabamento, l[2].acabamento], ["Bruto", "Cepilhado", ""]);
-  // 10 × 24,25 + 15 × 8,54 + 12,5 × 33,85 + 20 = 813,73: os 3 centavos a mais saem da última linha
-  assert.deepEqual(l.map((x) => x.total), [242.5, 128.1, 423.13, 19.97]);
+  // madeira por metro: 6 peças (Quant.) em "pç", unitário da peça
+  assert.deepEqual([l[1].quant, l[1].unid], ["6", "pç"]);
+  // 10 × 24,25 + 6 × 21,34 + 12,5 × 33,85 + 20 = 813,67: os 3 centavos que faltam entram na última linha
+  assert.deepEqual(l.map((x) => x.total), [242.5, 128.04, 423.13, 20.03]);
 });
 
 test("pedido no modelo do cartão: cabeçalho da loja, campos do cliente, colunas, total geral, Pix e assinatura", () => {
@@ -51,7 +53,7 @@ test("pedido no modelo do cartão: cabeçalho da loja, campos do cliente, coluna
   assert.match(t, /Pagamento: PIX R\$ 300,00 · Crédito em 3 vezes R\$ 400,00 · A prazo R\$ 153,70 · Ref\. orçamento ORC-0005/);
   assert.match(html, /✂/);
   // a coluna Prod. fica em branco; Cep. com ✓ só no cepilhado
-  assert.match(html, /<tr><td><\/td><td class="num">15<\/td><td class="centro">m<\/td><td class="pv-desc">Cedro Mesclado 1x2 \(6 pç de 2,50 m\)<\/td><td class="centro">✓<\/td>/);
+  assert.match(html, /<tr><td><\/td><td class="num">6<\/td><td class="centro">pç<\/td><td class="pv-desc">Cedro Mesclado 1x2 \(peça de 2,50 m\)<\/td><td class="centro">✓<\/td>/);
   assert.match(html, /<tr><td><\/td><td class="num">10<\/td><td class="centro">pç<\/td><td class="pv-desc">Pinus 2x4 × 3,00 m<\/td><td class="centro"><\/td>/);
   // sem cliente: "Consumidor" e os campos em branco
   const c = documentoDaVenda({ ...venda, cliente: "" }).cliente;
@@ -118,6 +120,6 @@ test("orçamento antigo (sem quantidade cobrada): Quant., Unid. e valor unitári
     itens: [{ descricao: "Cambará 2x4", acabamento: "BRUTO", quantidade: 2, comprimento: 2.5, quantidadeTexto: "2 pç × 2,50 m = 5,00 m", unidade: "m", vendaTotal: 55 },
       { descricao: "Pinus 2x4 × 3,00 m", acabamento: "BRUTO", quantidade: 3, unidade: "peça", vendaTotal: 75 }] };
   const [a, b] = documentoDoOrcamento(o).linhas;
-  assert.deepEqual([a.quant, a.unid, a.unitario], ["5", "m", 11]);
+  assert.deepEqual([a.quant, a.unid, a.unitario], ["2", "pç", 27.5]); // 2 peças de 2,50 m a R$ 27,50
   assert.deepEqual([b.quant, b.unid, b.unitario], ["3", "pç", 25]);
 });

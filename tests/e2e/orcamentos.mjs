@@ -53,7 +53,7 @@ ok((await page.locator("#items-body tr.linha-item").count()) === 0, "pedido limp
 // 2. Segundo orçamento, mesmo telefone (cadastro reaproveitado)
 await page.selectOption("#material", "CAMBARA"); await page.selectOption("#dimension", "CAMBARA|1x2");
 await page.fill("#quantity-pieces", "6"); await page.fill("#quantity-length", "3"); await page.click("#btn-adicionar");
-await page.locator("#items-body .preco-input").first().fill("5"); await page.locator("#items-body .preco-input").first().dispatchEvent("change");
+await page.locator("#items-body .preco-input").first().fill("15"); /* valor da peça: R$ 5/m × 3 m */ await page.locator("#items-body .preco-input").first().dispatchEvent("change");
 await page.waitForTimeout(150);
 await page.click("#btn-salvar-orcamento");
 await page.fill("#orc-tel", "47999991234"); await page.dispatchEvent("#orc-tel", "input");

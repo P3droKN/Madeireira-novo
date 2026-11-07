@@ -44,16 +44,20 @@ export function criarItensCaixa(el, aoMudar) {
         <div class="form-group" id="ic-livre-grupo" hidden><label for="ic-livre">Valor (R$)</label><input type="number" id="ic-livre" min="0" step="0.01" inputmode="decimal"></div>
         <div class="form-group" id="ic-desc-grupo" hidden><label for="ic-desc">Descrição</label><input type="text" id="ic-desc" maxlength="120" placeholder="o que é"></div>
         <div class="form-group sigilo" id="ic-custo-grupo" hidden><label for="ic-custo-livre">Custo (R$, opcional)</label><input type="number" id="ic-custo-livre" min="0" step="0.01" inputmode="decimal" placeholder="em branco = não informado"></div>
-        <div class="form-group"><label for="ic-preco">Preço unitário (R$)</label><input type="number" id="ic-preco" min="0" step="0.01" inputmode="decimal" placeholder="da tabela"></div>
+        <div class="form-group"><label for="ic-preco" id="ic-preco-rotulo">Preço unitário (R$)</label><input type="number" id="ic-preco" min="0" step="0.01" inputmode="decimal" placeholder="da tabela"></div>
         <div class="form-group"><button type="button" class="btn-icon" id="ic-adicionar" disabled>+ Adicionar item</button></div>
       </div>
       ${r ? `<div class="table-container"><table class="tabela-fin" id="ic-tabela">
         <thead><tr><th>Item</th><th>Quantidade</th><th class="num">Preço unit.</th><th class="num">Total</th><th class="num sigilo">Custo</th><th></th></tr></thead>
         <tbody>${linhas.map((l, i) => {
           const x = r.resultados[i];
-          const livre = catalogo().itens.get(l.itemId).unidade === "valor_livre";
+          const it = catalogo().itens.get(l.itemId);
+          const livre = it.unidade === "valor_livre";
+          // madeira por metro linear: o preço da linha é o da peça
+          const pc = Boolean(UNIDADES[it.unidade]?.pedeComprimento) && Number(l.comprimento) > 0 && Number(l.quantidade) > 0;
+          const unit = pc ? (x.vendaTotal == null ? null : x.vendaTotal / Number(l.quantidade)) : x.precoUnitario;
           return `<tr data-i="${i}"><td>${esc(r.itens[i].descricao)}${l.acabamento !== "UNICO" ? ` <small>${esc(ACABAMENTOS[l.acabamento])}</small>` : ""}</td><td>${esc(qtdTexto(l, x))}</td>
-            <td class="num">${livre ? "" : `<input type="number" class="ic-preco-linha mini-input" min="0" step="0.01" value="${x.precoUnitario == null ? "" : (Math.round(x.precoUnitario * 100) / 100).toFixed(2)}" placeholder="digite" aria-label="Preço unitário">`}</td>
+            <td class="num">${livre ? "" : `<input type="number" class="ic-preco-linha mini-input" min="0" step="0.01" value="${unit == null ? "" : (Math.round(unit * 100) / 100).toFixed(2)}" placeholder="digite" aria-label="${pc ? "Preço da peça" : "Preço unitário"}" data-peca="${pc ? 1 : ""}"><small>${pc ? "/pç" : ""}</small>`}</td>
             <td class="num"><strong>${moeda(x.vendaTotal)}</strong></td><td class="num sigilo">${x.custoTotal == null ? "sem custo" : moeda(x.custoTotal)}</td>
             <td><button type="button" class="delete-btn ic-remover" aria-label="Remover item">✕</button></td></tr>`;
         }).join("")}</tbody>
@@ -101,6 +105,8 @@ export function criarItensCaixa(el, aoMudar) {
     const tab = it && !livre ? K().precoTabela(it.id, el.querySelector("#ic-acab").value || "UNICO") : null;
     el.querySelector("#ic-preco").value = tab == null ? "" : tab.toFixed(2);
     el.querySelector("#ic-preco").disabled = livre;
+    // madeira por metro: aqui é o preço do metro; na lista abaixo aparece o valor da peça
+    el.querySelector("#ic-preco-rotulo").textContent = u?.pedeComprimento ? "Preço do metro (R$)" : "Preço unitário (R$)";
     el.querySelector("#ic-adicionar").disabled = !it;
   }
 
@@ -134,7 +140,9 @@ export function criarItensCaixa(el, aoMudar) {
     el.querySelectorAll(".ic-remover").forEach((b) => b.addEventListener("click", () => { linhas.splice(Number(b.closest("tr").dataset.i), 1); render(); }));
     el.querySelectorAll(".ic-preco-linha").forEach((inp) => inp.addEventListener("change", () => {
       const l = linhas[Number(inp.closest("tr").dataset.i)];
-      l.precoManual = num(inp.value);
+      const v = num(inp.value);
+      if (inp.dataset.peca && v != null) { l.precoManual = null; l.totalManual = Math.round(v * Number(l.quantidade) * 100) / 100; }
+      else { l.precoManual = v; l.totalManual = null; }
       render();
     }));
   }
