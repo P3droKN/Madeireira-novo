@@ -417,10 +417,17 @@ async function registerDirectSale(opcoes) {
 }
 
 async function registrarVendaAgora(opcoes = {}) {
-    // Antes de registrar, confere se a tabela de preços mudou (se mudou, a pessoa vê os preços novos e registra de novo)
-    if (window.Calculadora?.atualizarPrecos && await window.Calculadora.atualizarPrecos()) {
-        alert('A tabela de preços foi atualizada agora há pouco (Ajustes › Preços). Confira os valores do pedido e registre de novo.');
-        return;
+    // Antes de registrar, confere se a tabela de preços mudou. Só para e avisa se o TOTAL deste pedido mudou com isso
+    // (preço novo de um item que não está no pedido não atrapalha a venda)
+    if (window.Calculadora?.atualizarPrecos) {
+        const antes = window.Calculadora.resumo()?.venda;
+        if (await window.Calculadora.atualizarPrecos()) {
+            const depois = window.Calculadora.resumo()?.venda;
+            if (Math.round((antes || 0) * 100) !== Math.round((depois || 0) * 100)) {
+                alert(`O preço de tabela de algum item deste pedido mudou agora há pouco (Ajustes › Preços).\n\nTotal antes: ${formatCurrency(antes || 0)} · agora: ${formatCurrency(depois || 0)}.\nConfira os valores e registre de novo.`);
+                return;
+            }
+        }
     }
     const pedido = window.Calculadora && window.Calculadora.resumo();
     if (!pedido || pedido.itens.length === 0) {

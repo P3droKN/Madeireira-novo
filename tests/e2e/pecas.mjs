@@ -66,6 +66,38 @@ await page.fill(".ic-preco-linha", "21"); await page.dispatchEvent(".ic-preco-li
 await page.waitForTimeout(150);
 ok(nb(await page.textContent("#ic-total")).includes("189,00"), "Caixa: R$ 21,00 a peça × 9 = R$ 189,00");
 
+// 3b. O banco devolve os preços em outra ordem: NÃO é mudança de preço (registra direto, sem aviso)
+await page.route("**/api/catalogo", async (r) => {
+  const resp = await r.fetch(); const j = await resp.json();
+  j.precos = Object.fromEntries(Object.entries(j.precos).reverse());
+  await r.fulfill({ response: resp, json: j });
+});
+await page.click("#btn-tab-vender");
+dialogos.length = 0;
+await add("EUCALIPTO", "EUCALIPTO|1x3", 2, 4);
+await page.click("#btn-registrar-venda");
+await fecharVias(page, dialogos);
+ok(!dialogos.some((d) => d.includes("tabela de preços") || d.includes("preço de tabela")), "preços na mesma lista em outra ordem: a venda registra direto, sem aviso");
+await page.unroute("**/api/catalogo");
+// preço mudou, mas de um item que NÃO está no pedido: registra direto
+await add("EUCALIPTO", "EUCALIPTO|1x3", 1, 4);
+await fetch(URL + "/api/precos", { method: "POST", headers: H, body: JSON.stringify({ alteracoes: { "PINUS|2x4x3.00|BRUTO": 26 } }) });
+dialogos.length = 0;
+await page.click("#btn-registrar-venda");
+await fecharVias(page, dialogos);
+ok(!dialogos.some((d) => d.includes("preço de tabela")), "preço mudou de um item fora do pedido: registra direto");
+// preço mudou de um item DO pedido: avisa com o total antes e agora, e não registra
+await add("EUCALIPTO", "EUCALIPTO|1x3", 1, 4);
+await fetch(URL + "/api/precos", { method: "POST", headers: H, body: JSON.stringify({ alteracoes: { "EUCALIPTO|1x3|BRUTO": 6 } }) });
+const nAntes = (await lanc()).length;
+dialogos.length = 0;
+await page.click("#btn-registrar-venda");
+await page.waitForTimeout(800);
+ok(dialogos.some((d) => nb(d).includes("Total antes: R$ 22,00 · agora: R$ 24,00")) && (await lanc()).length === nAntes, "preço de um item do pedido mudou: avisa (R$ 22,00 → R$ 24,00) e não registra");
+await page.click("#btn-registrar-venda");
+await fecharVias(page, dialogos);
+ok((await lanc()).length === nAntes + 1, "registrando de novo, vai com o preço novo");
+
 // 4. WhatsApp do orçamento: valor da peça
 const { textoParaCliente } = await import("../../lib/orcamentos.js");
 const t = textoParaCliente({ id: "ORC-0001", data: "2026-11-07", validoAte: "2026-11-14", total: 198, itens: [{ descricao: "Eucalipto 1x3", quantidade: 9, comprimento: 4, quantidadeTexto: "9 pç × 4,00 m = 36,00 m", unidade: "m", precoUnitario: 5.5, vendaTotal: 198 }] });

@@ -52,13 +52,17 @@ async function carregar() {
 // Preços e ajustes salvos depois que esta tela abriu (o dono mudou em Ajustes › Preços, ou em outro aparelho):
 // relê do servidor sem mexer no pedido nem no que está sendo escolhido; os itens do pedido recalculam com o preço novo.
 let atualizandoPrecos = null;
+const ordenado = (v) => (Array.isArray(v) ? v.map(ordenado) : v && typeof v === "object"
+  ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, ordenado(v[k])])) : typeof v === "string" && v.trim() !== "" && !Number.isNaN(Number(v)) ? Number(v) : v);
+const mesmosValores = (a, b) => JSON.stringify(ordenado(a || {})) === JSON.stringify(ordenado(b || {}));
 async function atualizarPrecos() {
   if (!estado.dados || atualizandoPrecos) return atualizandoPrecos;
   atualizandoPrecos = (async () => {
     let novo;
     try { novo = await window.api("/api/catalogo"); } catch { return false; }
-    const mudouPrecos = JSON.stringify(novo.precos || {}) !== JSON.stringify(estado.dados.precos || {});
-    const mudouConfig = JSON.stringify(novo.config || {}) !== JSON.stringify(estado.dados.config || {});
+    // O banco devolve os preços em qualquer ordem: compara item a item (mesma lista em outra ordem não é mudança)
+    const mudouPrecos = !mesmosValores(novo.precos, estado.dados.precos);
+    const mudouConfig = !mesmosValores(novo.config, estado.dados.config);
     if (!mudouPrecos && !mudouConfig) return false;
     const material = $("material").value, medida = $("dimension").value, acab = acabamentoEscolhido();
     estado.dados = novo;
