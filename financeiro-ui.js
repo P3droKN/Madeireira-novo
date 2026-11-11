@@ -48,6 +48,7 @@ const ehReceitaVenda = (c) => ["venda_produtos", "frete_cobrado", "servicos"].in
 
 function mostrarSub(grupo, sub) {
   estado.sub[grupo] = sub;
+  if (grupo === "caixa" && sub === "receber") window.ReceberUI?.voltarLista?.(); // abrir A receber pela aba: começa na lista
   document.querySelectorAll(`.subtabs[data-grupo="${grupo}"] .subtab`).forEach((b) => b.classList.toggle("ativo", b.dataset.sub === sub));
   // Dia e Mês dividem a mesma tela: esconde as outras e só depois mostra a escolhida
   for (const id of Object.values(TELAS[grupo])) $(id).hidden = true;

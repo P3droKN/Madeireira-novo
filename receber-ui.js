@@ -17,19 +17,7 @@ const C = () => window.Caixa;
 const hoje = () => C()?.hoje() || hojeSP();
 const centavos = (v) => Math.round(Number(v || 0) * 100);
 
-const estado = { busca: "", quitados: false, abertos: new Set(), atual: null, editor: null, el: null };
-
-function calcular() {
-  const r = contasAReceber(C().itens, C().configFinanceiro, hoje(), window.Clientes?.lista || []);
-  const ch = cheques(C().itens, C().configFinanceiro, hoje()).recebidos.filter((c) => c.situacao === "a_compensar");
-  const carteira = ch.reduce((s, c) => s + centavos(c.valor), 0) / 100;
-  return { r, carteira, chequesCarteira: ch, naRua: Math.round((r.totalAberto + carteira) * 100) / 100 };
-}
-
-const situacaoTag = (d) => d.situacao === "pago" ? '<span class="tag tag-mais">pago</span>'
-  : d.situacao === "em_aberto" ? `<span class="tag tag-cc">em aberto há ${d.diasEmAberto} dia(s)</span>`
-  : d.situacao === "atrasado" ? `<span class="tag tag-menos">${d.diasAtraso} dia(s) de atraso</span>` : '<span class="tag">a vencer</span>';
-
+const estado = { busca: "", quitados: false, ficha: null, verPagos: false, atual: null, editor: null, el: null };
 
 // Trava o botão do formulário enquanto grava: clique duplo não lança duas vezes
 const travar = (fn) => async (e) => {
@@ -40,7 +28,134 @@ const travar = (fn) => async (e) => {
   try { await fn(e); } finally { if (botao) botao.disabled = false; }
 };
 
+// ---------- Lista por cliente (Caixa › A receber, e "Devendo" na aba Clientes, inclusive do funcionário) ----------
+// Uma linha por cliente, do maior valor em aberto para o menor: em aberto, quantos pedidos, desde quando,
+// último pagamento e o alerta. Clicar na linha abre a ficha do fiado (pedidos em aberto e pagamentos).
+
+const confere = (nome, tel) => {
+  const b = estado.busca.trim().toLowerCase();
+  if (!b) return true;
+  const dig = b.replace(/\D/g, "");
+  return String(nome || "").toLowerCase().includes(b) || (dig.length >= 3 && String(tel || "").replace(/\D/g, "").includes(dig));
+};
+
+const etiquetas = (c) => [
+  c.contaCorrente ? '<span class="tag tag-cc">sem prazo</span>' : "",
+  c.atrasado > 0 ? `<span class="tag tag-menos">atrasado ${c.maiorAtraso} ${c.maiorAtraso === 1 ? "dia" : "dias"}</span>` : "",
+  c.credito > 0 ? `<span class="tag tag-mais">crédito ${moeda(c.credito)}</span>` : "",
+].join(" ");
+
+/** HTML da lista. clientes: os do contasAReceber; opções: { quitados } */
+function listaHtml(r, { quitados = false } = {}) {
+  const lista = r.porCliente.filter((c) => (quitados || c.aberto > 0 || c.credito > 0) && confere(c.cliente, c.telefone))
+    .sort((a, b) => b.aberto - a.aberto || a.cliente.localeCompare(b.cliente));
+  return `<div class="table-container"><table class="tabela-fin tabela-receber" id="rc-tabela">
+    <thead><tr><th>Cliente</th><th class="num">Em aberto</th><th class="num">Pedidos</th><th>Desde</th><th>Último pagamento</th><th>Alerta</th><th></th></tr></thead>
+    <tbody>${lista.map((c) => {
+      const tel = normalizarTelefone(c.telefone);
+      return `<tr class="linha-clicavel ${c.atrasado > 0 ? "cor-vermelho" : c.alertas.length ? "cor-alerta" : ""}" data-chave="${esc(c.chave)}">
+        <td><strong>${esc(c.cliente)}</strong> ${etiquetas(c)}<small>${esc(c.telefone || (c.clienteId ? "sem WhatsApp" : "sem cadastro"))}</small></td>
+        <td class="num"><strong>${moeda(c.aberto)}</strong></td>
+        <td class="num">${c.pedidosEmAberto || "—"}</td>
+        <td>${c.emAbertoDesde ? `desde ${dataBR(c.emAbertoDesde).slice(0, 5)}<small>${c.diasEmAberto} dia(s)</small>` : "—"}</td>
+        <td>${c.ultimoPagamento ? `${dataBR(c.ultimoPagamento)}<small>${moeda(c.ultimoPagamentoValor)}</small>` : "—"}</td>
+        <td>${c.alertas.map((a) => `<span class="tag tag-alerta">⚠ ${esc(a.texto)}</span>`).join(" ") || (c.contaCorrente ? `<small class="texto-suave">${textoAlerta(c)}</small>` : "")}</td>
+        <td class="orc-acoes">${c.aberto > 0 ? `<button class="btn-icon mini destaque-verde" data-rc="receber">Receber</button>` : ""}
+          ${c.aberto > 0 && tel.ok ? `<button class="btn-icon mini" data-rc="cobrar">Cobrar 💬</button>` : ""}</td>
+      </tr>`;
+    }).join("") || `<tr><td colspan="7" class="texto-suave">${estado.busca ? "Nenhum cliente com essa busca." : "Ninguém devendo. As vendas em Fiado aparecem aqui."}</td></tr>`}</tbody>
+  </table></div>`;
+}
+
+// Alerta configurado (em branco = sem alerta)
+const textoAlerta = (c) => [c.alertaLimite != null ? `limite ${moeda(c.alertaLimite)}` : "", c.alertaDias != null ? `${c.alertaDias} dias sem pagar` : ""].filter(Boolean).join(" · ") || "sem alerta";
+
+// Venda com itens que dá para imprimir de novo (as 2 vias)
+const vendaDa = (d) => (d.tipo === "fiado" ? C().itens.find((l) => String(l.id) === String(d.origemId) && l.conta === "venda_produtos") : null);
+
+// ---------- Ficha do fiado do cliente ----------
+
+const nomeDivida = (d) => d.tipo === "fiado_anterior" ? `Saldo anterior à virada (desde ${dataBR(d.data).slice(0, 5)})`
+  : d.tipo === "cheque_devolvido" ? d.descricao : vendaDa(d)?.numero || d.descricao;
+const situacaoDivida = (d) => d.estado === "pago" ? '<span class="tag tag-mais">pago</span>'
+  : `${d.estado === "parcial" ? '<span class="tag">pago em parte</span>' : '<span class="tag tag-cc">em aberto</span>'}${d.situacao === "atrasado" ? ` <span class="tag tag-menos">atrasado ${d.diasAtraso} ${d.diasAtraso === 1 ? "dia" : "dias"}</span>` : d.vencimento && d.situacao === "a_vencer" ? ` <small class="texto-suave">vence ${dataBR(d.vencimento)}</small>` : ""}`;
+// Cheque: em carteira · compensado · devolvido (pela data "bom para")
+const situacaoCheque = (ch) => ch.devolvidoEm ? "devolvido" : ch.compensacao && ch.compensacao <= hoje() ? "compensado" : "em carteira";
+
+/** Pedidos em aberto (ou todos, com verPagos) e o histórico de pagamentos do cliente. */
+function fichaFiadoHtml(c, { verPagos = false } = {}) {
+  const porData = [...c.dividas].sort((a, b) => a.data.localeCompare(b.data) || String(a.origemId).localeCompare(String(b.origemId)));
+  const visiveis = porData.filter((d) => verPagos || d.estado !== "pago");
+  const nPagos = porData.filter((d) => d.estado === "pago").length;
+  const nomePorOrigem = new Map(c.dividas.map((d) => [String(d.origemId) + "|" + d.tipo, d]));
+  const quitouTxt = (r) => {
+    const partes = r.quitou.map((q) => {
+      const d = nomePorOrigem.get(String(q.origemId) + "|" + q.tipo);
+      const nome = d ? (d.tipo === "fiado_anterior" ? "saldo anterior" : nomeDivida(d)) : "pedido";
+      return d && q.valor < d.valor ? `parte da ${esc(nome)} (${moeda(q.valor)})` : `${esc(nome)} (${moeda(q.valor)})`;
+    });
+    const sobra = Math.round((r.valor - r.quitou.reduce((s, q) => s + q.valor, 0)) * 100) / 100;
+    if (sobra > 0) partes.push(`crédito ${moeda(sobra)}`);
+    return partes.join(", ");
+  };
+  const formasTxt = (r) => {
+    const chs = r.pagamentos.filter((p) => p.forma === "cheque");
+    const outras = r.pagamentos.filter((p) => p.forma !== "cheque").map((p) => `${nomeForma(p.forma)} ${moeda(p.valor)}`);
+    return [chs.length ? `${chs.length === 1 ? "1 cheque" : `${chs.length} cheques`} ${moeda(chs.reduce((s, p) => s + p.valor, 0))}` : "", ...outras].filter(Boolean).join(" + ");
+  };
+  const cheques = (r) => r.pagamentos.filter((p) => p.forma === "cheque").map((p) => {
+    const ch = p.cheque || {};
+    return `<li>Cheque ${ch.numero ? `nº ${esc(ch.numero)} ` : ""}${moeda(p.valor)} · bom para ${dataBR(ch.compensacao)}${ch.banco ? ` · ${esc(ch.banco)}` : ""}${ch.emissor ? ` · ${esc(ch.emissor)}` : ""} · <strong>${situacaoCheque(ch)}</strong></li>`;
+  }).join("");
+  return `<div class="rc-ficha-fiado" data-chave="${esc(c.chave)}">
+    <div class="table-container"><table class="tabela-fin" id="rc-pedidos">
+      <thead><tr><th>Pedido</th><th>Data</th><th class="num">Valor</th><th class="num">Pago</th><th class="num">Falta</th><th>Situação</th><th></th></tr></thead>
+      <tbody>${visiveis.map((d) => `<tr class="${d.estado === "pago" ? "linha-paga" : ""}"><td><strong>${esc(nomeDivida(d))}</strong></td><td>${dataBR(d.data)}</td>
+        <td class="num">${moeda(d.valor)}</td><td class="num">${d.pago ? moeda(d.pago) : "—"}</td><td class="num"><strong>${d.aberto ? moeda(d.aberto) : "—"}</strong></td>
+        <td>${situacaoDivida(d)}</td>
+        <td>${vendaDa(d) ? `<button class="btn-icon mini" data-rc-via="${esc(d.origemId)}" title="Imprimir as vias deste pedido">🖨 Vias</button> <button class="btn-icon mini so-dono" data-rc-corrigir="${esc(d.origemId)}" title="Abrir a venda de volta para corrigir (mantém o número)">Corrigir</button>` : ""}</td></tr>`).join("")
+        || `<tr><td colspan="7" class="texto-suave">${c.dividas.length ? "Nenhum pedido em aberto." : "Sem compras no fiado."}</td></tr>`}</tbody>
+    </table></div>
+    ${nPagos ? `<button type="button" class="link-suave" data-rc="pagos">${verPagos ? "Esconder pedidos pagos" : `Ver pedidos pagos (${nPagos})`}</button>` : ""}
+    <h4>Pagamentos</h4>
+    <div class="table-container"><table class="tabela-fin" id="rc-pagamentos-hist">
+      <thead><tr><th>Data</th><th class="num">Valor</th><th>Forma</th><th>Recebeu</th><th>Quitou</th><th></th></tr></thead>
+      <tbody>${[...c.recebimentos].reverse().map((r) => `<tr><td>${dataBR(r.data)}</td><td class="num"><strong>${moeda(r.valor)}</strong></td>
+        <td>${esc(formasTxt(r))}${cheques(r) ? `<ul class="rc-cheques">${cheques(r)}</ul>` : ""}${r.descricao && !/^Recebimento de /.test(r.descricao) ? `<small>${esc(r.descricao)}</small>` : ""}</td>
+        <td>${esc(r.recebidoPor || "—")}</td><td><small>${quitouTxt(r) || "—"}</small></td>
+        <td><button class="delete-btn so-dono" data-rc-estornar="${esc(r.id)}" title="Desfazer este recebimento (a dívida volta)">Estornar</button></td></tr>`).join("")
+        || '<tr><td colspan="6" class="texto-suave">Nenhum pagamento ainda.</td></tr>'}</tbody>
+    </table></div>
+  </div>`;
+}
+
+// Cabeçalho da ficha no Caixa › A receber (na aba Clientes, o cabeçalho é o da própria ficha do cliente)
+function fichaCaixaHtml(c) {
+  const tel = normalizarTelefone(c.telefone);
+  return `<section class="glass-panel ficha-fiado">
+    <div class="painel-titulo">
+      <div><h2>${esc(c.cliente)} ${etiquetas(c)}</h2>
+        <small class="texto-suave">em aberto <strong>${moeda(c.aberto)}</strong> · ${c.pedidosEmAberto} ${c.pedidosEmAberto === 1 ? "pedido" : "pedidos"}${c.emAbertoDesde ? ` · desde ${dataBR(c.emAbertoDesde)}` : ""}${c.contaCorrente ? ` · alerta: ${esc(textoAlerta(c))}` : ""}</small>
+        ${c.alertas.length ? `<div>${c.alertas.map((a) => `<span class="tag tag-alerta">⚠ ${esc(a.texto)}</span>`).join(" ")}</div>` : ""}</div>
+      <button type="button" class="btn-icon" data-rc="voltar">← A receber</button>
+    </div>
+    <div class="ficha-acoes">
+      ${c.aberto > 0 ? '<button type="button" class="btn-icon destaque-verde" data-rc="receber">Receber</button>' : ""}
+      ${c.aberto > 0 && tel.ok ? '<button type="button" class="btn-icon" data-rc="cobrar">Cobrar no WhatsApp 💬</button>' : ""}
+      ${c.clienteId ? `<button type="button" class="link-suave" data-rc-ficha="${esc(c.clienteId)}">Abrir cadastro do cliente ›</button>` : '<span class="texto-suave">Cliente sem cadastro: cadastre em Clientes e Orçamentos › Clientes para definir o prazo e os alertas.</span>'}
+    </div>
+    ${fichaFiadoHtml(c, { verPagos: estado.verPagos })}
+  </section>`;
+}
+
 // ---------- Caixa › A receber ----------
+
+function calcular() {
+  const r = contasAReceber(C().itens, C().configFinanceiro, hoje(), window.Clientes?.lista || []);
+  const ch = cheques(C().itens, C().configFinanceiro, hoje()).recebidos.filter((c) => c.situacao === "a_compensar");
+  const carteira = ch.reduce((s, c) => s + centavos(c.valor), 0) / 100;
+  return { r, carteira, chequesCarteira: ch, naRua: Math.round((r.totalAberto + carteira) * 100) / 100 };
+}
 
 function render(el) {
   estado.el = el;
@@ -50,104 +165,41 @@ function render(el) {
     window.Clientes?.carregar().then(() => render(el));
   }
   const { r, carteira, naRua } = calcular();
+  const ficha = estado.ficha ? r.porCliente.find((c) => c.chave === estado.ficha) : null;
+  if (ficha) { el.innerHTML = `<div class="rc-comp" data-ctx="caixa">${fichaCaixaHtml(ficha)}</div>`; return; }
+  estado.ficha = null;
   const atrasados = r.porCliente.filter((c) => c.atrasado > 0).length;
   el.innerHTML = `
   <div class="saldos-grid receber-cards">
-    <div class="total-bloco"><span>A receber</span><strong>${moeda(r.totalAberto)}</strong><small class="texto-suave">${r.porCliente.filter((c) => c.aberto > 0).length} cliente(s)</small>${r.totalContaCorrente ? `<small class="texto-suave">sem prazo ${moeda(r.totalContaCorrente)} · com prazo ${moeda(r.totalComVencimento)}</small>` : ""}${r.comAlerta ? `<small><span class="tag tag-alerta">⚠ ${r.comAlerta} cliente(s) sem prazo com alerta</span></small>` : ""}</div>
+    <div class="total-bloco"><span>A receber</span><strong>${moeda(r.totalAberto)}</strong><small class="texto-suave">${r.porCliente.filter((c) => c.aberto > 0).length} cliente(s)</small>${r.totalContaCorrente ? `<small class="texto-suave">sem prazo ${moeda(r.totalContaCorrente)}</small>` : ""}</div>
     <div class="total-bloco"><span>Atrasado</span><strong class="${r.totalAtrasado ? "type-expense" : ""}">${moeda(r.totalAtrasado)}</strong><small class="texto-suave">${atrasados} cliente(s) com atraso</small></div>
     <div class="total-bloco"><span>Cheques em carteira</span><strong>${moeda(carteira)}</strong><small class="texto-suave">a compensar</small></div>
     <div class="total-bloco destaque"><span>Total na rua</span><strong>${moeda(naRua)}</strong><small class="texto-suave">fiado + cheques em carteira</small></div>
   </div>
-  <section class="glass-panel">
+  <section class="glass-panel rc-comp" data-ctx="caixa">
     <div class="painel-titulo receber-topo">
       <h2>A receber por cliente</h2>
       <input type="search" id="rc-busca" class="orc-busca" placeholder="🔎 nome ou telefone" value="${esc(estado.busca)}" aria-label="Buscar cliente">
     </div>
-    <div id="rc-conteudo"></div>
-  </section>`;
-  el.querySelector("#rc-busca").addEventListener("input", (e) => { estado.busca = e.target.value; renderConteudo(); });
-  renderConteudo(r);
-}
-
-const confere = (nome, tel) => {
-  const b = estado.busca.trim().toLowerCase();
-  if (!b) return true;
-  const dig = b.replace(/\D/g, "");
-  return String(nome || "").toLowerCase().includes(b) || (dig.length >= 3 && String(tel || "").replace(/\D/g, "").includes(dig));
-};
-
-function renderConteudo(rPronto) {
-  const alvo = $("rc-conteudo");
-  if (!alvo) return;
-  const r = rPronto || calcular().r;
-  const lista = r.porCliente.filter((c) => (estado.quitados || c.aberto > 0 || c.credito > 0) && confere(c.cliente, c.telefone));
-  const cc = lista.filter((c) => c.contaCorrente);
-  const comVenc = lista.filter((c) => !c.contaCorrente);
-  alvo.innerHTML = `
     <label class="check texto-suave"><input type="checkbox" id="rc-quitados" ${estado.quitados ? "checked" : ""}> Mostrar também quem já pagou tudo</label>
-    <div class="receber-secao-titulo"><h3>Sem prazo</h3><span class="texto-suave">acerta quando juntar: nunca fica atrasado, segue o alerta de limite e de dias · ${moeda(r.totalContaCorrente)}</span></div>
-    <div class="table-container"><table class="tabela-fin tabela-receber" id="rc-tabela-cc">
-      <thead><tr><th>Cliente</th><th class="num">Em aberto</th><th>Em aberto há</th><th>Último pagamento</th><th>Alerta</th><th>Ações</th></tr></thead>
-      <tbody>${cc.map((c) => linhaCliente(c)).join("") || '<tr><td colspan="6" class="texto-suave">Nenhum cliente sem prazo em aberto. O prazo de cada cliente fica no cadastro (Clientes e Orçamentos › Clientes).</td></tr>'}</tbody>
-    </table></div>
-    <div class="receber-secao-titulo"><h3>Fiado com prazo</h3><span class="texto-suave">${moeda(r.totalComVencimento)}</span></div>
-    <div class="table-container"><table class="tabela-fin tabela-receber" id="rc-tabela-venc">
-      <thead><tr><th>Cliente</th><th class="num">Em aberto</th><th class="num">Atrasado</th><th class="num">Maior atraso</th><th>Próximo vencimento</th><th>Ações</th></tr></thead>
-      <tbody>${comVenc.map((c) => linhaCliente(c)).join("") || '<tr><td colspan="6" class="texto-suave">Ninguém devendo. As vendas em Fiado aparecem aqui.</td></tr>'}</tbody>
-    </table></div>`;
-  $("rc-quitados").addEventListener("change", (e) => { estado.quitados = e.target.checked; renderConteudo(); });
+    <div id="rc-conteudo">${listaHtml(r, { quitados: estado.quitados })}</div>
+    <p class="texto-suave">Clique no cliente para ver os pedidos em aberto e os pagamentos.</p>
+  </section>`;
+  el.querySelector("#rc-busca").addEventListener("input", (e) => { estado.busca = e.target.value; $("rc-conteudo").innerHTML = listaHtml(calcular().r, { quitados: estado.quitados }); });
+  $("rc-quitados").addEventListener("change", (e) => { estado.quitados = e.target.checked; $("rc-conteudo").innerHTML = listaHtml(calcular().r, { quitados: estado.quitados }); });
 }
 
-function linhaCliente(c) {
-  const aberto = estado.abertos.has(c.chave);
-  const tel = normalizarTelefone(c.telefone);
-  const colunas = c.contaCorrente ? `
-      <td>${c.aberto ? `${c.diasEmAberto} dia(s)<small>desde ${dataBR(c.emAbertoDesde)}</small>` : "—"}</td>
-      <td>${c.ultimoPagamento ? `${dataBR(c.ultimoPagamento)}<small>${c.aberto ? `${c.diasSemPagar} dia(s) sem pagar` : ""}</small>` : "—"}</td>
-      <td>${c.alertas.map((a) => `<span class="tag tag-alerta">⚠ ${esc(a.texto)}</span>`).join(" ") || `<small class="texto-suave">${textoAlerta(c)}</small>`}</td>` : `
-      <td class="num ${c.atrasado ? "type-expense" : ""}">${c.atrasado ? moeda(c.atrasado) : "—"}</td>
-      <td class="num">${c.maiorAtraso ? `${c.maiorAtraso} dia(s)` : "—"}</td>
-      <td>${c.proximoVencimento ? dataBR(c.proximoVencimento) : "—"}</td>`;
-  return `<tr class="${c.atrasado > 0 ? "cor-vermelho" : c.alertas.length ? "cor-alerta" : ""}" data-chave="${esc(c.chave)}">
-      <td><strong>${esc(c.cliente)}</strong><small>${esc(c.telefone || (c.clienteId ? "sem WhatsApp" : "sem cadastro"))}</small>${c.credito > 0 ? `<small class="texto-ok">crédito ${moeda(c.credito)}</small>` : ""}</td>
-      <td class="num"><strong>${moeda(c.aberto)}</strong></td>${colunas}
-      <td class="orc-acoes">
-        ${c.aberto > 0 ? `<button class="btn-icon mini destaque-verde" data-rc="receber">Receber</button>` : ""}
-        ${c.aberto > 0 ? (tel.ok ? `<button class="btn-icon mini" data-rc="cobrar">Cobrar 💬</button>` : '<span class="texto-suave mini-nota">sem WhatsApp</span>') : ""}
-        <button class="btn-icon mini" data-rc="ver">${aberto ? "Fechar ▴" : "Ver ▾"}</button>
-      </td>
-    </tr>${aberto ? `<tr class="linha-detalhe"><td colspan="6">${detalheCliente(c)}</td></tr>` : ""}`;
+// Aba Clientes › Devendo (dono e funcionário): a mesma lista; clicar abre a ficha do cliente
+function devendoHtml(busca) {
+  estado.busca = busca || "";
+  const r = contasAReceber(C()?.itens || [], C()?.configFinanceiro, hoje(), window.Clientes?.lista || []);
+  return `<div class="rc-comp" data-ctx="clientes"><p class="texto-suave">A receber: <strong>${moeda(r.totalAberto)}</strong> · ${r.porCliente.filter((c) => c.aberto > 0).length} cliente(s)</p>${listaHtml(r)}</div>`;
 }
-
-// Alerta configurado (em branco = sem alerta)
-const textoAlerta = (c) => [c.alertaLimite != null ? `limite ${moeda(c.alertaLimite)}` : "", c.alertaDias != null ? `${c.alertaDias} dias sem pagar` : ""].filter(Boolean).join(" · ") || "sem alerta";
-
-// Venda com itens que dá para imprimir de novo (as 2 vias)
-const vendaDa = (d) => (d.tipo === "fiado" ? C().itens.find((l) => String(l.id) === String(d.origemId) && l.conta === "venda_produtos") : null);
-
-// Prazo, alertas e dados do cliente ficam na ficha (Clientes e Orçamentos › Clientes)
-function linkFicha(c) {
-  if (!c.clienteId) return '<p class="texto-suave">Cliente sem cadastro: cadastre em Clientes e Orçamentos › Clientes para definir o prazo e os alertas.</p>';
-  return `<p><button type="button" class="link-suave" data-rc-ficha="${esc(c.clienteId)}">Abrir ficha do cliente ›</button> <span class="texto-suave">prazo: ${c.contaCorrente ? "sem prazo" : "com prazo"}${c.contaCorrente ? ` · alerta: ${esc(textoAlerta(c))}` : ""}</span></p>`;
-}
-
-function detalheCliente(c) {
-  return `<div class="receber-detalhe">
-    ${linkFicha(c)}
-    <table class="tabela-fin">
-      <thead><tr><th>Data</th><th>O quê</th><th>Vencimento</th><th class="num">Valor</th><th class="num">Pago</th><th class="num">Em aberto</th><th>Situação</th></tr></thead>
-      <tbody>${c.dividas.map((d) => `<tr><td>${dataBR(d.data)}</td><td>${vendaDa(d)?.numero ? `<strong>${esc(vendaDa(d).numero)}</strong> · ` : ""}${esc(d.descricao)}${vendaDa(d) ? ` <button class="btn-icon mini" data-rc-via="${esc(d.origemId)}" title="Imprimir as vias desta venda">🖨 Vias</button> <button class="btn-icon mini so-dono" data-rc-corrigir="${esc(d.origemId)}" title="Abrir a venda de volta para corrigir (mantém o número)">Corrigir</button>` : ""}</td><td>${c.contaCorrente ? "sem prazo" : dataBR(d.vencimento)}</td>
-        <td class="num">${moeda(d.valor)}</td><td class="num">${d.pago ? moeda(d.pago) : "—"}</td><td class="num"><strong>${moeda(d.aberto)}</strong></td><td>${situacaoTag(d)}</td></tr>`).join("")
-        || '<tr><td colspan="7" class="texto-suave">Sem compras no fiado.</td></tr>'}</tbody>
-    </table>
-    <h4>Recebimentos</h4>
-    <table class="tabela-fin">
-      <thead><tr><th>Data</th><th>Forma</th><th class="num">Valor</th><th></th></tr></thead>
-      <tbody>${c.recebimentos.map((r) => `<tr><td>${dataBR(r.data)}</td><td>${esc(r.formas.map(nomeForma).join(" + "))}${r.descricao ? `<small>${esc(r.descricao)}</small>` : ""}</td>
-        <td class="num">${moeda(r.valor)}</td><td><button class="delete-btn so-dono" data-rc-estornar="${esc(r.id)}" title="Desfazer este recebimento (a dívida volta)">Estornar</button></td></tr>`).join("")
-        || '<tr><td colspan="4" class="texto-suave">Nenhum recebimento ainda.</td></tr>'}</tbody>
-    </table>
-  </div>`;
+// Ficha do cliente (aba Clientes): os pedidos em aberto e os pagamentos do fiado dele
+function fichaDoCliente(clienteId, { verPagos = false } = {}) {
+  const r = contasAReceber(C()?.itens || [], C()?.configFinanceiro, hoje(), window.Clientes?.lista || []);
+  const c = r.porCliente.find((x) => String(x.clienteId) === String(clienteId));
+  return c ? { c, html: `<div class="rc-comp" data-ctx="clientes">${fichaFiadoHtml(c, { verPagos })}</div>` } : null;
 }
 
 // Os mesmos nomes de forma do resto do sistema
@@ -292,30 +344,42 @@ function relatorio(el) {
 // ---------- Eventos ----------
 
 document.addEventListener("click", (e) => {
+  const comp = e.target.closest(".rc-comp");
+  if (!comp) return;
+  const ctx = comp.dataset.ctx;
   const b = e.target.closest("[data-rc], [data-rc-estornar], [data-rc-ficha], [data-rc-via], [data-rc-corrigir]");
-  if (!b || !estado.el?.contains(b)) return;
-  if (b.dataset.rcFicha) return window.ClientesUI?.abrirFicha(b.dataset.rcFicha);
-  if (b.dataset.rcCorrigir) return window.Vendas?.corrigir(b.dataset.rcCorrigir);
-  if (b.dataset.rcVia) {
-    window.Vendas?.vias(b.dataset.rcVia);
-    return;
-  }
-  if (b.dataset.rcEstornar) {
+  if (b?.dataset.rcFicha) return window.ClientesUI?.abrirFicha(b.dataset.rcFicha);
+  if (b?.dataset.rcCorrigir) return window.Vendas?.corrigir(b.dataset.rcCorrigir);
+  if (b?.dataset.rcVia) return window.Vendas?.vias(b.dataset.rcVia);
+  if (b?.dataset.rcEstornar) {
     if (confirm("Estornar este recebimento? O valor volta a ficar em aberto para o cliente.")) C().excluir(b.dataset.rcEstornar, { confirmado: true });
     return;
   }
-  const chave = b.closest("tr")?.dataset.chave;
-  const c = calcular().r.porCliente.find((x) => x.chave === chave);
+  if (b?.dataset.rc === "voltar") { estado.ficha = null; estado.verPagos = false; return render(estado.el); }
+  if (b?.dataset.rc === "pagos") {
+    if (ctx === "clientes") return window.ClientesUI?.alternarPagos?.();
+    estado.verPagos = !estado.verPagos;
+    return render(estado.el);
+  }
+  const chave = e.target.closest("[data-chave]")?.dataset.chave;
+  const c = chave && calcular().r.porCliente.find((x) => x.chave === chave);
   if (!c) return;
-  if (b.dataset.rc === "receber") abrirReceber(c);
-  if (b.dataset.rc === "cobrar") cobrar(c);
-  if (b.dataset.rc === "ver") {
-    if (estado.abertos.has(chave)) estado.abertos.delete(chave); else estado.abertos.add(chave);
-    renderConteudo();
+  if (b?.dataset.rc === "receber") return abrirReceber(c);
+  if (b?.dataset.rc === "cobrar") return cobrar(c);
+  // clique na linha da lista: abre a ficha do fiado
+  if (!b && e.target.closest("#rc-tabela tr[data-chave]")) {
+    if (ctx === "clientes") {
+      if (c.clienteId) return window.ClientesUI?.abrirFicha(c.clienteId);
+      return alert("Cliente sem cadastro: cadastre em Clientes para ver a ficha.");
+    }
+    estado.ficha = c.chave;
+    estado.verPagos = false;
+    render(estado.el);
+    estado.el?.scrollIntoView({ block: "start" });
   }
 });
 $("rc-receber-form").addEventListener("submit", travar(salvarRecebimento));
 $("rc-receber-cancelar").addEventListener("click", fecharReceber);
 $("rc-valor").addEventListener("input", (e) => estado.editor?.definirTotal(num(e.target.value) || 0));
 
-window.ReceberUI = { render, relatorio, abertasDoCliente, abrirReceber, cobrar };
+window.ReceberUI = { voltarLista() { estado.ficha = null; estado.verPagos = false; }, render, relatorio, abertasDoCliente, abrirReceber, cobrar, devendoHtml, fichaDoCliente, listaHtml };

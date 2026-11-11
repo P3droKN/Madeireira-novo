@@ -131,22 +131,24 @@ ok(v2?.pagamentos[0].fiado.contaCorrente === true, "Lançar: fiado sem prazo gra
 
 // 5. A receber separado
 await irReceber();
-await page.waitForSelector("#rc-tabela-cc");
+await page.waitForSelector("#rc-tabela");
 ok(!(await page.locator('input[name="rc-visao"]').count()) && !/conta corrente/i.test(await page.textContent("#fin-receber")), "A receber: sem o cadastro de clientes (fica na aba Clientes) e sem \"conta corrente\"");
-const cc = nb(await page.textContent("#rc-tabela-cc"));
-const venc = nb(await page.textContent("#rc-tabela-venc"));
-ok(nb(await page.locator("#rc-tabela-cc tr[data-chave]", { hasText: "Seu Bento" }).textContent()).includes("101 dia(s)"), "Seu Bento: em aberto há 101 dias, contados do \"desde\" (01/07)");
-ok(cc.includes("Seu Arlindo") && cc.includes("Dona Cida") && !venc.includes("Arlindo") && !venc.includes("Cida"), "Sem prazo separado de Fiado com prazo");
+const linhaDe = (nome) => page.locator("#rc-tabela tr[data-chave]", { hasText: nome });
+ok(nb(await linhaDe("Seu Bento").textContent()).includes("101 dia(s)"), "Seu Bento: em aberto há 101 dias, contados do \"desde\" (01/07)");
+ok(nb(await linhaDe("Seu Arlindo").textContent()).includes("sem prazo") && nb(await linhaDe("Dona Cida").textContent()).includes("sem prazo"), "uma lista só: o \"sem prazo\" vira etiqueta na linha");
+const valores = await page.$$eval("#rc-tabela tbody tr[data-chave] td:nth-child(2)", (tds) => tds.map((t) => Number(t.textContent.replace(/[^\d,]/g, "").replace(",", "."))));
+ok(valores.every((v, i) => i === 0 || valores[i - 1] >= v), `ordenada pelo maior valor em aberto (${valores.join(" ≥ ")})`);
 ok(nb(await page.locator('#fin-receber .receber-cards .total-bloco:has(> span:text-is("Atrasado"))').locator("strong").textContent()) === "R$ 0,00", "sem prazo nunca fica atrasado (venda de 20/08 sem atraso)");
-const linhaA = page.locator("#rc-tabela-cc tr[data-chave]", { hasText: "Seu Arlindo" });
+const linhaA = linhaDe("Seu Arlindo");
 const tA = nb(await linhaA.textContent());
-ok(tA.includes("R$ 650,00") && tA.includes("51 dia(s)") && tA.includes("desde 20/08/2026"), "Seu Arlindo: R$ 650 em aberto há 51 dias (desde 20/08)");
+ok(tA.includes("R$ 650,00") && tA.includes("51 dia(s)") && tA.includes("desde 20/08"), "Seu Arlindo: R$ 650 em aberto há 51 dias (desde 20/08)");
 ok(tA.includes("passou do limite de R$ 500,00") && (await linhaA.getAttribute("class")).includes("cor-alerta"), "alerta de limite aparece e destaca a linha");
-ok(nb(await page.locator("#rc-tabela-cc tr[data-chave]", { hasText: "Dona Cida" }).textContent()).includes("sem alerta"), "Dona Cida: sem alerta configurado");
+ok(nb(await linhaDe("Dona Cida").textContent()).includes("sem alerta"), "Dona Cida: sem alerta configurado");
 ok(nb(await page.textContent("#fin-receber .receber-cards")).includes("sem prazo R$ 1.450,00"), "cartão mostra o total sem prazo");
-await linhaA.locator('[data-rc="ver"]').click();
-const det = page.locator("#fin-receber tr.linha-detalhe");
-ok(nb(await det.textContent()).includes("sem prazo") && nb(await det.textContent()).includes("em aberto há 51 dia(s)"), "detalhe: sem vencimento, \"em aberto há X dias\"");
+await linhaA.locator("td").first().click();
+await page.waitForSelector("#fin-receber .ficha-fiado");
+const det = page.locator("#fin-receber .ficha-fiado");
+ok(nb(await det.textContent()).includes("sem prazo") && nb(await det.textContent()).includes("desde 20/08/2026") && nb(await det.locator("#rc-pedidos").textContent()).includes("em aberto"), "ficha do fiado: sem vencimento, pedidos em aberto, desde 20/08");
 await det.locator("[data-rc-via]").first().click();
 await page.waitForSelector("#modal-impressao", { state: "visible" });
 await page.click("#imp-imprimir");
@@ -163,18 +165,19 @@ await salvarCadastro(page, { limite: 1000, dias: 30 });
 arlindo = (await clientes()).find((c) => c.nome === "Seu Arlindo");
 ok(arlindo.alertaLimite === 1000 && arlindo.alertaDias === 30 && arlindo.contaCorrente === true, "alerta salvo pela ficha (limite R$ 1.000, 30 dias)");
 await irReceber();
-await page.waitForFunction(() => document.querySelector("#rc-tabela-cc")?.textContent.includes("alerta: 30"));
+await page.click('#fin-receber [data-rc="voltar"]').catch(() => {});
+await page.waitForFunction(() => document.querySelector("#rc-tabela")?.textContent.includes("alerta: 30"));
 const tA2 = nb(await linhaA.textContent());
 ok(!tA2.includes("passou do limite") && tA2.includes("51 dias sem pagar (alerta: 30)"), "alertas recalculados: sem o de limite, com o de dias sem pagar");
 
 // 6. Recebimento da Dona Cida (fiado anterior): entra no caixa, aparece como informação no DRE e no fluxo
-await page.locator("#rc-tabela-cc tr[data-chave]", { hasText: "Dona Cida" }).locator('[data-rc="receber"]').click();
+await linhaDe("Dona Cida").locator('[data-rc="receber"]').click();
 await page.waitForSelector("#modal-receber", { state: "visible" });
 ok(nb(await page.textContent("#rc-receber-info")).includes("sem prazo, em aberto há 9 dia(s)"), "Receber: mostra há quantos dias está em aberto");
 await page.fill("#rc-valor", "300"); await page.dispatchEvent("#rc-valor", "input");
 await page.click("#rc-receber-form button[type=submit]");
 await page.waitForFunction(() => document.getElementById("modal-receber").style.display === "none");
-const tC = nb(await page.locator("#rc-tabela-cc tr[data-chave]", { hasText: "Dona Cida" }).textContent());
+const tC = nb(await linhaDe("Dona Cida").textContent());
 ok(tC.includes("R$ 300,00") && tC.includes("10/10/2026"), "Dona Cida: resta R$ 300, último pagamento 10/10");
 await page.click("#btn-tab-relatorios"); await sub("relatorios", "dre");
 await page.waitForSelector("#fin-dre-conteudo .dre-info");
@@ -213,8 +216,8 @@ await salvarCadastro(page);
 arlindo = (await clientes()).find((c) => c.nome === "Seu Arlindo");
 ok(arlindo.contaCorrente === false && arlindo.alertaLimite === null, "prazo padrão: sem \"sem prazo\" e sem alerta");
 await irReceber();
-await page.waitForSelector("#rc-tabela-venc");
-ok(nb(await page.textContent("#rc-tabela-venc")).includes("Seu Arlindo") && nb(await page.locator('#fin-receber .receber-cards .total-bloco:has(> span:text-is("Atrasado"))').locator("strong").textContent()) === "R$ 400,00",
+await page.waitForSelector("#rc-tabela");
+ok(!nb(await linhaDe("Seu Arlindo").textContent()).includes("sem prazo") && nb(await linhaDe("Seu Arlindo").textContent()).includes("atrasado") && nb(await page.locator('#fin-receber .receber-cards .total-bloco:has(> span:text-is("Atrasado"))').locator("strong").textContent()) === "R$ 400,00",
   "Seu Arlindo vai para Fiado com prazo: a venda de 20/08 venceu em 19/09 (atrasado R$ 400)");
 
 await page.screenshot({ path: "contacorrente.png", fullPage: true });

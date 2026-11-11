@@ -184,3 +184,28 @@ test("prazo do cliente: 'outro' prazo vence em data + dias dele; sem prazo não 
   assert.equal(vencimentoFiado({ forma: "fiado" }, "2026-10-01", { fiado: { prazoDias: 30 } }, { prazoDias: 15 }), "2026-10-16");
   assert.equal(vencimentoFiado({ forma: "fiado", fiado: { vencimento: "2026-10-05" } }, "2026-10-01", {}, { prazoDias: 15 }), "2026-10-05");
 });
+
+test("ficha do fiado: quem quitou o quê, pago em parte, pedidos em aberto, último pagamento; cheque devolvido é dívida nova", () => {
+  const cheque = (valor, numero, compensacao, extra = {}) => ({ forma: "cheque", conta: "cheques_carteira", valor, cheque: { numero, compensacao, emissor: "Carlos Souza", ...extra } });
+  const fa = { id: "fa1", v: 2, conta: "fiado_anterior", value: 200, date: "2026-09-01", competencia: "2026-09-01", desde: "2026-08-10", clienteId: "47999991234", cliente: "Carlos Souza", contaCorrente: true };
+  const lista = [fa,
+    venda("v1", "2026-10-01", [fiado(500)], { numero: "V-0001" }), venda("v2", "2026-10-05", [fiado(300)], { numero: "V-0002" }), venda("v3", "2026-10-08", [fiado(400)], { numero: "V-0003" }),
+    receb("r1", "2026-10-10", [cheque(400, "11", "2026-10-30"), cheque(400, "12", "2026-11-30")], { vendedor: { tipo: "funcionario", id: "F1", nome: "Ana" } })];
+  let c = contasAReceber(lista, {}, "2026-10-12", clientes).porCliente[0];
+  // 800 recebidos: saldo anterior 200 + V-0001 500 + 100 da V-0002
+  assert.deepEqual(c.dividas.map((d) => [d.tipo, d.estado]), [["fiado_anterior", "pago"], ["fiado", "pago"], ["fiado", "parcial"], ["fiado", "aberto"]]);
+  assert.equal(c.aberto, 600);
+  assert.equal(c.pedidosEmAberto, 2);
+  assert.equal(c.ultimoPagamento, "2026-10-10");
+  assert.equal(c.ultimoPagamentoValor, 800);
+  const r = c.recebimentos[0];
+  assert.equal(r.recebidoPor, "Ana");
+  assert.deepEqual(r.quitou.map((q) => [q.origemId, q.valor]), [["fa1", 200], ["v1", 500], ["v2", 100]]);
+  assert.deepEqual(r.pagamentos.map((p) => [p.forma, p.valor, p.cheque.numero]), [["cheque", 400, "11"], ["cheque", 400, "12"]]);
+  // um dos cheques volta: vira dívida nova; os pedidos quitados continuam pagos
+  const depois = [...lista.slice(0, 4), receb("r1", "2026-10-10", [cheque(400, "11", "2026-10-30", { devolvidoEm: "2026-10-31" }), cheque(400, "12", "2026-11-30")])];
+  c = contasAReceber(depois, {}, "2026-11-01", clientes).porCliente[0];
+  assert.equal(c.aberto, 1000);
+  assert.deepEqual(c.dividas.filter((d) => d.tipo !== "cheque_devolvido").map((d) => d.estado), ["pago", "pago", "parcial", "aberto"]);
+  assert.ok(c.dividas.some((d) => d.tipo === "cheque_devolvido" && d.aberto === 400 && /nº 11/.test(d.descricao)));
+});

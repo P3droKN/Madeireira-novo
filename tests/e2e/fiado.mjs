@@ -71,7 +71,9 @@ ok(v2 && v2.clienteId === ze.id && v2.pagamentos[0].fiado.vencimento === "2026-1
 // 3. A receber
 await irReceber();
 ok(await card("A receber") === "R$ 350,00" && await card("Atrasado") === "R$ 100,00" && await card("Total na rua") === "R$ 350,00", "cartões: a receber R$ 350, atrasado R$ 100, na rua R$ 350");
-ok(nb(await linhaZe().textContent()).includes("5 dia(s)"), "Zé: maior atraso 5 dias (venceu 05/10)");
+ok(nb(await linhaZe().textContent()).includes("atrasado 5 dias"), "Zé: etiqueta \"atrasado 5 dias\" (venceu 05/10)");
+const tZe = nb(await linhaZe().textContent());
+ok(tZe.includes("R$ 350,00") && /\b2\b/.test(tZe) && tZe.includes("desde 20/09"), "linha: em aberto R$ 350, 2 pedidos, desde 20/09");
 ok((await linhaZe().getAttribute("class")).includes("cor-vermelho"), "cliente com atraso fica em vermelho");
 ok(await linhaZe().locator('[data-rc="cobrar"]').count() === 1, "com WhatsApp (obrigatório no fiado): mostra Cobrar");
 
@@ -103,11 +105,17 @@ await page.fill("#perg-campo", "2026-10-21"); await page.click("#perg-ok");
 await page.waitForTimeout(500);
 await irReceber();
 ok(await card("A receber") === "R$ 350,00" && await card("Cheques em carteira") === "R$ 0,00", "cheque devolvido: a dívida volta a R$ 350 e sai da carteira");
-await linhaZe().locator('[data-rc="ver"]').click();
-ok(nb(await page.textContent("#fin-receber .receber-detalhe")).includes("Cheque devolvido nº 123"), "detalhe mostra o cheque devolvido como dívida");
+await linhaZe().locator("td").first().click();
+await page.waitForSelector("#fin-receber #rc-pedidos");
+const fichaZe = nb(await page.textContent("#fin-receber #rc-pedidos"));
+ok(fichaZe.includes("Cheque devolvido nº 123") && fichaZe.includes("pago"), "ficha: o cheque devolvido vira dívida nova; os pedidos que ele quitou continuam pagos");
+const hist = nb(await page.textContent("#fin-receber #rc-pagamentos-hist"));
+ok(hist.includes("1 cheque R$ 150,00") && hist.includes("bom para 20/10/2026") && hist.includes("devolvido") && /quitou|R\$ 100,00/.test(hist), `histórico: cheque com a situação (devolvido) e o que quitou (${hist.slice(0, 160)})`);
 
 // 6. Estornar o recebimento
 await page.locator("#fin-receber [data-rc-estornar]").first().click();
+await page.waitForTimeout(300);
+await page.click('#fin-receber [data-rc="voltar"]').catch(() => {});
 await page.waitForTimeout(600);
 await irReceber();
 ok(await card("A receber") === "R$ 350,00" && !(await lanc()).some((l) => l.conta === "recebimento"), "estornar recebimento: some e a conta volta a ficar como antes do recebimento (R$ 350)");

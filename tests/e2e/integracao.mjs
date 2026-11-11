@@ -91,7 +91,7 @@ await fiado("Seu Arlindo", 200);
 await page.click("#btn-tab-caixa"); await sub("caixa", "receber");
 await page.waitForSelector("#fin-receber .receber-cards");
 const cards = await txt("#fin-receber .receber-cards");
-ok(cards.includes("R$ 500,00") && nb(await page.textContent("#rc-tabela-cc")).includes("Seu Arlindo") && nb(await page.textContent("#rc-tabela-venc")).includes("Zé da Obra"), "A receber: 500 (Zé com vencimento + Arlindo conta corrente)");
+ok(cards.includes("R$ 500,00") && nb(await page.textContent("#rc-tabela")).includes("Seu Arlindo") && nb(await page.textContent("#rc-tabela")).includes("Zé da Obra"), "A receber: 500 (Zé com vencimento + Arlindo conta corrente)");
 await dia();
 ok(await quadro("Vendido hoje") === "R$ 550,00" && await quadro("Entrou no caixa hoje") === "R$ 50,00" && await quadro("Fiado vendido hoje") === "R$ 500,00", "Dia: vendido 550, entrou 50 (fiado não entra no caixa), fiado 500");
 await dre();
@@ -99,14 +99,14 @@ ok((await linhaDre("Receita bruta")).includes("R$ 650,00"), "DRE: o fiado é rec
 
 // 3. Recebimento parcial do Zé em cheque: A receber, Cheques em carteira, Saldos, Dia; DRE não muda
 await page.click("#btn-tab-caixa"); await sub("caixa", "receber");
-await page.locator("#rc-tabela-venc tr[data-chave]", { hasText: "Zé da Obra" }).locator('[data-rc="receber"]').click();
+await page.locator("#rc-tabela tr[data-chave]", { hasText: "Zé da Obra" }).locator('[data-rc="receber"]').click();
 await page.fill("#rc-valor", "120"); await page.dispatchEvent("#rc-valor", "input");
 await page.locator("#rc-pagamentos .pag-forma").first().selectOption("cheque");
 await page.fill('#rc-pagamentos .pag-ch[data-campo="numero"]', "55"); await page.dispatchEvent('#rc-pagamentos .pag-ch[data-campo="numero"]', "change");
 await page.fill('#rc-pagamentos .pag-ch[data-campo="compensacao"]', "2026-10-24"); await page.dispatchEvent('#rc-pagamentos .pag-ch[data-campo="compensacao"]', "change");
 await page.click("#rc-receber-form button[type=submit]");
 await page.waitForFunction(() => document.getElementById("modal-receber").style.display === "none");
-ok(nb(await page.locator("#rc-tabela-venc tr[data-chave]", { hasText: "Zé da Obra" }).textContent()).includes("R$ 180,00"), "A receber: Zé passa a dever 180");
+ok(nb(await page.locator("#rc-tabela tr[data-chave]", { hasText: "Zé da Obra" }).textContent()).includes("R$ 180,00"), "A receber: Zé passa a dever 180");
 ok(await saldoConta("Cheques em carteira") === "R$ 120,00", "Saldos: cheque de 120 na carteira");
 await dia();
 ok(await quadro("Recebido de fiado hoje") === "R$ 120,00" && await quadro("Vendido hoje") === "R$ 550,00", "Dia: recebido de fiado 120; vendido continua 550");
@@ -137,7 +137,7 @@ await page.click("#btn-tab-caixa"); await sub("caixa", "lista");
 await page.locator(`#fin-lista-body [data-excluir="${fa.id}"]`).click();
 await page.waitForTimeout(600);
 await page.click("#btn-tab-caixa"); await sub("caixa", "receber"); await page.waitForSelector("#fin-receber .receber-cards");
-ok(!nb(await page.textContent("#rc-tabela-cc")).includes("Seu Arlindo"), "estorno: Arlindo sai do A receber");
+ok(!nb(await page.textContent("#rc-tabela")).includes("Seu Arlindo"), "estorno: Arlindo sai do A receber");
 await dia();
 ok(await quadro("Fiado vendido hoje") === "R$ 300,00" && (await page.locator("#dia-lista tbody tr.estornado").count()) === 1, "estorno: sai do fiado do dia e aparece riscado na lista");
 ok((await lanc(true)).find((l) => l.id === fa.id).numero === fa.numero, "estorno mantém o número");
@@ -166,8 +166,8 @@ await page.click("#btn-tab-caixa"); await sub("caixa", "cheques");
 await page.locator("#fin-cheques tr", { hasText: "55" }).locator("[data-ch-devolver]").click();
 await page.waitForSelector("#modal-pergunta", { state: "visible" }); await page.fill("#perg-campo", "2026-10-23"); await page.click("#perg-ok");
 await page.waitForTimeout(600);
-await page.click("#btn-tab-caixa"); await sub("caixa", "receber"); await page.waitForSelector("#rc-tabela-venc");
-ok(nb(await page.locator("#rc-tabela-venc tr[data-chave]", { hasText: "Zé da Obra" }).textContent()).includes("R$ 300,00"), "cheque devolvido: a dívida do Zé volta para 300");
+await page.click("#btn-tab-caixa"); await sub("caixa", "receber"); await page.waitForSelector("#rc-tabela");
+ok(nb(await page.locator("#rc-tabela tr[data-chave]", { hasText: "Zé da Obra" }).textContent()).includes("R$ 300,00"), "cheque devolvido: a dívida do Zé volta para 300");
 
 // 8. Débito do dia 20 cai no PicPay no dia 21 (líquido da taxa de 2%) e aparece no Dia 21
 await dia();

@@ -73,7 +73,7 @@ function render() {
         <button type="button" class="btn-primary" id="cli-novo">+ Novo cliente</button>
       </div>
     </div>
-    <div class="table-container"><table class="tabela-fin tabela-clientes">
+    ${estado.filtro === "devendo" && window.ReceberUI ? window.ReceberUI.devendoHtml(estado.busca) : `<div class="table-container"><table class="tabela-fin tabela-clientes">
       <thead><tr><th>Nome</th><th>WhatsApp</th><th>Cidade</th><th class="num">Em aberto</th><th>Último pedido</th></tr></thead>
       <tbody id="cli-body">${lista.map((c) => {
         const s = saldo.get(String(c.id));
@@ -84,7 +84,7 @@ function render() {
           <td class="num ${s?.atrasado ? "type-expense" : ""}">${s?.aberto ? `<strong>${moeda(s.aberto)}</strong>` : "—"}</td>
           <td>${v ? `${esc(v.numero || "")} <small>${dataBR(v.competencia)}</small>` : "—"}</td></tr>`;
       }).join("") || `<tr><td colspan="5" class="texto-suave">${clientes.length ? "Nenhum cliente com esse filtro." : "Nenhum cliente cadastrado. Use \"+ Novo cliente\"."}</td></tr>`}</tbody>
-    </table></div>
+    </table></div>`}
     <p class="texto-suave">Clique no cliente para abrir a ficha: pedidos, orçamentos, fiado, receber e cobrar.</p>
   </section>`;
   $("cli-filtro").addEventListener("change", (e) => { estado.filtro = e.target.value; render(); });
@@ -96,7 +96,7 @@ function render() {
     window.Clientes?.carregar().then(renderMantendoFoco);
   });
   $("cli-novo").addEventListener("click", () => novo().then((c) => { if (c) abrirFicha(c.id); }));
-  $("cli-body").addEventListener("click", (e) => {
+  $("cli-body")?.addEventListener("click", (e) => {
     const tr = e.target.closest("tr[data-cli]");
     if (tr) abrirFicha(tr.dataset.cli);
   });
@@ -114,6 +114,7 @@ function renderMantendoFoco() {
 
 function abrirFicha(id) {
   estado.ficha = String(id);
+  estado.verPagos = false;
   window.switchTab?.("orcamentos");
   mostrarSub("clientes");
   render();
@@ -175,13 +176,7 @@ function renderFicha(el) {
         <td>${o.excluidoEm ? "na lixeira" : o.status === "fechado" ? "fechado (virou venda)" : o.status === "perdido" ? "perdido" : "em aberto"}</td><td class="num">${moeda(o.total)}</td></tr>`).join("")
         || '<tr><td colspan="4" class="texto-suave">Nenhum orçamento.</td></tr>'}</tbody>
     </table></div>
-    ${s ? `<h3>Fiado: compras e pagamentos</h3>
-    <div class="table-container"><table class="tabela-fin">
-      <thead><tr><th>Data</th><th>O quê</th><th>Vencimento</th><th class="num">Valor</th><th class="num">Em aberto</th></tr></thead>
-      <tbody>${s.dividas.map((d) => `<tr><td>${dataBR(d.data)}</td><td>${esc(d.descricao)}</td><td>${c.contaCorrente || !d.vencimento ? "sem prazo" : dataBR(d.vencimento)}</td>
-        <td class="num">${moeda(d.valor)}</td><td class="num">${d.aberto ? `<strong>${moeda(d.aberto)}</strong>` : '<span class="texto-ok">pago</span>'}</td></tr>`).join("")}
-        ${s.recebimentos.map((r) => `<tr class="linha-recebimento"><td>${dataBR(r.data)}</td><td>Pagamento (${esc(r.formas.map((f) => NOMES_FORMA[f] || f).join(" + "))})</td><td></td><td class="num texto-ok">−${moeda(r.valor)}</td><td></td></tr>`).join("")}</tbody>
-    </table></div>` : ""}
+    ${s ? `<h3>Fiado</h3>${window.ReceberUI?.fichaDoCliente(c.id, { verPagos: estado.verPagos })?.html || ""}` : ""}
   </section>`;
   $("cli-voltar").addEventListener("click", () => { estado.ficha = null; render(); });
   $("cli-editar").addEventListener("click", () => editar(c.id));
@@ -380,6 +375,7 @@ $("co-subtabs")?.addEventListener("click", (e) => {
 });
 
 window.ClientesUI = {
+  alternarPagos() { estado.verPagos = !estado.verPagos; render(); },
   novo, editar, abrirFicha,
   atualizar() { if ($("co-clientes") && !$("co-clientes").hidden) render(); },
 };

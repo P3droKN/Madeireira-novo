@@ -1231,3 +1231,10 @@ body.modo-funcionario #btn-balcao,
 body.modo-funcionario #custo-livre-group { display: none !important; }
 .func-nome { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50vw; }
 #pedidos-hoje-painel { margin-top: 1.25rem; }
+
+/* A receber: lista por cliente e ficha do fiado */
+#rc-tabela tr.linha-clicavel { cursor: pointer; }
+#rc-pedidos tr.linha-paga td { opacity: 0.65; }
+.rc-cheques { margin: 0.25rem 0 0; padding-left: 1.1rem; font-size: 0.85em; }
+.rc-cheques li { margin: 0.1rem 0; }
+.ficha-fiado .ficha-acoes { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 0.5rem 0 1rem; }
