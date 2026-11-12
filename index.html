@@ -728,12 +728,17 @@
             <h2 id="rc-receber-titulo">Receber</h2>
             <p id="rc-receber-info"></p>
             <form id="rc-receber-form" class="fin-form">
+                <div class="segmentado" id="rc-modo" role="radiogroup" aria-label="O que está sendo pago">
+                    <label><input type="radio" name="rc-modo" value="livre" checked><span>Valor livre</span></label>
+                    <label><input type="radio" name="rc-modo" value="marcar"><span>Marcar pedidos</span></label>
+                </div>
+                <div id="rc-marcar" hidden></div>
                 <div class="form-row">
                     <div class="form-group"><label for="rc-valor">Valor recebido (R$)</label><input type="number" id="rc-valor" step="0.01" min="0.01" inputmode="decimal" required>
-                        <small class="texto-suave">Pode ser parcial: o resto continua em aberto.</small></div>
+                        <small class="texto-suave" id="rc-valor-nota">Quita do pedido mais antigo para o mais novo; o último pode ficar pago em parte.</small></div>
                     <div class="form-group"><label for="rc-data">Data</label><input type="date" id="rc-data" required></div>
                 </div>
-                <div class="form-group"><label for="rc-abater">Abater em</label><select id="rc-abater"></select></div>
+                <div id="rc-previa" class="aviso rc-previa" aria-live="polite"></div>
                 <div class="form-group"><label>Forma de pagamento</label><div id="rc-pagamentos"></div>
                     <small class="texto-suave">Em cheque, ele vai para a carteira até compensar (Caixa › Cheques). Se voltar, a dívida reabre sozinha.</small></div>
                 <div class="form-group"><label for="rc-desc">Observação (opcional)</label><input type="text" id="rc-desc" maxlength="200"></div>

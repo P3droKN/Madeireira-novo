@@ -229,11 +229,66 @@ async function abrirReceber(c0) {
   $("rc-valor").value = c.aberto.toFixed(2);
   $("rc-data").value = hoje();
   $("rc-desc").value = "";
-  $("rc-abater").innerHTML = `<option value="">Automático: as mais antigas primeiro</option>${abertas.map((d) =>
-    `<option value="${esc(d.origemId)}">${dataBR(d.data)} · ${esc(d.descricao).slice(0, 50)} · em aberto ${moeda(d.aberto)}</option>`).join("")}`;
+  // Marcar pedidos: os em aberto, do mais antigo para o mais novo
+  estado.marcados = new Set();
+  document.querySelector('input[name="rc-modo"][value="livre"]').checked = true;
+  $("rc-marcar").hidden = true;
+  $("rc-marcar").innerHTML = `<div class="rc-marcar-topo"><button type="button" class="link-suave" id="rc-marcar-todos">Marcar todos</button></div>
+    <div class="table-container"><table class="tabela-fin"><tbody>${[...abertas].sort((a, b) => a.data.localeCompare(b.data) || String(a.origemId).localeCompare(String(b.origemId))).map((d) =>
+      `<tr><td><label class="check"><input type="checkbox" class="rc-marca" value="${esc(d.origemId)}"> <strong>${esc(nomeDivida(d))}</strong></label></td><td>${dataBR(d.data)}</td>
+        <td class="num">falta <strong>${moeda(d.aberto)}</strong>${d.estado === "parcial" ? ' <small class="texto-suave">(pago em parte)</small>' : ""}</td></tr>`).join("")}</tbody></table></div>`;
   estado.editor = criarEditorPagamentos($("rc-pagamentos"), { total: c.aberto, semFiado: true });
   $("modal-receber").style.display = "flex";
+  atualizarPrevia();
   $("rc-valor").focus();
+}
+
+const modoReceber = () => document.querySelector('input[name="rc-modo"]:checked')?.value || "livre";
+
+// Marcar pedidos: o valor a receber é a soma do que falta nos marcados
+function aoMarcar() {
+  const c = estado.atual;
+  estado.marcados = new Set([...document.querySelectorAll(".rc-marca:checked")].map((i) => i.value));
+  const total = c.dividas.filter((d) => estado.marcados.has(String(d.origemId))).reduce((s, d) => s + centavos(d.aberto), 0) / 100;
+  $("rc-valor").value = total ? total.toFixed(2) : "";
+  estado.editor?.definirTotal(total);
+  atualizarPrevia();
+}
+
+// O que fica pago com este recebimento: simula com o mesmo cálculo da ficha (do mais antigo para o mais novo;
+// marcados primeiro)
+function simular(valor) {
+  const c = estado.atual;
+  const vendaIds = modoReceber() === "marcar" ? [...estado.marcados] : [];
+  const previa = { id: "__previa", v: 2, conta: "recebimento", value: valor, competencia: $("rc-data").value || hoje(), date: $("rc-data").value || hoje(),
+    clienteId: c.clienteId, cliente: c.cliente, pagamentos: [{ forma: "dinheiro", valor }], ...(vendaIds.length ? { vendaIds } : {}) };
+  const r = contasAReceber([...C().itens, previa], C().configFinanceiro, hoje(), window.Clientes?.lista || []);
+  return r.porCliente.find((x) => x.chave === c.chave) || null;
+}
+function atualizarPrevia() {
+  const c = estado.atual;
+  const el = $("rc-previa");
+  if (!c || !el) return;
+  const valor = num($("rc-valor").value);
+  $("rc-valor-nota").textContent = modoReceber() === "marcar" ? "Quita os pedidos marcados (do mais antigo para o mais novo); valor menor deixa o último pago em parte." : "Quita do pedido mais antigo para o mais novo; o último pode ficar pago em parte.";
+  if (!(valor > 0)) { el.hidden = true; return; }
+  const depois = simular(valor);
+  if (!depois) { el.hidden = true; return; }
+  const antes = new Map(c.dividas.map((d) => [d.tipo + "|" + d.origemId, d]));
+  const pagos = [], parte = [];
+  for (const d of depois.dividas) {
+    const a = antes.get(d.tipo + "|" + d.origemId);
+    if (!a || a.aberto <= 0) continue;
+    if (d.aberto <= 0) pagos.push(nomeDivida(d));
+    else if (d.aberto < a.aberto) parte.push(`${nomeDivida(d)} (falta ${moeda(d.aberto)})`);
+  }
+  const sobra = Math.round((valor - c.aberto) * 100) / 100;
+  el.hidden = false;
+  el.className = `aviso rc-previa ${sobra > 0 ? "aviso-alerta" : ""}`;
+  el.innerHTML = [pagos.length ? `Ficam pagos: <strong>${esc(pagos.join(", "))}</strong>` : "",
+    parte.length ? `Pago em parte: ${esc(parte.join(", "))}` : "",
+    `Continua em aberto: <strong>${moeda(Math.max(0, depois.aberto))}</strong>`,
+    sobra > 0 ? `Sobram <strong>${moeda(sobra)}</strong> (vira crédito do cliente, se você confirmar)` : ""].filter(Boolean).join(" · ");
 }
 
 function fecharReceber() { $("modal-receber").style.display = "none"; }
@@ -246,12 +301,14 @@ async function salvarRecebimento(e) {
   let pagamentos;
   try { pagamentos = estado.editor.ler(); } catch (err) { return alert(err.message); }
   if (!C().podeGravar()) return;
-  if (valor > c.aberto + 0.005 && !confirm(`O valor (${moeda(valor)}) é maior que o que ${c.cliente} deve (${moeda(c.aberto)}). A diferença fica de crédito. Continuar?`)) return;
+  // Mais do que deve (comum com cheques: dívida de 3.980 paga com 4 cheques de 1.000): pergunta antes
+  if (valor > c.aberto + 0.005 && !confirm(`Sobram ${moeda(Math.round((valor - c.aberto) * 100) / 100)} (o cliente deve ${moeda(c.aberto)}).\n\nGuardar como crédito do cliente?\n(Ele abate a próxima compra.)`)) { $("rc-valor").focus(); return; }
+  const previaFinal = simular(valor);
   const item = {
     id: (estado.idReceb ||= C().novoId("R")), v: 2, conta: "recebimento", value: Math.round(valor * 100) / 100, competencia: $("rc-data").value || hoje(),
     clienteId: c.clienteId, cliente: c.cliente, pagamentos, description: $("rc-desc").value.trim() || `Recebimento de ${c.cliente}`,
   };
-  if ($("rc-abater").value) item.vendaIds = [$("rc-abater").value];
+  if (modoReceber() === "marcar" && estado.marcados.size) item.vendaIds = [...estado.marcados];
   item.ultimoRecebimentoVisto = estado.ultimoVisto || "";
   let gravou = false;
   for (let tentativa = 0; tentativa < 3 && !gravou; tentativa++) {
@@ -282,7 +339,9 @@ async function salvarRecebimento(e) {
     estado.idReceb = null;
     fecharReceber();
     const resta = Math.max(0, Math.round((c.aberto - valor) * 100) / 100);
-    alert(`Recebido ${moeda(valor)} de ${c.cliente}.${resta ? `\nAinda em aberto: ${moeda(resta)}.` : "\nQuitado!"}${pagamentos.some((p) => p.forma === "cheque") ? "\nO cheque foi para a carteira (Caixa › Cheques)." : ""}`);
+    const sobra = Math.max(0, Math.round((valor - c.aberto) * 100) / 100);
+    const pagosAgora = previaFinal ? previaFinal.dividas.filter((d) => d.aberto <= 0 && c.dividas.some((a) => a.tipo === d.tipo && a.origemId === d.origemId && a.aberto > 0)).map(nomeDivida) : [];
+    alert(`Recebido ${moeda(valor)} de ${c.cliente}.${pagosAgora.length ? `\nFicaram pagos: ${pagosAgora.join(", ")}.` : ""}${resta ? `\nAinda em aberto: ${moeda(resta)}.` : "\nQuitado!"}${sobra ? `\nCrédito do cliente: ${moeda(sobra)}.` : ""}${pagamentos.some((p) => p.forma === "cheque") ? "\nO cheque foi para a carteira (Caixa › Cheques)." : ""}`);
   }
 }
 
@@ -380,6 +439,22 @@ document.addEventListener("click", (e) => {
 });
 $("rc-receber-form").addEventListener("submit", travar(salvarRecebimento));
 $("rc-receber-cancelar").addEventListener("click", fecharReceber);
-$("rc-valor").addEventListener("input", (e) => estado.editor?.definirTotal(num(e.target.value) || 0));
+$("rc-valor").addEventListener("input", (e) => { estado.editor?.definirTotal(num(e.target.value) || 0); atualizarPrevia(); });
+$("rc-data").addEventListener("change", atualizarPrevia);
+$("rc-modo").addEventListener("change", () => {
+  const marcar = modoReceber() === "marcar";
+  $("rc-marcar").hidden = !marcar;
+  if (marcar) aoMarcar();
+  else { $("rc-valor").value = estado.atual.aberto.toFixed(2); estado.editor?.definirTotal(estado.atual.aberto); atualizarPrevia(); }
+});
+$("rc-marcar").addEventListener("change", (e) => { if (e.target.classList.contains("rc-marca")) aoMarcar(); });
+$("rc-marcar").addEventListener("click", (e) => {
+  if (e.target.id !== "rc-marcar-todos") return;
+  const caixas = [...document.querySelectorAll(".rc-marca")];
+  const todos = caixas.every((i) => i.checked);
+  caixas.forEach((i) => { i.checked = !todos; });
+  e.target.textContent = todos ? "Marcar todos" : "Desmarcar todos";
+  aoMarcar();
+});
 
 window.ReceberUI = { voltarLista() { estado.ficha = null; estado.verPagos = false; }, render, relatorio, abertasDoCliente, abrirReceber, cobrar, devendoHtml, fichaDoCliente, listaHtml };

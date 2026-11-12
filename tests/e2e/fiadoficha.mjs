@@ -90,4 +90,61 @@ await f.click('.ficha-cliente [data-rc="pagos"]');
 ok(nb(await f.textContent(".ficha-cliente #rc-pedidos")).includes("Saldo anterior à virada"), "funcionário: Ver pedidos pagos também");
 ok(await f.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), "celular: sem rolagem lateral na ficha");
 
+// 4. Receber (entrega 2): marcar pedidos, valor livre com prévia, sobra vira crédito só se confirmar
+const dialogos = [];
+let resposta = true;
+page.removeAllListeners("dialog");
+page.on("dialog", async (d) => { dialogos.push(d.message().replace(/\u00a0/g, " ")); if (d.type() === "confirm" && !resposta) return d.dismiss(); await d.accept(); });
+const lancamentos = async () => Object.values((await (await fetch(URL + "/__db")).json()).madeireira_lancamentos || {}).map((x) => JSON.parse(x)).filter((l) => !l.excluido);
+const abrirReceber = async () => {
+  await page.click("#btn-tab-caixa"); await page.click('.subtabs[data-grupo="caixa"] .subtab[data-sub="receber"]');
+  await page.locator("#rc-tabela tr[data-chave]", { hasText: "Construtora Silva" }).locator('[data-rc="receber"]').click();
+  await page.waitForSelector("#modal-receber", { state: "visible" });
+};
+await abrirReceber();
+await page.locator('#rc-modo label:has(input[value="marcar"])').click();
+ok(await page.locator(".rc-marca").count() === 2 && await page.inputValue("#rc-valor") === "", "Marcar pedidos: um quadradinho por pedido em aberto; nada marcado, valor vazio");
+await page.locator(".rc-marca").nth(1).check(); // V-0003 (R$ 700)
+ok(await page.inputValue("#rc-valor") === "700.00" && nb(await page.textContent("#rc-previa")).includes("Ficam pagos: V-0003") && nb(await page.textContent("#rc-previa")).includes("Continua em aberto: R$ 200,00"),
+  "marcar a V-0003: valor R$ 700 e a prévia mostra o que fica pago e o que continua em aberto");
+await page.click("#rc-marcar-todos");
+ok(await page.inputValue("#rc-valor") === "900.00", "Marcar todos: R$ 900,00");
+await page.click("#rc-marcar-todos"); // desmarca
+await page.locator(".rc-marca").nth(1).check();
+await page.fill("#rc-valor", "500"); await page.dispatchEvent("#rc-valor", "input");
+ok(nb(await page.textContent("#rc-previa")).includes("Pago em parte: V-0003 (falta R$ 200,00)"), "marcado com valor menor: o marcado fica pago em parte");
+await page.click("#rc-receber-form button[type=submit]");
+await page.waitForFunction(() => document.getElementById("modal-receber").style.display === "none");
+await page.waitForTimeout(300);
+let rec = (await lancamentos()).filter((l) => l.conta === "recebimento").sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))[0];
+ok(rec.value === 500 && JSON.stringify(rec.vendaIds) === JSON.stringify(["S3"]), "gravado: R$ 500 indicando a V-0003");
+// a V-0002 (mais antiga) continua com R$ 200 em aberto; a V-0003 com R$ 200
+await abrirReceber();
+ok(await page.inputValue("#rc-valor") === "400.00", "valor livre já vem com o total em aberto (R$ 400)");
+await page.fill("#rc-valor", "250"); await page.dispatchEvent("#rc-valor", "input");
+ok(nb(await page.textContent("#rc-previa")).includes("Ficam pagos: V-0002") && nb(await page.textContent("#rc-previa")).includes("Pago em parte: V-0003 (falta R$ 150,00)"),
+  "valor livre R$ 250: quita a mais antiga (V-0002) e deixa a V-0003 paga em parte");
+// mais do que deve: pergunta; "não" volta para corrigir, "sim" guarda o crédito
+await page.fill("#rc-valor", "1000"); await page.dispatchEvent("#rc-valor", "input");
+ok(nb(await page.textContent("#rc-previa")).includes("Sobram R$ 600,00"), "prévia avisa a sobra de R$ 600");
+const n0 = (await lancamentos()).length;
+resposta = false; dialogos.length = 0;
+await page.click("#rc-receber-form button[type=submit]");
+await page.waitForTimeout(400);
+ok(dialogos.some((d) => d.includes("Sobram R$ 600,00") && d.includes("Guardar como crédito do cliente?")) && await page.isVisible("#modal-receber") && (await lancamentos()).length === n0,
+  "respondeu não: volta para corrigir, nada gravado");
+resposta = true;
+await page.click("#rc-receber-form button[type=submit]");
+await page.waitForFunction(() => document.getElementById("modal-receber").style.display === "none");
+await page.waitForTimeout(400);
+ok(dialogos.some((d) => d.includes("Crédito do cliente: R$ 600,00")), "respondeu sim: grava e mostra o crédito de R$ 600");
+await page.locator("#rc-tabela tr[data-chave]", { hasText: "Construtora Silva" }).locator("td").first().click().catch(() => {});
+await page.click('.subtabs[data-grupo="caixa"] .subtab[data-sub="receber"]');
+await page.click('#rc-quitados');
+const silvaLinha = nb(await page.locator("#rc-tabela tr[data-chave]", { hasText: "Construtora Silva" }).textContent());
+ok(silvaLinha.includes("crédito R$ 600,00"), "a lista mostra o crédito do cliente");
+await lanca([v("S4", "2026-11-12", 450, silva)]);
+await page.evaluate(() => window.Caixa.recarregar());
+ok(nb(await page.locator("#rc-tabela tr[data-chave]", { hasText: "Construtora Silva" }).textContent()).includes("crédito R$ 150,00"), "compra nova de R$ 450 é abatida do crédito (sobra R$ 150)");
+
 await browser.close();

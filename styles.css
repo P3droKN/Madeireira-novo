@@ -1238,3 +1238,7 @@ body.modo-funcionario #custo-livre-group { display: none !important; }
 .rc-cheques { margin: 0.25rem 0 0; padding-left: 1.1rem; font-size: 0.85em; }
 .rc-cheques li { margin: 0.1rem 0; }
 .ficha-fiado .ficha-acoes { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 0.5rem 0 1rem; }
+#rc-modo { margin-bottom: 0.75rem; }
+#rc-marcar { margin-bottom: 0.75rem; max-height: 40vh; overflow: auto; }
+.rc-marcar-topo { text-align: right; }
+.rc-previa { margin: 0.25rem 0 0.75rem; }
