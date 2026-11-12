@@ -435,3 +435,10 @@ Arquivo para uma sessão nova continuar sem perguntar de novo. Atualizado em 15/
 - Prévia (`#rc-previa`): simula o recebimento com o próprio `contasAReceber` (mesma regra da ficha): "Ficam pagos … · Pago em parte … (falta R$ X) · Continua em aberto … · Sobram R$ X".
 - Mais do que deve: "Sobram R$ X … Guardar como crédito do cliente?"; não = volta para corrigir; sim = grava e o crédito aparece na lista/ficha e abate a próxima compra (regra de crédito de antes).
 - O aviso depois de receber diz quais pedidos ficaram pagos e o crédito, se houver. Saiu o "Abater em" (uma venda só).
+
+**Fiado: entrega 3 (vários cheques e "Dividir em cheques")**
+- `pagamentos.js` (editor do Vender, Caixa › Lançar e Receber): cada cheque é uma linha (forma "cheque") com valor, "Bom para" (obrigatório), banco, nº e emitente (vem com o nome do cliente pela opção `emitente`; pode trocar). "+ adicionar cheque" (vem com o que falta) e "Dividir em cheques" (`.pag-divisor`: total, quantos, a cada X dias, 1º bom para → valores iguais com os centavos no último; substitui os cheques que havia e, se os cheques cobrem o total, tira as outras formas). Status: "Soma confere · N cheques R$ X" / "Faltam R$ X" / "Sobram R$ X".
+- Caixa › Cheques: "Depositado" (`depositadoEm`, só informação; "Desfazer depósito") e "Compensou" (põe a data de compensação: o valor entra na conta nesse dia), além de Devolvido. Coluna "Bom para". Servidor: `atualizarCheque` aceita `depositadoEm`.
+- Ficha do fiado: situação de cada cheque em carteira · depositado · compensado · devolvido.
+- Relatórios › Dia e Caixa › Lançamentos: vários cheques no mesmo pagamento aparecem como "Cheque (N cheques)". Projeção de 30 dias já mostrava os cheques por data.
+- Teste: tests/e2e/cheques.mjs.

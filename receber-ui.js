@@ -80,7 +80,7 @@ const nomeDivida = (d) => d.tipo === "fiado_anterior" ? `Saldo anterior à virad
 const situacaoDivida = (d) => d.estado === "pago" ? '<span class="tag tag-mais">pago</span>'
   : `${d.estado === "parcial" ? '<span class="tag">pago em parte</span>' : '<span class="tag tag-cc">em aberto</span>'}${d.situacao === "atrasado" ? ` <span class="tag tag-menos">atrasado ${d.diasAtraso} ${d.diasAtraso === 1 ? "dia" : "dias"}</span>` : d.vencimento && d.situacao === "a_vencer" ? ` <small class="texto-suave">vence ${dataBR(d.vencimento)}</small>` : ""}`;
 // Cheque: em carteira · compensado · devolvido (pela data "bom para")
-const situacaoCheque = (ch) => ch.devolvidoEm ? "devolvido" : ch.compensacao && ch.compensacao <= hoje() ? "compensado" : "em carteira";
+const situacaoCheque = (ch) => ch.devolvidoEm ? "devolvido" : ch.compensacao && ch.compensacao <= hoje() ? "compensado" : ch.depositadoEm ? "depositado" : "em carteira";
 
 /** Pedidos em aberto (ou todos, com verPagos) e o histórico de pagamentos do cliente. */
 function fichaFiadoHtml(c, { verPagos = false } = {}) {
@@ -237,7 +237,7 @@ async function abrirReceber(c0) {
     <div class="table-container"><table class="tabela-fin"><tbody>${[...abertas].sort((a, b) => a.data.localeCompare(b.data) || String(a.origemId).localeCompare(String(b.origemId))).map((d) =>
       `<tr><td><label class="check"><input type="checkbox" class="rc-marca" value="${esc(d.origemId)}"> <strong>${esc(nomeDivida(d))}</strong></label></td><td>${dataBR(d.data)}</td>
         <td class="num">falta <strong>${moeda(d.aberto)}</strong>${d.estado === "parcial" ? ' <small class="texto-suave">(pago em parte)</small>' : ""}</td></tr>`).join("")}</tbody></table></div>`;
-  estado.editor = criarEditorPagamentos($("rc-pagamentos"), { total: c.aberto, semFiado: true });
+  estado.editor = criarEditorPagamentos($("rc-pagamentos"), { total: c.aberto, semFiado: true, emitente: () => c.cliente });
   $("modal-receber").style.display = "flex";
   atualizarPrevia();
   $("rc-valor").focus();

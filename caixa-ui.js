@@ -398,7 +398,7 @@ function renderCheques(el) {
     <div class="painel-titulo"><h2>Cheques recebidos</h2>${sel("ch-f-rec", fr, [["a_compensar", "A compensar (em carteira)"], ["compensado", "Compensados"], ["devolvido", "Devolvidos"], ["todos", "Todos"]])}</div>
     <p class="texto-suave">Na data de compensação, o cheque sai da carteira e entra na conta de depósito. Se voltar, marque como devolvido: ele sai do saldo e fica na lista para cobrar o cliente.</p>
     <div class="table-container"><table class="tabela-fin">
-      <thead><tr><th>Compensa em</th><th>Nº</th><th>Emissor / cliente</th><th class="num">Valor</th><th>Recebido</th><th>Depositar em</th><th>Situação</th><th></th></tr></thead>
+      <thead><tr><th>Bom para</th><th>Nº</th><th>Emitente / cliente</th><th class="num">Valor</th><th>Recebido</th><th>Depositar em</th><th>Situação</th><th></th></tr></thead>
       <tbody>${recFiltrados.map((c) => `<tr class="${c.situacao === "devolvido" ? "cor-vermelho" : c.situacao === "a_compensar" && c.compensacao <= h ? "cor-amarelo" : ""}">
         <td><input type="date" class="mini-data" value="${c.compensacao}" data-ch-comp="${esc(c.lancamentoId)}|${c.pagamento}" aria-label="Data de compensação"></td>
         <td>${esc(c.numero) || "—"}</td>
@@ -406,8 +406,12 @@ function renderCheques(el) {
         <td class="num"><strong>${moeda(c.valor)}</strong></td>
         <td>${dataBR(c.recebidoEm)}</td>
         <td>${contaSel(`data-ch-dep="${esc(c.lancamentoId)}|${c.pagamento}" aria-label="Conta de depósito"`, c.contaDeposito)}</td>
-        <td>${c.situacao === "devolvido" ? `<span class="tag tag-menos">devolvido ${dataBR(c.devolvidoEm)}</span>` : c.situacao === "compensado" ? '<span class="tag tag-mais">compensado</span>' : '<span class="tag">em carteira</span>'}</td>
-        <td>${c.situacao === "devolvido" ? `<button class="btn-icon mini" data-ch-desfazer="${esc(c.lancamentoId)}|${c.pagamento}">Desfazer</button>` : `<button class="btn-icon mini destaque-vermelho" data-ch-devolver="${esc(c.lancamentoId)}|${c.pagamento}">Devolvido</button>`}</td>
+        <td>${c.situacao === "devolvido" ? `<span class="tag tag-menos">devolvido ${dataBR(c.devolvidoEm)}</span>` : c.situacao === "compensado" ? '<span class="tag tag-mais">compensado</span>'
+          : c.depositadoEm ? `<span class="tag tag-cc">depositado ${dataBR(c.depositadoEm)}</span>` : '<span class="tag">em carteira</span>'}</td>
+        <td class="ch-acoes">${c.situacao === "devolvido" ? `<button class="btn-icon mini" data-ch-desfazer="${esc(c.lancamentoId)}|${c.pagamento}">Desfazer</button>` : `
+          ${c.situacao === "a_compensar" ? (c.depositadoEm ? `<button class="btn-icon mini" data-ch-desdepositar="${esc(c.lancamentoId)}|${c.pagamento}" title="Tirar a marca de depositado">Desfazer depósito</button>` : `<button class="btn-icon mini" data-ch-depositar="${esc(c.lancamentoId)}|${c.pagamento}" title="Marca que o cheque foi depositado (só informação: o valor entra na conta quando compensar)">Depositado</button>`)
+            + `<button class="btn-icon mini" data-ch-compensou="${esc(c.lancamentoId)}|${c.pagamento}" title="Compensou: o valor entra na conta nesta data">Compensou</button>` : ""}
+          <button class="btn-icon mini destaque-vermelho" data-ch-devolver="${esc(c.lancamentoId)}|${c.pagamento}">Devolvido</button>`}</td>
       </tr>`).join("") || '<tr><td colspan="8" class="texto-suave">Nenhum cheque nessa situação.</td></tr>'}</tbody>
     </table></div>
   </section>
@@ -457,6 +461,19 @@ document.addEventListener("click", (e) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return alert("Data inválida.");
       acaoCheque({ id, tipo: "recebido", pagamento: Number(p), devolvidoEm: data });
     });
+  }
+  if (t.dataset.chDepositar || t.dataset.chCompensou) {
+    const [id, p] = (t.dataset.chDepositar || t.dataset.chCompensou).split("|");
+    const depositar = Boolean(t.dataset.chDepositar);
+    perguntar({ titulo: depositar ? "Cheque depositado" : "Cheque compensado", texto: depositar ? "Data do depósito (só informação: o valor entra na conta quando compensar):" : "Data em que compensou (o valor entra na conta nesta data):", tipo: "data", inicial: hoje() }).then((data) => {
+      if (data === null) return;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return alert("Data inválida.");
+      acaoCheque({ id, tipo: "recebido", pagamento: Number(p), ...(depositar ? { depositadoEm: data } : { compensacao: data }) });
+    });
+  }
+  if (t.dataset.chDesdepositar) {
+    const [id, p] = t.dataset.chDesdepositar.split("|");
+    acaoCheque({ id, tipo: "recebido", pagamento: Number(p), depositadoEm: null });
   }
   if (t.dataset.chDesfazer) {
     const [id, p] = t.dataset.chDesfazer.split("|");

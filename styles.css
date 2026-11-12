@@ -1242,3 +1242,6 @@ body.modo-funcionario #custo-livre-group { display: none !important; }
 #rc-marcar { margin-bottom: 0.75rem; max-height: 40vh; overflow: auto; }
 .rc-marcar-topo { text-align: right; }
 .rc-previa { margin: 0.25rem 0 0.75rem; }
+.pag-divisor { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: flex-end; padding: 0.6rem; border: 1px dashed var(--input-border); border-radius: 8px; margin: 0.5rem 0; }
+.pag-divisor input { max-width: 9rem; }
+.pag-rodape { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }

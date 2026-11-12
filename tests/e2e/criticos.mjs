@@ -58,7 +58,7 @@ await page.fill("#ff-valor", "200"); await page.dispatchEvent("#ff-valor", "inpu
 await page.locator("#ff-pagamentos .pag-forma").first().selectOption("cheque");
 await page.click("#fin-form button[type=submit]");
 await page.waitForTimeout(300);
-ok(page.dialogos.at(-1).includes("data de compensação") && !(await lanc()).some((l) => l.value === 200), "cheque sem \"Compensa em\" não é gravado");
+ok(page.dialogos.at(-1).includes("bom para") && !(await lanc()).some((l) => l.value === 200), "cheque sem \"bom para\" não é gravado");
 
 // 4. Transferência: Cheques em carteira não aparece; o servidor também recusa
 await page.locator('label:has(input[name="fin-tipo"][value="transferencia"])').click();

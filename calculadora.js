@@ -20,6 +20,7 @@ const editorPagamentos = criarEditorPagamentos(document.getElementById("calc-pag
   fiado: configFiado,
   clienteExterno: true, // o cliente vem do bloco "Cliente" do pedido
   prazo: () => window.ClientePedido?.prazo() || null,
+  emitente: () => window.ClientePedido?.dados()?.nome || "", // o emitente do cheque vem com o nome do cliente
 });
 
 const estado = {

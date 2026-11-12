@@ -1477,6 +1477,12 @@ async function atualizarChequeSemTrava(kv, k, p) {
       else if (dataOk(p.devolvidoEm) && p.devolvidoEm >= l.competencia) ch.devolvidoEm = p.devolvidoEm;
       else throw erro(400, "Data de devolução inválida (não pode ser antes do recebimento do cheque).");
     }
+    // Depositado: só informação (o valor entra na conta na data de compensação / "bom para")
+    if ("depositadoEm" in p) {
+      if (p.depositadoEm === null) delete ch.depositadoEm;
+      else if (dataOk(p.depositadoEm) && p.depositadoEm >= l.competencia) ch.depositadoEm = p.depositadoEm;
+      else throw erro(400, "Data do depósito inválida (não pode ser antes do recebimento do cheque).");
+    }
     if (p.compensacao !== undefined) {
       if (!dataOk(p.compensacao) || p.compensacao < l.competencia) throw erro(400, "Data de compensação inválida (não pode ser antes do recebimento do cheque).");
       ch.compensacao = p.compensacao;

@@ -190,6 +190,7 @@ function renderFormulario() {
       clienteExterno: true,
       fiado: () => ({ ligado: f.ligado !== false, prazoDias: Number(f.prazoDias) || 30, data: $("ff-data")?.value || hoje }),
       prazo: () => window.Clientes?.prazoDe($("ff-cliente")?.value) || null,
+      emitente: () => $("ff-cliente")?.value.trim() || "",
     });
     $("ff-cliente").addEventListener("change", () => estado.editor.atualizar());
     // Com itens: total e CMV saem dos itens (mesmo cálculo do Vender); sem itens: valor digitado e CMV estimado
@@ -331,7 +332,8 @@ const NOMES_ESPECIAIS = { transferencia: "Transferência", recebimento: "Recebim
 function descreverForma(l) {
   if (l.conta === "transferencia") return `${CONTAS_FIN[l.de] || l.de} → ${CONTAS_FIN[l.para] || l.para}`;
   if (Array.isArray(l.pagamentos)) {
-    return l.pagamentos.map((p) => `${FORMAS[p.forma]?.nome || p.forma}${p.parcelas ? ` ${p.parcelas}x` : ""}${p.forma === "fiado" ? (p.fiado?.contaCorrente ? " (sem prazo)" : p.fiado?.vencimento ? ` (vence ${dataBR(p.fiado.vencimento)})` : "") : ""}`).join(" + ");
+    const nCheques = l.pagamentos.filter((p) => p.forma === "cheque").length;
+    return l.pagamentos.filter((p, i, a) => p.forma !== "cheque" || a.findIndex((x) => x.forma === "cheque") === i).map((p) => p.forma === "cheque" && nCheques > 1 ? `Cheque (${nCheques} cheques)` : `${FORMAS[p.forma]?.nome || p.forma}${p.parcelas ? ` ${p.parcelas}x` : ""}${p.forma === "fiado" ? (p.fiado?.contaCorrente ? " (sem prazo)" : p.fiado?.vencimento ? ` (vence ${dataBR(p.fiado.vencimento)})` : "") : ""}`).join(" + ");
   }
   if (l.conta === "fiado_anterior") return l.contaCorrente || !l.vencimento ? "a receber, sem prazo" : `a receber, vence ${dataBR(l.vencimento)}`;
   if (l.pagoCom) return NOME_PAGO[l.pagoCom] + (l.chequeEmitido?.numero ? ` nº ${l.chequeEmitido.numero}` : "");
